@@ -1,8 +1,16 @@
-# CloseAndKeep — frontend (preview)
+# CloseAndKeep
 
-Next.js 14 (App Router) + TypeScript + Tailwind. Dashboard routes now call the backend session endpoints, while domain screens still use placeholder data from `lib/mock-data.ts`. The parent **CloseAndKeep** project is **not** under Git for now (optional later).
+Post-pitch gifting for sales teams who want to stand out after the demo.
 
-## Run locally
+## Repo layout
+
+- `web/` - Next.js 14 frontend deployed on Vercel
+- `api/` - FastAPI backend
+- `Architecture.MD`, `DECISIONS.md`, `SoftwareRequirements.MD`, `TaskList.MD`, `Test.MD` - project docs
+
+## Local development
+
+Frontend:
 
 ```bash
 cd web
@@ -11,13 +19,41 @@ copy .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Use `/login` to create a session against the local API and access dashboard routes.
+Backend:
 
-## Structure
+```bash
+cd api
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-- `app/(marketing)/` — landing (`/`) and pricing (`/pricing`)
-- `app/(dashboard)/` — app shell routes: `/dashboard`, `/prospects`, `/gifts`, `/orders/new`, `/follow-ups`, `/billing`
-- `components/layout/` — marketing shell + sidebar app shell
-- `lib/mock-data.ts` — placeholder prospects, pitches, gifts, etc.
+## Deployment
 
-Typography uses **DM Sans** + **Fraunces** (Google Fonts) with a warm cream / wood palette aligned to product docs.
+- Vercel should deploy from the `web` root directory.
+- The backend is intended for a separate Python host such as Render or Fly.io.
+
+## Product overview
+
+CloseAndKeep helps SaaS sellers close more deals and keep more customers by turning post-pitch follow-up into simple, trackable gift sends.
+
+The MVP focuses on:
+
+- landing page and pricing
+- signup and login
+- dashboard
+- prospect tracking
+- gift ordering workflow
+- follow-up reminders
+- deal outcome tracking
+
+## Project notes
+
+- Frontend: Next.js 14, React, TypeScript, Tailwind CSS
+- Backend: FastAPI, Python
+- Database: Neon Postgres
+- Auth: secure server-managed sessions
+- Billing: Stripe
+
+See `DECISIONS.md` for locked technical choices and `Architecture.MD` for system design details.
