@@ -1,11 +1,20 @@
 "use client";
 
+import { Suspense } from "react";
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-cream px-4 py-16" />}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");

@@ -81,7 +81,7 @@ export default function ProspectDetailPage() {
         <p className="mt-2 text-espresso">{prospect.email}</p>
         <p className="mt-4 text-sm text-stone-600">
           <span className="font-medium text-espresso">Deal status (placeholder):</span>{" "}
-          <span className="capitalize">{prospect.dealStatus}</span>
+          <span className="capitalize">{prospect.deal_status}</span>
         </p>
       </div>
 
