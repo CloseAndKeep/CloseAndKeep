@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { API_BASE_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 import { gifts } from "@/lib/mock-data";
 
 type GiftOrder = {
@@ -36,8 +36,8 @@ export default function OrdersPage() {
       setError(null);
       try {
         const [ordersResponse, prospectsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/gift-orders`, { credentials: "include" }),
-          fetch(`${API_BASE_URL}/prospects`, { credentials: "include" }),
+          fetch(`${getApiBaseUrl()}/gift-orders`, { credentials: "include" }),
+          fetch(`${getApiBaseUrl()}/prospects`, { credentials: "include" }),
         ]);
 
         if (!ordersResponse.ok) {

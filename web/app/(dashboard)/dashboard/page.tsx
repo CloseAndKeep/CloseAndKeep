@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { API_BASE_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState({
@@ -21,7 +21,7 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${API_BASE_URL}/dashboard/summary`, {
+        const response = await fetch(`${getApiBaseUrl()}/dashboard/summary`, {
           credentials: "include",
         });
         if (!response.ok) {

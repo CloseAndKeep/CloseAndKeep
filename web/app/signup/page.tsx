@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL, fetchErrorMessage } from "@/lib/api";
+import { fetchErrorMessage, getApiBaseUrl } from "@/lib/api";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -28,7 +28,7 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+      const response = await fetch(`${getApiBaseUrl()}/auth/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

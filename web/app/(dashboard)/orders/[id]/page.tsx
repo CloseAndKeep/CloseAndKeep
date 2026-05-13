@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
-import { API_BASE_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 
 type GiftOrder = {
   id: number;
@@ -35,7 +35,7 @@ export default function OrderDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const orderResponse = await fetch(`${API_BASE_URL}/gift-orders/${params.id}`, {
+        const orderResponse = await fetch(`${getApiBaseUrl()}/gift-orders/${params.id}`, {
           credentials: "include",
         });
         if (!orderResponse.ok) {
@@ -44,7 +44,7 @@ export default function OrderDetailPage() {
         const orderData = (await orderResponse.json()) as GiftOrder;
         setOrder(orderData);
 
-        const prospectResponse = await fetch(`${API_BASE_URL}/prospects/${orderData.prospect_id}`, {
+        const prospectResponse = await fetch(`${getApiBaseUrl()}/prospects/${orderData.prospect_id}`, {
           credentials: "include",
         });
         if (prospectResponse.ok) {

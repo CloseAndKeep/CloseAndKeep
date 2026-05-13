@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { gifts } from "@/lib/mock-data";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 
 const steps = ["Prospect", "Gift", "Shipping & note", "Review"];
 
@@ -38,7 +38,7 @@ export function GiftOrderWizard() {
       setLoadingProspects(true);
       setError(null);
       try {
-        const response = await fetch(`${API_BASE_URL}/prospects`, {
+        const response = await fetch(`${getApiBaseUrl()}/prospects`, {
           credentials: "include",
         });
         if (!response.ok) {
@@ -92,7 +92,7 @@ export function GiftOrderWizard() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/gift-orders`, {
+      const response = await fetch(`${getApiBaseUrl()}/gift-orders`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

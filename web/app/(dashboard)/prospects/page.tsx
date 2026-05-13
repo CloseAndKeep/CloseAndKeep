@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { API_BASE_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 
 type Prospect = {
   id: number;
@@ -30,7 +30,7 @@ export default function ProspectsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/prospects`, {
+      const response = await fetch(`${getApiBaseUrl()}/prospects`, {
         credentials: "include",
       });
       if (!response.ok) {
@@ -56,7 +56,7 @@ export default function ProspectsPage() {
     setError(null);
     setCreating(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/prospects`, {
+      const response = await fetch(`${getApiBaseUrl()}/prospects`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

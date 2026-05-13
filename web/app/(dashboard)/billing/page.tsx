@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { API_BASE_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 
 export default function BillingPage() {
   const [loading, setLoading] = useState(true);
@@ -20,7 +20,7 @@ export default function BillingPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${API_BASE_URL}/billing/me`, {
+        const response = await fetch(`${getApiBaseUrl()}/billing/me`, {
           credentials: "include",
         });
         if (!response.ok) {
@@ -44,7 +44,7 @@ export default function BillingPage() {
     setActionLoading("checkout");
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/billing/checkout`, {
+      const response = await fetch(`${getApiBaseUrl()}/billing/checkout`, {
         method: "POST",
         credentials: "include",
       });
@@ -66,7 +66,7 @@ export default function BillingPage() {
     setActionLoading("portal");
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/billing/portal`, {
+      const response = await fetch(`${getApiBaseUrl()}/billing/portal`, {
         method: "POST",
         credentials: "include",
       });

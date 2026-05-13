@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { API_BASE_URL, fetchErrorMessage } from "@/lib/api";
+import { fetchErrorMessage, getApiBaseUrl } from "@/lib/api";
 
 export default function LoginPage() {
   return (
@@ -29,7 +29,7 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

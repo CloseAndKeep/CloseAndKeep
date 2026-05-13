@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
-import { API_BASE_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 
 type Prospect = {
   id: number;
@@ -26,7 +26,7 @@ export default function ProspectDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${API_BASE_URL}/prospects/${params.id}`, {
+        const response = await fetch(`${getApiBaseUrl()}/prospects/${params.id}`, {
           credentials: "include",
         });
         if (!response.ok) {
