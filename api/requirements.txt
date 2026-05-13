@@ -7,3 +7,4 @@ alembic
 psycopg[binary]
 bcrypt
 stripe
+resend>=2.0.0

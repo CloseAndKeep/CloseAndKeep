@@ -24,6 +24,12 @@ class Settings(BaseModel):
     stripe_secret_key: str = os.getenv("STRIPE_SECRET_KEY", "")
     stripe_webhook_secret: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
     stripe_price_id: str = os.getenv("STRIPE_PRICE_ID", "")
+    resend_api_key: str = os.getenv("RESEND_API_KEY", "")
+    resend_from: str = os.getenv("RESEND_FROM", "CloseAndKeep <onboarding@resend.dev>")
+    order_notification_to: str = (
+        os.getenv("ORDER_NOTIFICATION_TO", "CloseAndKeep@gmail.com").strip()
+        or "CloseAndKeep@gmail.com"
+    )
     cors_origins: list[str] = [
         origin.strip()
         for origin in os.getenv(

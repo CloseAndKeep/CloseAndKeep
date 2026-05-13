@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import SessionLocal
 from .models import GiftOrderModel, ProspectModel, UserModel
+from .order_email import send_new_order_notification
 from .session_store import delete_session, purge_expired_sessions, refresh_session_if_needed, rotate_session
 
 
@@ -466,6 +467,23 @@ def create_gift_order(
     db.add(order)
     db.commit()
     db.refresh(order)
+
+    send_new_order_notification(
+        order_id=order.id,
+        requested_at=order.requested_at,
+        gift_id=order.gift_id,
+        recipient_name=order.recipient_name,
+        shipping_address=order.shipping_address,
+        note=order.note,
+        status=order.status,
+        prospect_name=prospect.name,
+        prospect_company=prospect.company,
+        prospect_title=prospect.title,
+        prospect_email=prospect.email,
+        prospect_deal_status=prospect.deal_status,
+        placed_by_email=current_user.email,
+    )
+
     return GiftOrderResponse(
         id=order.id,
         prospect_id=order.prospect_id,
