@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, fetchErrorMessage } from "@/lib/api";
 
 export default function LoginPage() {
   return (
@@ -47,9 +47,7 @@ function LoginForm() {
 
       router.replace(nextPath);
     } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "Login failed.";
-      setError(message);
+      setError(fetchErrorMessage(submitError, "Login failed."));
     } finally {
       setLoading(false);
     }

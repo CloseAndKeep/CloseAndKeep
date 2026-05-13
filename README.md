@@ -33,6 +33,8 @@ uvicorn app.main:app --reload
 
 - Vercel should deploy from the `web` root directory.
 - The backend is intended for a separate Python host such as Render or Fly.io.
+- On Vercel, set **`NEXT_PUBLIC_API_BASE_URL`** to your public API origin (for example `https://api.yourdomain.com`, no trailing slash), then redeploy so the browser calls the real API instead of the default `http://localhost:8000`.
+- On the API host, set **`CORS_ORIGINS`** to the exact site origins you use (for example `https://closeandkeep.com,https://www.closeandkeep.com`) so the browser can call the API with cookies.
 
 ## Product overview
 

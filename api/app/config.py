@@ -26,7 +26,10 @@ class Settings(BaseModel):
     stripe_price_id: str = os.getenv("STRIPE_PRICE_ID", "")
     cors_origins: list[str] = [
         origin.strip()
-        for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000",
+        ).split(",")
         if origin.strip()
     ]
 

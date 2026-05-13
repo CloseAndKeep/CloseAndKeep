@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, fetchErrorMessage } from "@/lib/api";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -46,9 +46,7 @@ export default function SignupPage() {
 
       router.replace("/dashboard");
     } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "Sign up failed.";
-      setError(message);
+      setError(fetchErrorMessage(submitError, "Sign up failed."));
     } finally {
       setLoading(false);
     }
