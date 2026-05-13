@@ -38,12 +38,12 @@ def send_new_order_notification(
         logger.warning("RESEND_API_KEY is not set; skipping new-order notification email.")
         return
 
-    to = (settings.order_notification_to or "").strip()
+    to = (settings.order_notification_to or "").strip().lower()
     if not to:
         logger.warning("ORDER_NOTIFICATION_TO is empty; skipping new-order notification email.")
         return
 
-    from_addr = settings.resend_from.strip()
+    # Resend test sender only delivers to your Resend account email; that match is case-sensitive.
     if not from_addr:
         logger.warning("RESEND_FROM is empty; skipping new-order notification email.")
         return

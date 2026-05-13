@@ -49,7 +49,7 @@ services:
       - key: RESEND_FROM
         sync: false
       - key: ORDER_NOTIFICATION_TO
-        value: "CloseAndKeep@gmail.com"
+        value: "closeandkeep@gmail.com"
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

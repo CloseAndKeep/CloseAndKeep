@@ -43,7 +43,7 @@ The frontend deploys to Vercel from `web/`. The backend deploys to Render from `
    - `WEB_BASE_URL` - public URL of the Vercel app (used in Stripe redirects).
    - `API_BASE_URL` - public URL of this Render service (for example `https://closeandkeep-api.onrender.com`).
    - `ADMIN_EMAILS`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` - leave blank or fill in as available.
-   - **Order emails:** set `RESEND_API_KEY` (replace the `re_xxxxxxxxx` placeholder with your real key). For internal alerts only, the default `RESEND_FROM` is `onboarding@resend.dev`. For customer-facing mail, verify your domain in Resend and set `RESEND_FROM` to something like `orders@yourdomain.com`. Each new gift order emails `ORDER_NOTIFICATION_TO` (defaults to `CloseAndKeep@gmail.com` if unset).
+   - **Order emails:** set `RESEND_API_KEY` (replace the `re_xxxxxxxxx` placeholder with your real key). For internal alerts only, the default `RESEND_FROM` is `onboarding@resend.dev`. With that sender, Resend only allows mail to **your Resend account email** (match is **case-sensitive**—we normalize `ORDER_NOTIFICATION_TO` to lowercase before sending). For other recipients or customer-facing mail, verify a domain at Resend and set `RESEND_FROM` to an address on that domain.
 4. The build runs `pip install -r requirements.txt && python -m alembic upgrade head`, so each deploy runs migrations against Neon before the new code starts serving.
 5. After the first successful deploy, verify with `curl https://<your-render-host>/health`.
 
