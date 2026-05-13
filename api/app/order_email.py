@@ -115,5 +115,10 @@ def send_new_order_notification(
                 "html": html_body,
             }
         )
+        logger.info(
+            "Order notification email accepted by Resend for order_id=%s to=%s",
+            order_id,
+            to,
+        )
     except Exception:
         logger.exception("Failed to send order notification email for order_id=%s", order_id)
