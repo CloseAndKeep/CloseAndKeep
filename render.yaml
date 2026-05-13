@@ -1,0 +1,54 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+#
+# Deploys the CloseAndKeep FastAPI service from the `api/` directory.
+# Vercel hosts the Next.js frontend (`web/`) separately and proxies browser
+# calls to this service via the same-origin `/__cak_api` rewrite configured
+# in `web/next.config.mjs` (set `BACKEND_URL` on Vercel to this service's URL).
+
+services:
+  - type: web
+    name: closeandkeep-api
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: api
+    # Install deps and run Alembic against the configured DATABASE_URL so the
+    # schema is up to date before the new revision starts serving traffic.
+    buildCommand: pip install -r requirements.txt && python -m alembic upgrade head
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: APP_NAME
+        value: CloseAndKeep API
+      - key: APP_ENV
+        value: production
+      - key: SESSION_COOKIE_NAME
+        value: closeandkeep_session
+      # HTTPS-only cookie required on Vercel (frontend is served over https).
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_TTL_HOURS
+        value: "24"
+      - key: SESSION_REFRESH_THRESHOLD_MINUTES
+        value: "60"
+      # Values below are prompted on first Blueprint sync; nothing is committed.
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: WEB_BASE_URL
+        sync: false
+      - key: API_BASE_URL
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
