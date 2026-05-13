@@ -5,5 +5,5 @@ email-validator
 sqlalchemy
 alembic
 psycopg[binary]
-passlib[bcrypt]
+bcrypt
 stripe

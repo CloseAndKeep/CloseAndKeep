@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+import bcrypt
 from fastapi import Depends, FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
-from passlib.context import CryptContext
 import stripe
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,7 +15,25 @@ from .models import GiftOrderModel, ProspectModel, UserModel
 from .session_store import delete_session, purge_expired_sessions, refresh_session_if_needed, rotate_session
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt only uses the first 72 bytes of a password and modern versions raise
+# ValueError instead of silently truncating, so we truncate here before hashing
+# and verifying. Existing `$2b$` hashes produced by passlib remain compatible.
+_BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def _password_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_PASSWORD_BYTES]
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(_password_bytes(password), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(_password_bytes(password), password_hash.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 @asynccontextmanager
@@ -194,7 +212,7 @@ def health() -> dict[str, str]:
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
     email = _normalize_email(payload.email)
     user = db.scalar(select(UserModel).where(UserModel.email == email))
-    if not user or not pwd_context.verify(payload.password, user.password_hash):
+    if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     user = _sync_admin_role(user, db)
@@ -214,7 +232,7 @@ def signup(payload: SignupRequest, request: Request, response: Response, db: Ses
     role = "admin" if email in settings.admin_emails else "user"
     user = UserModel(
         email=email,
-        password_hash=pwd_context.hash(payload.password),
+        password_hash=hash_password(payload.password),
         role=role,
     )
     db.add(user)
