@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { getApiBaseUrl } from "@/lib/api";
+import { COOKIE_UNIT_PRICE_USD, cookiePackById, labelForGiftId } from "@/lib/mock-data";
 
 type GiftOrder = {
   id: number;
@@ -77,6 +78,8 @@ export default function OrderDetailPage() {
     );
   }
 
+  const cookiePack = cookiePackById(order.gift_id);
+
   return (
     <>
       <PageHeader
@@ -103,7 +106,13 @@ export default function OrderDetailPage() {
               {order.status}
             </span>
           </p>
-          <p className="mt-4 text-sm text-stone-600">Gift: {order.gift_id}</p>
+          <p className="mt-4 text-sm text-stone-600">Cookies: {labelForGiftId(order.gift_id)}</p>
+          {cookiePack ? (
+            <p className="mt-1 text-xs text-stone-500">
+              Temporary estimate: ${cookiePack.cookieCount * COOKIE_UNIT_PRICE_USD} (
+              {COOKIE_UNIT_PRICE_USD}/cookie)
+            </p>
+          ) : null}
           <p className="mt-1 text-sm text-stone-600">Recipient: {order.recipient_name}</p>
         </section>
       </div>

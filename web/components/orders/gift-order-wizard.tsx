@@ -4,11 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { gifts } from "@/lib/mock-data";
+import {
+  COOKIE_UNIT_PRICE_USD,
+  cookiePacks,
+  cookiePackLineTotal,
+  labelForGiftId,
+} from "@/lib/mock-data";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/api";
 
-const steps = ["Prospect", "Gift", "Shipping & note", "Review"];
+const steps = ["Prospect & cookies", "Shipping & note", "Review"];
 
 type Prospect = {
   id: number;
@@ -24,7 +29,7 @@ export function GiftOrderWizard() {
   const [step, setStep] = useState(0);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [prospectId, setProspectId] = useState("");
-  const [giftId, setGiftId] = useState(gifts[0]?.id ?? "");
+  const [giftId, setGiftId] = useState(cookiePacks[0]?.id ?? "");
   const [recipientName, setRecipientName] = useState("");
   const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
@@ -64,16 +69,14 @@ export function GiftOrderWizard() {
     () => prospects.find((p) => String(p.id) === prospectId),
     [prospectId, prospects],
   );
-  const selectedGift = gifts.find((g) => g.id === giftId);
+  const selectedPack = useMemo(() => cookiePacks.find((p) => p.id === giftId), [giftId]);
 
   const canNext =
     step === 0
-      ? Boolean(prospectId)
+      ? Boolean(prospectId && giftId)
       : step === 1
-        ? Boolean(giftId)
-        : step === 2
-          ? recipientName.trim() && address.trim() && note.trim()
-          : true;
+        ? recipientName.trim() && address.trim() && note.trim()
+        : true;
 
   function next() {
     if (step < steps.length - 1 && canNext) setStep((s) => s + 1);
@@ -84,7 +87,7 @@ export function GiftOrderWizard() {
   }
 
   async function submitOrder() {
-    if (!selectedProspect || !selectedGift) {
+    if (!selectedProspect || !selectedPack) {
       return;
     }
 
@@ -100,7 +103,7 @@ export function GiftOrderWizard() {
         credentials: "include",
         body: JSON.stringify({
           prospect_id: selectedProspect.id,
-          gift_id: selectedGift.id,
+          gift_id: selectedPack.id,
           recipient_name: recipientName.trim(),
           shipping_address: address.trim(),
           note: note.trim(),
@@ -177,9 +180,52 @@ export function GiftOrderWizard() {
                 ))}
               </select>
               <p className="mt-2 text-xs text-stone-500">
-                Gift will be tied to this prospect. Follow-ups and outcomes stay on the prospect record.
+                Order will be tied to this prospect. Follow-ups and outcomes stay on the prospect record.
               </p>
             </div>
+
+            <div>
+              <span className="block text-sm font-medium text-espresso" id="cookie-amount-label">
+                Number of cookies
+              </span>
+              <div
+                className="mt-2 flex flex-wrap gap-2"
+                role="radiogroup"
+                aria-labelledby="cookie-amount-label"
+              >
+                {cookiePacks.map((pack) => {
+                  const selected = giftId === pack.id;
+                  return (
+                    <button
+                      key={pack.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setGiftId(pack.id)}
+                      className={`min-w-[5.5rem] flex-1 rounded-xl border px-3 py-3 text-left text-sm transition sm:min-w-0 sm:flex-none ${
+                        selected
+                          ? "border-wood bg-wood/10 font-medium text-wood-dark ring-2 ring-wood/30"
+                          : "border-stone-200 bg-white text-espresso hover:border-stone-300"
+                      }`}
+                    >
+                      <span className="block">{pack.cookieCount === 1 ? "1 cookie" : `${pack.cookieCount} cookies`}</span>
+                      <span className="mt-0.5 block text-xs font-normal text-stone-600">
+                        ${cookiePackLineTotal(pack)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-stone-500">
+                Temporary price: ${COOKIE_UNIT_PRICE_USD} per cookie (estimate until billing is connected).
+              </p>
+              {selectedPack ? (
+                <p className="mt-2 text-sm font-medium text-espresso">
+                  Order estimate: ${cookiePackLineTotal(selectedPack)}
+                </p>
+              ) : null}
+            </div>
+
             {prospects.length === 0 && !loadingProspects ? (
               <p className="text-sm text-stone-600">
                 Add a prospect first in{" "}
@@ -193,27 +239,6 @@ export function GiftOrderWizard() {
         )}
 
         {step === 1 && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {gifts.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => setGiftId(g.id)}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  giftId === g.id
-                    ? "border-wood bg-wood/10 ring-2 ring-wood/30"
-                    : "border-stone-200 hover:border-stone-300"
-                }`}
-              >
-                <div className={`h-20 rounded-xl bg-gradient-to-br ${g.accent} mb-3`} />
-                <p className="font-medium text-espresso">{g.name}</p>
-                <p className="mt-1 text-xs text-stone-600">{g.description}</p>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {step === 2 && (
           <div className="space-y-4 max-w-xl">
             <div>
               <label className="block text-sm font-medium text-espresso">
@@ -254,7 +279,7 @@ export function GiftOrderWizard() {
           </div>
         )}
 
-        {step === 3 && (
+        {step === 2 && (
           <div className="space-y-4 text-sm">
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Prospect</p>
@@ -262,8 +287,13 @@ export function GiftOrderWizard() {
               <p className="text-stone-600">{selectedProspect?.company}</p>
             </div>
             <div className="rounded-xl bg-cream/80 p-4">
-              <p className="text-xs font-semibold uppercase text-stone-500">Gift</p>
-              <p className="mt-1 font-medium text-espresso">{selectedGift?.name}</p>
+              <p className="text-xs font-semibold uppercase text-stone-500">Cookies</p>
+              <p className="mt-1 font-medium text-espresso">{labelForGiftId(giftId)}</p>
+              {selectedPack ? (
+                <p className="mt-2 text-stone-600">
+                  Estimate: ${cookiePackLineTotal(selectedPack)} (${COOKIE_UNIT_PRICE_USD}/cookie, temporary)
+                </p>
+              ) : null}
             </div>
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Ship to</p>

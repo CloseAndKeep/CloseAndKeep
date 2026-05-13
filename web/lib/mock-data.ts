@@ -47,37 +47,38 @@ export const prospects: Prospect[] = [
   },
 ];
 
-export type Gift = {
+/** Shown in the order UI only until checkout/billing is wired. */
+export const COOKIE_UNIT_PRICE_USD = 1;
+
+export type CookiePack = {
   id: string;
-  name: string;
-  description: string;
-  priceHint: string;
-  accent: string;
+  cookieCount: number;
 };
 
-export const gifts: Gift[] = [
-  {
-    id: "g1",
-    name: "Artisan chocolate box",
-    description: "Small-batch dark chocolate; includes a handwritten-style card slot.",
-    priceHint: "Included in plan",
-    accent: "from-amber-700/20 to-orange-200/40",
-  },
-  {
-    id: "g2",
-    name: "Roaster’s coffee kit",
-    description: "Whole bean + brew guide — great after a long demo.",
-    priceHint: "Included in plan",
-    accent: "from-stone-600/25 to-amber-100/50",
-  },
-  {
-    id: "g3",
-    name: "Cookie assortment",
-    description: "Shareable tin; neutral allergens note on request.",
-    priceHint: "Included in plan",
-    accent: "from-rose-300/30 to-amber-50/50",
-  },
+export const cookiePacks: CookiePack[] = [
+  { id: "cookies-1", cookieCount: 1 },
+  { id: "cookies-2", cookieCount: 2 },
+  { id: "cookies-4", cookieCount: 4 },
+  { id: "cookies-12", cookieCount: 12 },
 ];
+
+export function cookiePackLineTotal(pack: CookiePack): number {
+  return pack.cookieCount * COOKIE_UNIT_PRICE_USD;
+}
+
+export function formatCookiePackChoice(pack: CookiePack): string {
+  const n = pack.cookieCount;
+  const word = n === 1 ? "cookie" : "cookies";
+  return `${n} ${word} — $${cookiePackLineTotal(pack)}`;
+}
+
+export function labelForGiftId(giftId: string): string {
+  const pack = cookiePacks.find((p) => p.id === giftId);
+  if (pack) {
+    return formatCookiePackChoice(pack);
+  }
+  return giftId;
+}
 
 export type OrderStatus =
   | "queued"
@@ -98,7 +99,7 @@ export const orders: GiftOrder[] = [
   {
     id: "o1",
     prospectId: "p1",
-    giftId: "g1",
+    giftId: "cookies-4",
     recipientName: "Jordan Lee",
     status: "queued",
     requestedAt: "2026-04-29",
@@ -131,8 +132,8 @@ export function prospectById(id: string) {
   return prospects.find((p) => p.id === id);
 }
 
-export function giftById(id: string) {
-  return gifts.find((g) => g.id === id);
+export function cookiePackById(id: string) {
+  return cookiePacks.find((p) => p.id === id);
 }
 
 export function ordersForProspect(prospectId: string) {

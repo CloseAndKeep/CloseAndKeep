@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getApiBaseUrl } from "@/lib/api";
-import { gifts } from "@/lib/mock-data";
+import { labelForGiftId } from "@/lib/mock-data";
 
 type GiftOrder = {
   id: number;
@@ -66,10 +66,6 @@ export default function OrdersPage() {
   const prospectMap = useMemo(
     () => new Map(prospects.map((prospect) => [prospect.id, prospect])),
     [prospects],
-  );
-  const giftMap = useMemo(
-    () => new Map(gifts.map((gift) => [gift.id, gift.name])),
-    [],
   );
   const statuses = useMemo(
     () => Array.from(new Set(orders.map((order) => order.status))),
@@ -141,7 +137,7 @@ export default function OrdersPage() {
             <tr>
               <th className="px-4 py-3">Requested</th>
               <th className="px-4 py-3">Prospect</th>
-              <th className="px-4 py-3 hidden sm:table-cell">Gift</th>
+              <th className="px-4 py-3 hidden sm:table-cell">Cookies</th>
               <th className="px-4 py-3 hidden md:table-cell">Recipient</th>
               <th className="px-4 py-3">Status</th>
             </tr>
@@ -181,7 +177,7 @@ export default function OrdersPage() {
                     <div className="text-xs text-stone-500">{prospect?.company ?? "—"}</div>
                   </td>
                   <td className="px-4 py-3 text-stone-600 hidden sm:table-cell">
-                    {giftMap.get(order.gift_id) ?? order.gift_id}
+                    {labelForGiftId(order.gift_id)}
                   </td>
                   <td className="px-4 py-3 text-stone-600 hidden md:table-cell">{order.recipient_name}</td>
                   <td className="px-4 py-3">

@@ -6,7 +6,7 @@ export default function NewOrderPage() {
     <>
       <PageHeader
         title="New cookie order"
-        description="Walk through prospect and delivery details for cookie sends."
+        description="Pick prospect and cookie count (temporary $1/cookie), then delivery details."
       />
       <GiftOrderWizard />
     </>
