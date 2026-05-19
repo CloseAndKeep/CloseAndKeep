@@ -1,155 +1,140 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getApiBaseUrl } from "@/lib/api";
+import { labelForGiftId } from "@/lib/mock-data";
+
+type GiftOrder = {
+  id: number;
+  gift_id: string;
+  status: string;
+  payment_status: string;
+  requested_at: string;
+};
 
 export default function BillingPage() {
+  const [orders, setOrders] = useState<GiftOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<"checkout" | "portal" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [billing, setBilling] = useState({
-    email: "",
-    subscription_status: "inactive",
-    subscription_plan: "free",
-    has_payment_method: false,
-  });
 
   useEffect(() => {
-    async function loadBilling() {
+    async function loadOrders() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/billing/me`, {
+        const response = await fetch(`${getApiBaseUrl()}/gift-orders`, {
           credentials: "include",
         });
         if (!response.ok) {
-          const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-          throw new Error(data?.detail ?? "Unable to load billing info.");
+          throw new Error("Unable to load payment history.");
         }
-        const data = (await response.json()) as typeof billing;
-        setBilling(data);
+        const data = (await response.json()) as GiftOrder[];
+        setOrders(data);
       } catch (loadError) {
         const message =
-          loadError instanceof Error ? loadError.message : "Unable to load billing info.";
+          loadError instanceof Error ? loadError.message : "Unable to load payment history.";
         setError(message);
       } finally {
         setLoading(false);
       }
     }
-    void loadBilling();
+    void loadOrders();
   }, []);
 
-  async function startCheckout() {
-    setActionLoading("checkout");
-    setError(null);
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/billing/checkout`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(data?.detail ?? "Unable to start checkout.");
-      }
-      const data = (await response.json()) as { checkout_url: string };
-      window.location.href = data.checkout_url;
-    } catch (actionError) {
-      const message =
-        actionError instanceof Error ? actionError.message : "Unable to start checkout.";
-      setError(message);
-      setActionLoading(null);
-    }
-  }
-
-  async function openPortal() {
-    setActionLoading("portal");
-    setError(null);
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/billing/portal`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(data?.detail ?? "Unable to open billing portal.");
-      }
-      const data = (await response.json()) as { portal_url: string };
-      window.location.href = data.portal_url;
-    } catch (actionError) {
-      const message =
-        actionError instanceof Error ? actionError.message : "Unable to open billing portal.";
-      setError(message);
-      setActionLoading(null);
-    }
-  }
+  const pending = orders.filter((o) => o.payment_status === "pending");
+  const paid = orders.filter((o) => o.payment_status === "paid");
 
   return (
     <>
       <PageHeader
-        title="Billing"
-        description="Manage your subscription and payment method with Stripe."
+        title="Payments"
+        description="Pay per gift order at checkout. Each cookie send is a one-time Stripe payment."
       />
 
       <div className="rounded-2xl border border-stone-200/90 bg-white/90 p-8 shadow-sm">
-        <div className="flex flex-wrap items-baseline justify-between gap-4">
-          <div>
-            <h2 className="font-display text-2xl text-espresso">Current plan</h2>
-            <p className="mt-2 text-stone-600">
-              Logged in as{" "}
-              <span className="font-medium text-espresso">{loading ? "Loading..." : billing.email}</span>
-            </p>
-          </div>
-          <span className="rounded-full bg-wood/15 px-4 py-2 text-sm font-medium text-wood-dark">
-            {loading ? "..." : billing.subscription_plan}
-          </span>
-        </div>
-        <dl className="mt-8 grid gap-4 border-t border-stone-100 pt-8 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-              Subscription status
-            </dt>
-            <dd className="mt-1 text-lg text-espresso">
-              {loading ? "Loading..." : billing.subscription_status}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-              Payment method
-            </dt>
-            <dd className="mt-1 text-stone-600">
-              {loading
-                ? "Loading..."
-                : billing.has_payment_method
-                  ? "Connected via Stripe"
-                  : "No payment method on file"}
-            </dd>
-          </div>
-        </dl>
-        {error ? (
-          <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {error}
-          </p>
-        ) : null}
-        <div className="mt-8 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={startCheckout}
-            disabled={loading || actionLoading !== null}
-            className="rounded-full bg-wood px-6 py-3 text-sm font-medium text-white hover:bg-wood-dark disabled:opacity-60"
-          >
-            {actionLoading === "checkout" ? "Redirecting..." : "Start subscription"}
-          </button>
-          <button
-            type="button"
-            onClick={openPortal}
-            disabled={loading || actionLoading !== null || !billing.has_payment_method}
-            className="rounded-full border border-stone-300 bg-white px-6 py-3 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-60"
-          >
-            {actionLoading === "portal" ? "Opening..." : "Manage subscription"}
-          </button>
-        </div>
+        <h2 className="font-display text-xl text-espresso">How billing works</h2>
+        <p className="mt-3 text-sm text-stone-600">
+          When you submit a gift order, you are redirected to Stripe to pay once for that order.
+          Fulfillment starts after payment succeeds. Subscriptions may be added later.
+        </p>
+        <Link
+          href="/orders/new"
+          className="mt-6 inline-flex rounded-full bg-wood px-6 py-3 text-sm font-medium text-white hover:bg-wood-dark"
+        >
+          Send a gift (pay at checkout)
+        </Link>
       </div>
+
+      {error ? (
+        <p className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </p>
+      ) : null}
+
+      <section className="mt-8">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+          Awaiting payment ({pending.length})
+        </h3>
+        {loading ? (
+          <p className="mt-3 text-sm text-stone-500">Loading...</p>
+        ) : pending.length === 0 ? (
+          <p className="mt-3 text-sm text-stone-500">No unpaid orders.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {pending.map((order) => (
+              <li
+                key={order.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200/80 bg-amber-50/50 px-4 py-3 text-sm"
+              >
+                <span>
+                  Order #{order.id} — {labelForGiftId(order.gift_id)}
+                </span>
+                <Link
+                  href={`/orders/${order.id}`}
+                  className="font-medium text-wood-dark hover:underline"
+                >
+                  Complete payment →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+          Paid orders ({paid.length})
+        </h3>
+        {loading ? (
+          <p className="mt-3 text-sm text-stone-500">Loading...</p>
+        ) : paid.length === 0 ? (
+          <p className="mt-3 text-sm text-stone-500">No paid orders yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {paid.slice(0, 10).map((order) => (
+              <li
+                key={order.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200/90 bg-white px-4 py-3 text-sm"
+              >
+                <span>
+                  Order #{order.id} — {labelForGiftId(order.gift_id)}
+                </span>
+                <Link href={`/orders/${order.id}`} className="text-wood-dark hover:underline">
+                  View
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <p className="mt-8 text-sm text-stone-500">
+        <Link href="/orders" className="text-wood-dark hover:underline">
+          View all gift orders
+        </Link>
+      </p>
     </>
   );
 }

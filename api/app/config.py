@@ -23,6 +23,7 @@ class Settings(BaseModel):
     }
     stripe_secret_key: str = os.getenv("STRIPE_SECRET_KEY", "")
     stripe_webhook_secret: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    # Default one-time price when a per-pack price env var is not set.
     stripe_price_id: str = os.getenv("STRIPE_PRICE_ID", "")
     resend_api_key: str = os.getenv("RESEND_API_KEY", "")
     resend_from: str = os.getenv("RESEND_FROM", "onboarding@resend.dev")
@@ -38,6 +39,23 @@ class Settings(BaseModel):
         ).split(",")
         if origin.strip()
     ]
+
+
+_GIFT_PRICE_ENV_KEYS: dict[str, str] = {
+    "cookies-1": "STRIPE_PRICE_COOKIES_1",
+    "cookies-2": "STRIPE_PRICE_COOKIES_2",
+    "cookies-4": "STRIPE_PRICE_COOKIES_4",
+    "cookies-12": "STRIPE_PRICE_COOKIES_12",
+}
+
+
+def stripe_price_for_gift(gift_id: str) -> str:
+    env_key = _GIFT_PRICE_ENV_KEYS.get(gift_id)
+    if env_key:
+        specific = os.getenv(env_key, "").strip()
+        if specific:
+            return specific
+    return settings.stripe_price_id
 
 
 settings = Settings()

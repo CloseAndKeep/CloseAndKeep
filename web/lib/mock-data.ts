@@ -47,8 +47,8 @@ export const prospects: Prospect[] = [
   },
 ];
 
-/** Shown in the order UI only until checkout/billing is wired. */
-export const COOKIE_UNIT_PRICE_USD = 1;
+/** Flat test price per gift order; Stripe Checkout uses your one-time Price ID(s). */
+export const GIFT_ORDER_PRICE_USD = 1;
 
 export type CookiePack = {
   id: string;
@@ -62,8 +62,8 @@ export const cookiePacks: CookiePack[] = [
   { id: "cookies-12", cookieCount: 12 },
 ];
 
-export function cookiePackLineTotal(pack: CookiePack): number {
-  return pack.cookieCount * COOKIE_UNIT_PRICE_USD;
+export function cookiePackLineTotal(_pack: CookiePack): number {
+  return GIFT_ORDER_PRICE_USD;
 }
 
 export function formatCookiePackChoice(pack: CookiePack): string {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
-  COOKIE_UNIT_PRICE_USD,
+  GIFT_ORDER_PRICE_USD,
   cookiePacks,
   cookiePackLineTotal,
   labelForGiftId,
@@ -113,8 +113,12 @@ export function GiftOrderWizard() {
         const data = (await response.json().catch(() => null)) as { detail?: string } | null;
         throw new Error(data?.detail ?? "Unable to submit order.");
       }
-      setSuccessMessage("Order submitted successfully.");
-      router.push("/prospects");
+      const data = (await response.json()) as { id: number; checkout_url?: string | null };
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
+      router.push(`/orders/${data.id}`);
       router.refresh();
     } catch (submitError) {
       const message =
@@ -217,7 +221,7 @@ export function GiftOrderWizard() {
                 })}
               </div>
               <p className="mt-2 text-xs text-stone-500">
-                Temporary price: ${COOKIE_UNIT_PRICE_USD} per cookie (estimate until billing is connected).
+                You pay ${GIFT_ORDER_PRICE_USD} once at Stripe checkout when you submit (any pack size).
               </p>
               {selectedPack ? (
                 <p className="mt-2 text-sm font-medium text-espresso">
@@ -291,7 +295,7 @@ export function GiftOrderWizard() {
               <p className="mt-1 font-medium text-espresso">{labelForGiftId(giftId)}</p>
               {selectedPack ? (
                 <p className="mt-2 text-stone-600">
-                  Estimate: ${cookiePackLineTotal(selectedPack)} (${COOKIE_UNIT_PRICE_USD}/cookie, temporary)
+                  Total at checkout: ${GIFT_ORDER_PRICE_USD}
                 </p>
               ) : null}
             </div>
@@ -305,7 +309,7 @@ export function GiftOrderWizard() {
               <p className="text-stone-700 whitespace-pre-line">{note}</p>
             </div>
             <p className="text-stone-500">
-              Submitting creates a queued gift order tied to this prospect.
+              Submitting saves your order and opens Stripe to pay once. Fulfillment starts after payment.
             </p>
           </div>
         )}
@@ -329,7 +333,7 @@ export function GiftOrderWizard() {
             </Button>
           ) : (
             <Button type="button" variant="primary" disabled={!canNext || submitting} onClick={submitOrder}>
-              {submitting ? "Submitting..." : "Submit order"}
+              {submitting ? "Redirecting to payment..." : "Pay & submit order"}
             </Button>
           )}
         </div>

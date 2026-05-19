@@ -12,8 +12,13 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import SessionLocal
 from .models import GiftOrderModel, ProspectModel, UserModel
-from .order_email import send_new_order_notification
 from .session_store import delete_session, purge_expired_sessions, refresh_session_if_needed, rotate_session
+from .stripe_payments import (
+    create_checkout_session_for_order,
+    ensure_stripe_webhook_configured,
+    fulfill_order_from_checkout_session,
+    sync_order_payment_from_stripe,
+)
 
 
 # bcrypt only uses the first 72 bytes of a password and modern versions raise
@@ -104,22 +109,16 @@ class GiftOrderResponse(BaseModel):
     shipping_address: str
     note: str
     status: str
+    payment_status: str
     requested_at: datetime
 
 
-class BillingStatusResponse(BaseModel):
-    email: str
-    subscription_status: str
-    subscription_plan: str
-    has_payment_method: bool
+class GiftOrderCreateResponse(GiftOrderResponse):
+    checkout_url: str | None = None
 
 
 class StripeCheckoutResponse(BaseModel):
     checkout_url: str
-
-
-class StripePortalResponse(BaseModel):
-    portal_url: str
 
 
 def get_db() -> Session:
@@ -155,36 +154,18 @@ def _sync_admin_role(user: UserModel, db: Session) -> UserModel:
     return user
 
 
-def _ensure_stripe_configured() -> None:
-    if not settings.stripe_secret_key or not settings.stripe_price_id:
-        raise HTTPException(status_code=503, detail="Billing is not configured.")
-    stripe.api_key = settings.stripe_secret_key
-
-
-def _ensure_stripe_webhook_configured() -> None:
-    if not settings.stripe_secret_key or not settings.stripe_webhook_secret:
-        raise HTTPException(status_code=503, detail="Billing webhook is not configured.")
-    stripe.api_key = settings.stripe_secret_key
-
-
-def _sync_subscription_from_stripe_customer(user: UserModel, db: Session) -> UserModel:
-    if not user.stripe_customer_id:
-        return user
-
-    _ensure_stripe_configured()
-    subscriptions = stripe.Subscription.list(customer=user.stripe_customer_id, limit=1)
-    if subscriptions.data:
-        latest = subscriptions.data[0]
-        price_id = latest["items"]["data"][0]["price"]["id"] if latest["items"]["data"] else ""
-        user.subscription_status = latest["status"]
-        user.subscription_plan = "individual" if price_id == settings.stripe_price_id else "paid"
-    else:
-        user.subscription_status = "inactive"
-        user.subscription_plan = "free"
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+def _gift_order_response(order: GiftOrderModel) -> GiftOrderResponse:
+    return GiftOrderResponse(
+        id=order.id,
+        prospect_id=order.prospect_id,
+        gift_id=order.gift_id,
+        recipient_name=order.recipient_name,
+        shipping_address=order.shipping_address,
+        note=order.note,
+        status=order.status,
+        payment_status=order.payment_status,
+        requested_at=order.requested_at,
+    )
 
 
 def get_current_user(request: Request, response: Response, db: Session = Depends(get_db)) -> UserModel:
@@ -259,62 +240,9 @@ def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | i
     return {"user_id": current_user.id, "email": current_user.email, "role": current_user.role}
 
 
-@app.get("/billing/me", response_model=BillingStatusResponse)
-def billing_me(
-    current_user: UserModel = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> BillingStatusResponse:
-    user = _sync_subscription_from_stripe_customer(current_user, db)
-    return BillingStatusResponse(
-        email=user.email,
-        subscription_status=user.subscription_status,
-        subscription_plan=user.subscription_plan,
-        has_payment_method=user.subscription_status in {"active", "trialing", "past_due"},
-    )
-
-
-@app.post("/billing/checkout", response_model=StripeCheckoutResponse)
-def create_checkout_session(
-    current_user: UserModel = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> StripeCheckoutResponse:
-    _ensure_stripe_configured()
-
-    customer_id = current_user.stripe_customer_id
-    if not customer_id:
-        customer = stripe.Customer.create(email=current_user.email, metadata={"user_id": str(current_user.id)})
-        customer_id = customer["id"]
-        current_user.stripe_customer_id = customer_id
-        db.add(current_user)
-        db.commit()
-        db.refresh(current_user)
-
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        customer=customer_id,
-        line_items=[{"price": settings.stripe_price_id, "quantity": 1}],
-        success_url=f"{settings.web_base_url}/billing?checkout=success",
-        cancel_url=f"{settings.web_base_url}/billing?checkout=cancel",
-        allow_promotion_codes=True,
-    )
-    return StripeCheckoutResponse(checkout_url=session["url"])
-
-
-@app.post("/billing/portal", response_model=StripePortalResponse)
-def create_customer_portal_session(current_user: UserModel = Depends(get_current_user)) -> StripePortalResponse:
-    _ensure_stripe_configured()
-    if not current_user.stripe_customer_id:
-        raise HTTPException(status_code=400, detail="No Stripe customer found for this account.")
-    session = stripe.billing_portal.Session.create(
-        customer=current_user.stripe_customer_id,
-        return_url=f"{settings.web_base_url}/billing",
-    )
-    return StripePortalResponse(portal_url=session["url"])
-
-
 @app.post("/billing/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dict[str, bool]:
-    _ensure_stripe_webhook_configured()
+    ensure_stripe_webhook_configured()
     payload = await request.body()
     signature = request.headers.get("Stripe-Signature")
     if not signature:
@@ -324,42 +252,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dic
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid Stripe signature.")
 
-    event_type = event["type"]
-    data_object = event["data"]["object"]
-
-    if event_type in {"checkout.session.completed", "customer.subscription.updated", "customer.subscription.created"}:
-        customer_id = data_object.get("customer")
-        status = data_object.get("status")
-        if event_type == "checkout.session.completed":
-            subscription_id = data_object.get("subscription")
-            if subscription_id:
-                subscription = stripe.Subscription.retrieve(subscription_id)
-                status = subscription["status"]
-                price_id = (
-                    subscription["items"]["data"][0]["price"]["id"] if subscription["items"]["data"] else ""
-                )
-            else:
-                price_id = ""
-        else:
-            price_id = data_object["items"]["data"][0]["price"]["id"] if data_object["items"]["data"] else ""
-
-        if customer_id:
-            user = db.scalar(select(UserModel).where(UserModel.stripe_customer_id == customer_id))
-            if user:
-                user.subscription_status = status or "inactive"
-                user.subscription_plan = "individual" if price_id == settings.stripe_price_id else "paid"
-                db.add(user)
-                db.commit()
-
-    if event_type in {"customer.subscription.deleted"}:
-        customer_id = data_object.get("customer")
-        if customer_id:
-            user = db.scalar(select(UserModel).where(UserModel.stripe_customer_id == customer_id))
-            if user:
-                user.subscription_status = "canceled"
-                user.subscription_plan = "free"
-                db.add(user)
-                db.commit()
+    if event["type"] == "checkout.session.completed":
+        fulfill_order_from_checkout_session(event["data"]["object"], db)
 
     return {"received": True}
 
@@ -445,12 +339,12 @@ def get_dashboard_summary(
     )
 
 
-@app.post("/gift-orders", response_model=GiftOrderResponse, status_code=201)
+@app.post("/gift-orders", response_model=GiftOrderCreateResponse, status_code=201)
 def create_gift_order(
     payload: GiftOrderCreateRequest,
     current_user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> GiftOrderResponse:
+) -> GiftOrderCreateResponse:
     prospect = db.get(ProspectModel, payload.prospect_id)
     if not prospect or prospect.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Prospect not found.")
@@ -462,38 +356,31 @@ def create_gift_order(
         recipient_name=payload.recipient_name.strip(),
         shipping_address=payload.shipping_address.strip(),
         note=payload.note.strip(),
-        status="queued",
+        status="pending_payment",
+        payment_status="pending",
     )
     db.add(order)
     db.commit()
     db.refresh(order)
 
-    send_new_order_notification(
-        order_id=order.id,
-        requested_at=order.requested_at,
-        gift_id=order.gift_id,
-        recipient_name=order.recipient_name,
-        shipping_address=order.shipping_address,
-        note=order.note,
-        status=order.status,
-        prospect_name=prospect.name,
-        prospect_company=prospect.company,
-        prospect_title=prospect.title,
-        prospect_email=prospect.email,
-        prospect_deal_status=prospect.deal_status,
-        placed_by_email=current_user.email,
-    )
+    checkout_url = create_checkout_session_for_order(order, current_user, db)
+    db.refresh(order)
+    response = _gift_order_response(order)
+    return GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)
 
-    return GiftOrderResponse(
-        id=order.id,
-        prospect_id=order.prospect_id,
-        gift_id=order.gift_id,
-        recipient_name=order.recipient_name,
-        shipping_address=order.shipping_address,
-        note=order.note,
-        status=order.status,
-        requested_at=order.requested_at,
-    )
+
+@app.post("/gift-orders/{order_id}/checkout", response_model=StripeCheckoutResponse)
+def checkout_gift_order(
+    order_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StripeCheckoutResponse:
+    order = db.get(GiftOrderModel, order_id)
+    if not order or order.owner_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Gift order not found.")
+
+    checkout_url = create_checkout_session_for_order(order, current_user, db)
+    return StripeCheckoutResponse(checkout_url=checkout_url)
 
 
 @app.get("/gift-orders", response_model=list[GiftOrderResponse])
@@ -506,19 +393,7 @@ def list_gift_orders(
         .where(GiftOrderModel.owner_user_id == current_user.id)
         .order_by(GiftOrderModel.requested_at.desc())
     ).all()
-    return [
-        GiftOrderResponse(
-            id=record.id,
-            prospect_id=record.prospect_id,
-            gift_id=record.gift_id,
-            recipient_name=record.recipient_name,
-            shipping_address=record.shipping_address,
-            note=record.note,
-            status=record.status,
-            requested_at=record.requested_at,
-        )
-        for record in records
-    ]
+    return [_gift_order_response(record) for record in records]
 
 
 @app.get("/gift-orders/{order_id}", response_model=GiftOrderResponse)
@@ -530,13 +405,5 @@ def get_gift_order(
     order = db.get(GiftOrderModel, order_id)
     if not order or order.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Gift order not found.")
-    return GiftOrderResponse(
-        id=order.id,
-        prospect_id=order.prospect_id,
-        gift_id=order.gift_id,
-        recipient_name=order.recipient_name,
-        shipping_address=order.shipping_address,
-        note=order.note,
-        status=order.status,
-        requested_at=order.requested_at,
-    )
+    order = sync_order_payment_from_stripe(order, db)
+    return _gift_order_response(order)

@@ -14,6 +14,7 @@ type GiftOrder = {
   shipping_address: string;
   note: string;
   status: string;
+  payment_status: string;
   requested_at: string;
 };
 
@@ -139,20 +140,21 @@ export default function OrdersPage() {
               <th className="px-4 py-3">Prospect</th>
               <th className="px-4 py-3 hidden sm:table-cell">Cookies</th>
               <th className="px-4 py-3 hidden md:table-cell">Recipient</th>
+              <th className="px-4 py-3">Payment</th>
               <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-3 text-stone-500">
+                <td colSpan={6} className="px-4 py-3 text-stone-500">
                   Loading orders...
                 </td>
               </tr>
             ) : null}
             {!loading && filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-3 text-stone-500">
+                <td colSpan={6} className="px-4 py-3 text-stone-500">
                   {orders.length === 0
                     ? "No orders yet. Create your first cookie order."
                     : "No orders match this status filter."}
@@ -181,8 +183,19 @@ export default function OrdersPage() {
                   </td>
                   <td className="px-4 py-3 text-stone-600 hidden md:table-cell">{order.recipient_name}</td>
                   <td className="px-4 py-3">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                        order.payment_status === "paid"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-amber-100 text-amber-900"
+                      }`}
+                    >
+                      {order.payment_status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
                     <span className="rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-stone-700 capitalize">
-                      {order.status}
+                      {order.status.replace("_", " ")}
                     </span>
                   </td>
                 </tr>

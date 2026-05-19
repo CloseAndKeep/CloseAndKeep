@@ -60,7 +60,10 @@ class GiftOrderModel(Base):
     recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
     shipping_address: Mapped[str] = mapped_column(String(1000), nullable=False)
     note: Mapped[str] = mapped_column(String(1000), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_payment")
+    payment_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    stripe_price_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True
     )

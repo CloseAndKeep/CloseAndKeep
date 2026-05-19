@@ -73,6 +73,6 @@ The MVP focuses on:
 - Backend: FastAPI, Python
 - Database: Neon Postgres
 - Auth: secure server-managed sessions
-- Billing: Stripe
+- Payments: Stripe Checkout (one-time per gift order)
 
 See `DECISIONS.md` for locked technical choices and `Architecture.MD` for system design details.

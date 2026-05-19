@@ -18,7 +18,7 @@ const nav = [
   { href: "/prospects", label: "Prospects", icon: Users },
   { href: "/orders", label: "Orders", icon: Package },
   { href: "/follow-ups", label: "Follow-ups", icon: CalendarClock },
-  { href: "/billing", label: "Billing", icon: CreditCard },
+  { href: "/billing", label: "Payments", icon: CreditCard },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
