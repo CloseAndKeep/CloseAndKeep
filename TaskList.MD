@@ -17,6 +17,26 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ---
 
+## Current status (refreshed 2026-06-10)
+
+**Built and working:**
+- Backend (FastAPI) with app-managed sessions: signup, login, logout, `/auth/me`, admin-role sync via `ADMIN_EMAILS`.
+- Postgres (Neon) schema + Alembic migrations `0001`–`0006`.
+- Prospects: list / create / get / **update (deal outcome)**, all user-scoped.
+- Dashboard summary metrics (open / won / lost / total) wired to live data.
+- Gift orders: create / list / get + **one-time Stripe Checkout per order** and webhook (no subscription).
+- **Admin fulfillment:** `/admin` order queue + order detail with status, tracking number, and internal notes (admin endpoints + admin guard).
+- Frontend (Next.js) wired to the API for all of the above; legal placeholder pages + dashboard loading/error patterns.
+
+**Deferred (explicitly on hold):**
+- Follow-ups feature (table, API, UI, reminder email).
+- Status-change emails to customers (only the internal new-order email exists).
+- Auth gaps: password reset and account settings.
+
+**Placeholder / pre-launch:** legal pages, error/loading patterns, automated tests, this checklist.
+
+---
+
 ## Product (locked / planning)
 
 - [x] Product name: **CloseAndKeep**
@@ -32,7 +52,7 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 - [x] Record finalized stack, auth, DB, email, and hosting choices in one place when decided (`ReadMe.MD` “Technical decisions” block or `DECISIONS.md`)
 - [x] Confirm MVP stays **solo-user-first**; optional `company`/team schema is scaffolding only until teams are in scope ([SoftwareRequirements.MD](SoftwareRequirements.MD) §2)
-- [ ] Implement **admin bootstrap** (env email allowlist, seed/migration, or documented manual runbook) per [SoftwareRequirements.MD](SoftwareRequirements.MD) before relying on the admin queue in production
+- [x] Implement **admin bootstrap** — `ADMIN_EMAILS` env allowlist syncs `role=admin` on signup/login
 - [ ] **Milestone 0:** explicit stop/review after concierge or discovery validation—decide whether to proceed with full product build (ties to “Optional: manual concierge test” below)
 - [x] Refresh [ReadMe.MD](ReadMe.MD) **Current Status** when planning or build phase advances
 
@@ -77,28 +97,28 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ## Repository and local dev
 
-**Git is not in use for now** — the CloseAndKeep folder is not a Git repository. When you adopt Git, add a root `.gitignore` and initialize (or connect a remote) then.
+**Git is in use** — the CloseAndKeep folder is a Git repository with a root `.gitignore`.
 
-- [ ] *(When using Git)* Initialize or connect a repository and add a suitable `.gitignore`
-- [ ] Add `.env.example` (no secrets)
+- [x] Initialize or connect a repository and add a suitable `.gitignore`
+- [x] Add `.env.example` (no secrets) — `api/.env.example`, `web/.env.example`
 - [x] Document how to run frontend locally (`web/README.md`)
 - [x] Document how to run backend locally
-- [ ] Document how to run database migrations locally
+- [x] Document how to run database migrations locally (`alembic upgrade head`; see `README.md`)
 
 ---
 
 ## Database
 
-- [ ] Create dev database
-- [ ] Pick migration tool (Prisma, Alembic, etc.)
-- [ ] Users table (or equivalent)
+- [x] Create dev database (Neon Postgres)
+- [x] Pick migration tool — **Alembic**
+- [x] Users table (with role + reserved subscription columns)
 - [ ] Companies table (if using teams later; optional for MVP)
-- [ ] Prospects table
+- [x] Prospects table
 - [ ] *(Optional)* Sales pitches / touchpoints table — **not** required if prospect-only model stays
-- [ ] Gifts (catalog) table
-- [ ] Gift orders table (recipient name, full shipping address, note on the gift, FK to prospect + gift, status)
-- [ ] Follow-ups table
-- [ ] Subscriptions / Stripe fields on user or company
+- [ ] Gifts (catalog) table — gifts are static cookie packs in `web/lib/mock-data.ts` for now
+- [x] Gift orders table (recipient name, full shipping address, note, FK to prospect, status, payment, tracking, admin notes)
+- [ ] Follow-ups table — **deferred**
+- [x] Stripe fields on user/order — per-order payment fields on `gift_orders`; subscription columns on `users` are reserved scaffolding (unused)
 - [ ] Seed script or admin SQL for first test gifts (optional)
 
 ---
@@ -110,8 +130,8 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 - [x] Set fonts — **DM Sans** + **Fraunces** (`app/layout.tsx`)
 - [x] App shell: layout with nav / header (`AppShell` + `MarketingShell`)
 - [x] Reusable page header (`PageHeader`) — empty-state pattern still generic
-- [ ] Toast or inline error pattern
-- [ ] Loading state pattern
+- [~] Toast or inline error pattern — inline error pattern in use; route-level `error.tsx` placeholder added; no toast yet
+- [x] Loading state pattern — route-level `loading.tsx` + per-page loading states
 
 ---
 
@@ -129,61 +149,64 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ## Authentication
 
-- [ ] Choose auth provider or implement auth
-- [ ] Signup API / server action
-- [ ] Signup page (form + validation)
-- [ ] Login API / server action
-- [ ] Login page
-- [ ] Logout
-- [ ] Forgot password flow
-- [ ] Session handling verified (protected routes work)
-- [ ] Account settings page: profile fields
+- [x] Choose auth provider or implement auth — **app-managed server sessions**
+- [x] Signup API / server action
+- [x] Signup page (form + validation)
+- [x] Login API / server action
+- [x] Login page
+- [x] Logout
+- [ ] Forgot password flow — **deferred**
+- [x] Session handling verified (protected routes work via `AuthGuard` + `/auth/me`)
+- [ ] Account settings page: profile fields — **deferred**
 
 ---
 
-## Stripe billing
+## Payments (one-time per gift order — NOT subscription)
 
-- [ ] Create Stripe account (test mode)
-- [ ] Create Product(s) and Price(s) in Stripe
-- [ ] Pricing page lists plans correctly
-- [ ] Checkout: start session from app
-- [ ] Checkout: success and cancel URLs handled
-- [ ] Webhook endpoint implemented and secured (signature)
-- [ ] Persist Stripe customer ID
-- [ ] Persist subscription ID and status in DB
-- [ ] Gate paid routes/features on active subscription
-- [ ] Customer billing portal link from app
-- [ ] Test: successful subscription
-- [ ] Test: cancel subscription
-- [ ] Test: failed payment / past_due handling
+Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No subscription, no plan tiers, no weekly caps. See `DECISIONS.md`.
+
+- [x] Create Stripe account (test mode)
+- [x] Create one-time Price in Stripe (`STRIPE_PRICE_ID`)
+- [x] Pricing page shows per-order pricing correctly
+- [x] Checkout: start one-time session from app (on order submit + retry)
+- [x] Checkout: success and cancel URLs handled (`/orders/[id]?payment=...`)
+- [x] Webhook endpoint implemented and secured (signature) + fetch-time fallback sync
+- [ ] Persist Stripe customer ID (currently uses `customer_email`; optional)
+- [x] Mark order paid → queued on `checkout.session.completed`
+- [ ] Test: successful payment
+- [ ] Test: canceled checkout leaves order unpaid
+- [ ] Test: failed payment handling
+- [ ] Refund / cancel policy wired (admin can set `canceled`; refunds still manual in Stripe)
 
 ---
 
 ## Core pages — routing
 
-- [x] `/` landing (preview UI)
+- [x] `/` landing
 - [x] `/pricing`
-- [ ] `/signup` and `/login` — deferred (browse app without auth)
-- [x] `/dashboard` (open preview; no auth gate yet)
-- [x] `/prospects` and `/prospects/[id]` — `/prospects/new` not built yet
-- [x] `/gifts` (catalog)
-- [x] `/orders/new` (wizard; submit disabled until API)
-- [x] `/follow-ups`
-- [x] `/billing` (placeholder)
-- [ ] `/admin` (admin-only)
+- [x] `/signup` and `/login`
+- [x] `/privacy` and `/terms` (placeholder copy)
+- [x] `/dashboard` (auth-gated)
+- [x] `/prospects` and `/prospects/[id]` (inline create on list)
+- [x] `/gifts` (redirects to `/orders/new`)
+- [x] `/orders`, `/orders/new`, `/orders/[id]` (wired to API)
+- [x] `/follow-ups` — UI only, still mock data (**deferred** backend)
+- [x] `/billing` (payment history, wired to API)
+- [x] `/admin` and `/admin/orders/[id]` (admin-only)
 
 ---
 
 ## Prospects
 
-- [ ] API: create prospect
-- [ ] API: list prospects (scoped to user/company)
-- [ ] API: get prospect by id
-- [ ] API: update prospect
+- [x] API: create prospect
+- [x] API: list prospects (scoped to user)
+- [x] API: get prospect by id
+- [x] API: update prospect (incl. deal outcome)
 - [ ] API: archive or delete (per your rules)
-- [ ] UI: add prospect form with validation
-- [ ] UI: prospect list with search or filter
-- [ ] UI: prospect detail page
+- [x] UI: add prospect form with validation
+- [x] UI: prospect list
+- [ ] UI: prospect list search or filter
+- [x] UI: prospect detail page (with deal-status editor)
 - [ ] Prospect address/contact can prefill gift order fields (order still stores its own copy for fulfillment)
 
 ---
@@ -208,30 +231,30 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ## Gift orders (user flow)
 
-- [ ] Select prospect (or create inline)
-- [ ] Select gift
-- [ ] Enter or confirm **recipient name** (delivery name; prefill from prospect if helpful)
-- [ ] Enter or confirm **full shipping address** (required)
-- [ ] Enter **note to leave on the gift** (required—card or enclosure message)
-- [ ] Validate: block submit if name, address, or note is missing/blank
-- [ ] Review step shows recipient, address, and note clearly
-- [ ] Submit creates order in `queued` (or equivalent)
-- [ ] User-facing confirmation page or state
-- [ ] User can see order status on dashboard / prospect
+- [x] Select prospect
+- [x] Select gift (cookie pack)
+- [x] Enter or confirm **recipient name**
+- [x] Enter or confirm **full shipping address** (required)
+- [x] Enter **note to leave on the gift** (required)
+- [x] Validate: block submit if name, address, or note is missing/blank
+- [x] Review step shows recipient, address, and note clearly
+- [x] Submit creates order (`pending_payment` → `queued` after payment)
+- [x] User-facing confirmation / order detail state
+- [x] User can see order status on the orders list and order detail
 
 ---
 
 ## Fulfillment (admin)
 
-- [ ] Admin bootstrap deployed/configured (see SoftwareRequirements.MD — Admin bootstrap; Architecture.MD §15)
-- [ ] Admin role or flag on user
-- [ ] Admin-only middleware / guard
-- [ ] Admin: order queue list (filter by status)
-- [ ] Admin: order detail view (recipient name, full address, note on the gift, internal history)
-- [ ] Admin: update status (ordered → shipped → delivered, etc.)
-- [ ] Admin: add tracking number
-- [ ] Internal notes on order (optional)
-- [ ] User notified on status changes (email — see Notifications)
+- [x] Admin bootstrap configured (`ADMIN_EMAILS` allowlist syncs role on signup/login)
+- [x] Admin role or flag on user
+- [x] Admin-only middleware / guard (`get_current_admin` API dep + `AdminGuard` UI)
+- [x] Admin: order queue list (filter by status) at `/admin`
+- [x] Admin: order detail view (recipient name, full address, note, prospect + account info)
+- [x] Admin: update status (queued → ordered → shipped → delivered / canceled)
+- [x] Admin: add tracking number
+- [x] Internal notes on order
+- [ ] User notified on status changes (email) — **deferred**
 
 ---
 
@@ -260,12 +283,12 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ## Notifications (email)
 
-- [ ] Send email: gift request submitted
-- [ ] Send email: gift shipped (when admin sets shipped)
-- [ ] Send email: gift delivered
-- [ ] Send email: follow-up reminder
-- [ ] Send email: payment failed
-- [ ] Log failed sends for debugging
+- [x] Send email: new gift order placed (internal ops notification on payment, via Resend)
+- [ ] Send email: gift shipped (when admin sets shipped) — **deferred**
+- [ ] Send email: gift delivered — **deferred**
+- [ ] Send email: follow-up reminder — **deferred**
+- [ ] Send email: payment failed — **deferred**
+- [x] Log failed sends for debugging (logged in `order_email.py`)
 
 ---
 
@@ -293,14 +316,15 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ## Legal and trust
 
-- [ ] Privacy policy page
-- [ ] Terms of service page
-- [ ] Footer links on marketing pages
+- [~] Privacy policy page — **placeholder added** (`/privacy`); needs real legal copy
+- [~] Terms of service page — **placeholder added** (`/terms`); needs real legal copy
+- [x] Footer links on marketing pages
 
 ---
 
 ## Launch prep
 
+- [~] Automated test scaffold — placeholder `api/tests/` + `requirements-dev.txt` added; expand against `Test.MD`
 - [ ] Staging environment matches prod setup
 - [ ] Run through `Test.MD` regression gate (**`TEST-REG`**) in staging
 - [ ] Production Stripe keys and webhook URL
@@ -342,9 +366,9 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ## Open decisions (check when resolved)
 
-- [ ] Gifts included in subscription vs billed per gift
-- [x] Monthly gift credits vs unlimited tiers — **direction:** weekly order caps per tier (not an credits wallet); see Business Model in `ReadMe.MD`
-- [x] Individuals vs teams first — **GTM:** individual SaaS sellers first; **product:** Individual + Enterprise subscription tiers
+- [x] Gifts included in subscription vs billed per gift — **RESOLVED: one-time payment per gift order; no subscription** (see `DECISIONS.md`)
+- [x] Monthly gift credits vs unlimited tiers — **RESOLVED: not applicable; pay per order** (no credits, no weekly caps)
+- [x] Individuals vs teams first — **GTM:** individual SaaS sellers first
 - [ ] Auto-send gift vs admin approval each time
 - [ ] Prospects receive email from app vs only salesperson outreach
 - [ ] Primary gift vendor or fulfillment partner

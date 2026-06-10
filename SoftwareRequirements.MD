@@ -4,7 +4,7 @@
 
 ## 1. Purpose
 
-This document defines the software requirements for CloseAndKeep, a subscription-based sales gift automation website.
+This document defines the software requirements for CloseAndKeep, a sales gift website where users pay once per gift order (no subscription).
 
 CloseAndKeep will help salespeople send small gifts after customer conversations (e.g., demos, calls), schedule follow-ups, and track whether **prospects** convert—using **prospect-level** outcomes rather than a separate “pitch” workflow in the product.
 
@@ -16,12 +16,7 @@ CloseAndKeep will help salespeople send small gifts after customer conversations
 
 **Messaging:** Customer-facing copy should not lead with “automation” until automation is a primary shipped focus.
 
-**Subscription model (launch direction):** Two tiers, billed via subscription (e.g., Stripe). Placeholder **weekly gift-order (“box”) limits** pending pricing validation:
-
-- **Individual:** **1** order per rolling week
-- **Enterprise:** **5** orders per rolling week
-
-Exact prices and whether limits are per-user vs per-account for Enterprise are TBD.
+**Billing model (locked for MVP): one-time payment per gift order.** Users pay once, via Stripe Checkout (`mode: payment`), each time they submit a gift order. There is **no subscription, no recurring billing, and no weekly order cap** in the MVP. Recurring/subscription tiers may be reconsidered later but are explicitly out of scope today.
 
 ## 2. Scope
 
@@ -31,7 +26,7 @@ The initial product will focus on individual salespeople and small teams.
 
 The first version should support:
 - User accounts
-- Subscription billing
+- One-time payment per gift order (no subscription)
 - Manual prospect entry
 - **Prospect pipeline / outcome tracking** (deal status on the prospect—no separate Pitch UI or pitch entity required)
 - Gift selection
@@ -119,43 +114,38 @@ Acceptance criteria:
 
 ---
 
-## 4.2 Subscription Billing
+## 4.2 Payments (one-time per gift order)
+
+The MVP bills **per gift order**, not via subscription. A user pays once, at checkout, for each gift they send.
 
 ### Requirement: Pricing Page
-The system shall display subscription plans.
+The system shall display per-order pricing.
 
 Acceptance criteria:
-- Plans are clearly shown
-- Prices are clearly shown
-- Features per plan are listed
-- User can start checkout from pricing page
+- Per-order price is clearly shown
+- It is clear there is no subscription required
+- Included features are listed
+- User can start a gift order from the pricing page
 
-### Requirement: Stripe Checkout
-The system shall allow users to subscribe through Stripe.
+### Requirement: Stripe Checkout (one-time)
+The system shall allow users to pay for a gift order through Stripe Checkout in `mode: payment`.
 
 Acceptance criteria:
-- User can choose a plan
-- User is redirected to Stripe Checkout
-- Successful checkout creates or updates subscription record
-- Failed or canceled checkout does not grant paid access
+- User submits a gift order and is redirected to Stripe Checkout
+- Successful payment marks the order paid and moves it to `queued` for fulfillment
+- Failed or canceled checkout leaves the order in `pending_payment` and does not start fulfillment
+- The user can retry checkout for an unpaid order
 
 ### Requirement: Stripe Webhooks
-The system shall listen for Stripe subscription updates.
+The system shall listen for Stripe payment events.
 
 Acceptance criteria:
 - Webhook signatures are verified
-- Subscription status is updated in the database
-- Payment failures are recorded
-- Cancellations remove or downgrade paid access
+- `checkout.session.completed` marks the matching gift order paid/queued
+- A fetch-time fallback re-checks the Checkout session if the webhook is missed
+- Failures are logged
 
-### Requirement: Customer Billing Portal
-The system shall allow users to manage billing through Stripe.
-
-Acceptance criteria:
-- User can open billing portal
-- User can update payment method
-- User can cancel subscription
-- User can view invoices if Stripe supports it
+> **Out of scope for MVP:** subscription plans, recurring billing, weekly order caps, and the Stripe customer billing portal. The `users.subscription_status` / `users.subscription_plan` columns are reserved scaffolding only.
 
 ---
 
@@ -287,16 +277,7 @@ Acceptance criteria:
 - Admin can update status
 
 ### Requirement: Usage Limits
-The system should enforce plan limits when gift order volume is tied to subscription tier.
-
-Planned placeholder limits (rolling week):
-- Individual subscription: **1** gift order per week
-- Enterprise subscription: **5** gift orders per week
-
-Acceptance criteria:
-- User cannot exceed plan limit without upgrade or extra charge
-- User sees clear message when limit is reached
-- Admin can view usage
+**Not applicable to the MVP.** Because billing is one-time per gift order, there is no plan-based weekly cap to enforce — each order is paid for individually at checkout. Usage limits would only return if a recurring subscription tier is introduced later.
 
 ---
 
@@ -492,10 +473,9 @@ Requirements:
 
 ## Stripe
 Used for:
-- Subscription checkout
-- Billing portal
-- Webhooks
-- Subscription status
+- One-time Checkout (`mode: payment`) per gift order
+- Payment webhooks (`checkout.session.completed`)
+- Per-order payment status
 
 ## Email Provider
 Used for:
@@ -526,8 +506,8 @@ Future:
 The MVP is complete when:
 
 - A user can create an account
-- A user can subscribe with Stripe
-- A subscribed user can access the dashboard
+- A logged-in user can access the dashboard
+- A user can pay for a gift order with Stripe (one-time, at checkout)
 - A user can create a prospect
 - A user can update **prospect outcome / deal status** (pipeline without a separate pitch record)
 - A user can choose a gift
@@ -565,8 +545,7 @@ The following are not required for the first version:
 
 ## 9. Open Requirements Questions
 
-- Are gifts included in the subscription or billed separately?
-- Will subscriptions include monthly gift credits?
+- **Resolved:** Billing is one-time per gift order (no subscription, no gift credits) for the MVP.
 - What is the first gift vendor?
 - Will fulfillment be manual at launch?
 - Which CRM should be integrated first later?
@@ -582,7 +561,7 @@ The following are not required for the first version:
 
 ## Priority 1
 - Signup/login
-- Stripe subscription
+- Stripe one-time payment per gift order
 - Dashboard
 - Prospects (including outcome / deal status on prospect)
 - Gift requests

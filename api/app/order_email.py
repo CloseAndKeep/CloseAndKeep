@@ -44,6 +44,7 @@ def send_new_order_notification(
         return
 
     # Resend test sender only delivers to your Resend account email; that match is case-sensitive.
+    from_addr = (settings.resend_from or "").strip()
     if not from_addr:
         logger.warning("RESEND_FROM is empty; skipping new-order notification email.")
         return

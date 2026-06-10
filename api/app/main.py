@@ -110,6 +110,7 @@ class GiftOrderResponse(BaseModel):
     note: str
     status: str
     payment_status: str
+    tracking_number: str | None = None
     requested_at: datetime
 
 
@@ -119,6 +120,33 @@ class GiftOrderCreateResponse(GiftOrderResponse):
 
 class StripeCheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class ProspectUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    company: str | None = Field(default=None, min_length=1, max_length=255)
+    email: EmailStr | None = None
+    deal_status: str | None = Field(default=None, pattern="^(open|won|lost)$")
+
+
+# Statuses an admin can set while fulfilling a paid order.
+ADMIN_ORDER_STATUSES = ("queued", "ordered", "shipped", "delivered", "canceled")
+
+
+class AdminOrderUpdateRequest(BaseModel):
+    status: str | None = Field(default=None, pattern="^(queued|ordered|shipped|delivered|canceled)$")
+    tracking_number: str | None = Field(default=None, max_length=255)
+    admin_notes: str | None = Field(default=None, max_length=2000)
+
+
+class AdminGiftOrderResponse(GiftOrderResponse):
+    admin_notes: str | None = None
+    owner_user_id: int
+    owner_email: str
+    prospect_name: str
+    prospect_company: str
+    prospect_email: str
 
 
 def get_db() -> Session:
@@ -164,7 +192,31 @@ def _gift_order_response(order: GiftOrderModel) -> GiftOrderResponse:
         note=order.note,
         status=order.status,
         payment_status=order.payment_status,
+        tracking_number=order.tracking_number,
         requested_at=order.requested_at,
+    )
+
+
+def _admin_gift_order_response(
+    order: GiftOrderModel, owner: UserModel, prospect: ProspectModel
+) -> AdminGiftOrderResponse:
+    return AdminGiftOrderResponse(
+        id=order.id,
+        prospect_id=order.prospect_id,
+        gift_id=order.gift_id,
+        recipient_name=order.recipient_name,
+        shipping_address=order.shipping_address,
+        note=order.note,
+        status=order.status,
+        payment_status=order.payment_status,
+        tracking_number=order.tracking_number,
+        admin_notes=order.admin_notes,
+        requested_at=order.requested_at,
+        owner_user_id=order.owner_user_id,
+        owner_email=owner.email if owner else "",
+        prospect_name=prospect.name if prospect else "",
+        prospect_company=prospect.company if prospect else "",
+        prospect_email=prospect.email if prospect else "",
     )
 
 
@@ -183,6 +235,12 @@ def get_current_user(request: Request, response: Response, db: Session = Depends
     user = _sync_admin_role(user, db)
     _set_session_cookie(response, session.session_id)
     return user
+
+
+def get_current_admin(current_user: UserModel = Depends(get_current_user)) -> UserModel:
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return current_user
 
 
 @app.get("/health")
@@ -322,6 +380,41 @@ def get_prospect(
     )
 
 
+@app.patch("/prospects/{prospect_id}", response_model=ProspectResponse)
+def update_prospect(
+    prospect_id: int,
+    payload: ProspectUpdateRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProspectResponse:
+    prospect = db.get(ProspectModel, prospect_id)
+    if not prospect or prospect.owner_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Prospect not found.")
+
+    if payload.name is not None:
+        prospect.name = payload.name.strip()
+    if payload.title is not None:
+        prospect.title = payload.title.strip()
+    if payload.company is not None:
+        prospect.company = payload.company.strip()
+    if payload.email is not None:
+        prospect.email = _normalize_email(str(payload.email))
+    if payload.deal_status is not None:
+        prospect.deal_status = payload.deal_status
+
+    db.add(prospect)
+    db.commit()
+    db.refresh(prospect)
+    return ProspectResponse(
+        id=prospect.id,
+        name=prospect.name,
+        title=prospect.title,
+        company=prospect.company,
+        email=prospect.email,
+        deal_status=prospect.deal_status,
+    )
+
+
 @app.get("/dashboard/summary", response_model=DashboardSummaryResponse)
 def get_dashboard_summary(
     current_user: UserModel = Depends(get_current_user),
@@ -407,3 +500,68 @@ def get_gift_order(
         raise HTTPException(status_code=404, detail="Gift order not found.")
     order = sync_order_payment_from_stripe(order, db)
     return _gift_order_response(order)
+
+
+@app.get("/admin/gift-orders", response_model=list[AdminGiftOrderResponse])
+def admin_list_gift_orders(
+    status: str | None = None,
+    _admin: UserModel = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> list[AdminGiftOrderResponse]:
+    query = select(GiftOrderModel).order_by(GiftOrderModel.requested_at.desc())
+    if status and status != "all":
+        query = query.where(GiftOrderModel.status == status)
+    records = db.scalars(query).all()
+
+    responses: list[AdminGiftOrderResponse] = []
+    for order in records:
+        owner = db.get(UserModel, order.owner_user_id)
+        prospect = db.get(ProspectModel, order.prospect_id)
+        responses.append(_admin_gift_order_response(order, owner, prospect))
+    return responses
+
+
+@app.get("/admin/gift-orders/{order_id}", response_model=AdminGiftOrderResponse)
+def admin_get_gift_order(
+    order_id: int,
+    _admin: UserModel = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> AdminGiftOrderResponse:
+    order = db.get(GiftOrderModel, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Gift order not found.")
+    owner = db.get(UserModel, order.owner_user_id)
+    prospect = db.get(ProspectModel, order.prospect_id)
+    return _admin_gift_order_response(order, owner, prospect)
+
+
+@app.patch("/admin/gift-orders/{order_id}", response_model=AdminGiftOrderResponse)
+def admin_update_gift_order(
+    order_id: int,
+    payload: AdminOrderUpdateRequest,
+    _admin: UserModel = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> AdminGiftOrderResponse:
+    order = db.get(GiftOrderModel, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Gift order not found.")
+
+    if payload.status is not None:
+        if order.payment_status != "paid" and payload.status != "canceled":
+            raise HTTPException(
+                status_code=400,
+                detail="Order must be paid before it can move through fulfillment.",
+            )
+        order.status = payload.status
+    if payload.tracking_number is not None:
+        order.tracking_number = payload.tracking_number.strip() or None
+    if payload.admin_notes is not None:
+        order.admin_notes = payload.admin_notes.strip() or None
+
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    owner = db.get(UserModel, order.owner_user_id)
+    prospect = db.get(ProspectModel, order.prospect_id)
+    return _admin_gift_order_response(order, owner, prospect)

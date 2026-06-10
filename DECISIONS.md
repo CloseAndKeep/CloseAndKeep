@@ -2,7 +2,7 @@
 
 # CloseAndKeep - Technical decisions
 
-Last updated: 2026-05-06
+Last updated: 2026-06-10
 
 ## Architecture direction
 
@@ -13,6 +13,19 @@ Last updated: 2026-05-06
 - Database: **Neon Postgres**
 - Email provider: **Resend**
 - Auth approach: **app-managed sessions** (server-side sessions via secure HttpOnly cookie)
+- Billing model: **one-time payment per gift order** (Stripe Checkout in `mode: payment`). **Subscriptions are not used in the MVP.**
+
+## Billing model (locked: one-time payments)
+
+CloseAndKeep charges **per gift order**, not via subscription. When a user submits a gift
+order, the API creates a Stripe Checkout session in `mode: payment`; the order stays
+`pending_payment` until Stripe confirms payment (via webhook, with a fetch-time fallback that
+re-checks the Checkout session), at which point it moves to `queued` for fulfillment.
+
+- No subscription tiers, no weekly order caps, no billing portal are in scope for the MVP.
+- The `users.subscription_status` / `users.subscription_plan` columns remain in the schema as
+  **reserved scaffolding** only; nothing reads or enforces them today. Revisit if/when a
+  recurring plan is introduced.
 
 ## Why these choices
 

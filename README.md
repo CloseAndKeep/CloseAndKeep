@@ -57,13 +57,16 @@ The frontend deploys to Vercel from `web/`. The backend deploys to Render from `
 
 CloseAndKeep helps SaaS sellers close more deals and keep more customers by turning post-pitch follow-up into simple, trackable gift sends.
 
+**Billing model:** one-time payment per gift order via Stripe Checkout. There is **no subscription** in the MVP — users pay once, at checkout, for each gift they send.
+
 The MVP focuses on:
 
 - landing page and pricing
 - signup and login
 - dashboard
-- prospect tracking
-- gift ordering workflow
+- prospect tracking (with deal outcome / win-rate)
+- gift ordering workflow (pay-per-order at checkout)
+- admin fulfillment queue (status + tracking)
 - follow-up reminders
 - deal outcome tracking
 
@@ -73,6 +76,7 @@ The MVP focuses on:
 - Backend: FastAPI, Python
 - Database: Neon Postgres
 - Auth: secure server-managed sessions
-- Payments: Stripe Checkout (one-time per gift order)
+- Payments: Stripe Checkout, **one-time payment per gift order** (no subscriptions)
+- Admin: `ADMIN_EMAILS` allowlist grants the admin role; admins fulfill orders at `/admin`
 
 See `DECISIONS.md` for locked technical choices and `Architecture.MD` for system design details.

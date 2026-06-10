@@ -26,7 +26,18 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
       </header>
       <main className="flex-1">{children}</main>
       <footer className="border-t border-stone-200/80 py-8 text-center text-sm text-stone-500">
-        <p>CloseAndKeep — gifting follow-up for customer teams (UI preview; no login yet).</p>
+        <p>CloseAndKeep — gifting follow-up for customer teams.</p>
+        <nav className="mt-3 flex items-center justify-center gap-4">
+          <Link href="/pricing" className="hover:text-espresso transition-colors">
+            Pricing
+          </Link>
+          <Link href="/privacy" className="hover:text-espresso transition-colors">
+            Privacy
+          </Link>
+          <Link href="/terms" className="hover:text-espresso transition-colors">
+            Terms
+          </Link>
+        </nav>
       </footer>
     </div>
   );

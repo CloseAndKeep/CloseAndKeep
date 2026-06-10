@@ -17,6 +17,7 @@ type GiftOrder = {
   note: string;
   status: string;
   payment_status: string;
+  tracking_number: string | null;
   requested_at: string;
 };
 
@@ -197,6 +198,11 @@ export default function OrderDetailPage() {
             </p>
           ) : null}
           <p className="mt-1 text-sm text-stone-600">Recipient: {order.recipient_name}</p>
+          {order.tracking_number ? (
+            <p className="mt-1 text-sm text-stone-600">
+              Tracking: <span className="font-medium text-espresso">{order.tracking_number}</span>
+            </p>
+          ) : null}
         </section>
       </div>
 

@@ -62,6 +62,8 @@ class GiftOrderModel(Base):
     note: Mapped[str] = mapped_column(String(1000), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_payment")
     payment_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    tracking_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    admin_notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     stripe_price_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     requested_at: Mapped[datetime] = mapped_column(
