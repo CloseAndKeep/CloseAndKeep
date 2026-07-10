@@ -145,7 +145,7 @@ Acceptance criteria:
 - A fetch-time fallback re-checks the Checkout session if the webhook is missed
 - Failures are logged
 
-> **Out of scope for MVP:** subscription plans, recurring billing, weekly order caps, and the Stripe customer billing portal. The `users.subscription_status` / `users.subscription_plan` columns are reserved scaffolding only.
+> **Out of scope for MVP:** subscription plans, recurring billing, weekly order caps, and the Stripe customer billing portal. The unused `users.subscription_status` / `users.subscription_plan` columns were dropped (migration `0007`); `users.stripe_customer_id` is retained and populated at first checkout.
 
 ---
 

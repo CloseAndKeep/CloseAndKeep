@@ -1,8 +1,22 @@
+"use client";
+
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { GIFT_ORDER_PRICE_USD, cookiePacks, cookiePackLineTotal } from "@/lib/mock-data";
+import { cookieCountLabel, cookiePacks } from "@/lib/mock-data";
+import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 
 export default function PricingPage() {
+  const { byId, loading } = useGiftPrices();
+
+  const packs =
+    cookiePacks.length > 0
+      ? cookiePacks.map((pack) => ({
+          id: pack.id,
+          cookieCount: pack.cookieCount,
+          price: formatGiftPrice(byId.get(pack.id)),
+        }))
+      : [];
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
       <h1 className="font-display text-4xl tracking-tight text-espresso">Pricing</h1>
@@ -18,17 +32,14 @@ export default function PricingPage() {
           the order.
         </p>
         <ul className="mt-8 space-y-3">
-          {cookiePacks.map((pack) => (
+          {packs.map((pack) => (
             <li
               key={pack.id}
               className="flex items-center justify-between gap-4 rounded-xl bg-cream/80 px-4 py-3 text-sm"
             >
-              <span className="font-medium text-espresso">
-                {pack.cookieCount === 1 ? "1 cookie" : `${pack.cookieCount} cookies`}
-              </span>
+              <span className="font-medium text-espresso">{cookieCountLabel(pack.cookieCount)}</span>
               <span className="text-stone-600">
-                ${cookiePackLineTotal(pack)}
-                <span className="text-stone-400"> (${GIFT_ORDER_PRICE_USD} per order)</span>
+                {pack.price ?? (loading ? "Loading…" : "Price at checkout")}
               </span>
             </li>
           ))}
@@ -56,4 +67,3 @@ export default function PricingPage() {
     </div>
   );
 }
-

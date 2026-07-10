@@ -47,9 +47,6 @@ export const prospects: Prospect[] = [
   },
 ];
 
-/** Flat test price per gift order; Stripe Checkout uses your one-time Price ID(s). */
-export const GIFT_ORDER_PRICE_USD = 1;
-
 export type CookiePack = {
   id: string;
   cookieCount: number;
@@ -62,20 +59,15 @@ export const cookiePacks: CookiePack[] = [
   { id: "cookies-12", cookieCount: 12 },
 ];
 
-export function cookiePackLineTotal(_pack: CookiePack): number {
-  return GIFT_ORDER_PRICE_USD;
+export function cookieCountLabel(cookieCount: number): string {
+  return cookieCount === 1 ? "1 cookie" : `${cookieCount} cookies`;
 }
 
-export function formatCookiePackChoice(pack: CookiePack): string {
-  const n = pack.cookieCount;
-  const word = n === 1 ? "cookie" : "cookies";
-  return `${n} ${word} — $${cookiePackLineTotal(pack)}`;
-}
-
+/** Human label for a gift id (cookie count only; price comes from the API). */
 export function labelForGiftId(giftId: string): string {
   const pack = cookiePacks.find((p) => p.id === giftId);
   if (pack) {
-    return formatCookiePackChoice(pack);
+    return cookieCountLabel(pack.cookieCount);
   }
   return giftId;
 }
@@ -130,10 +122,6 @@ export const followUps: FollowUp[] = [
 
 export function prospectById(id: string) {
   return prospects.find((p) => p.id === id);
-}
-
-export function cookiePackById(id: string) {
-  return cookiePacks.find((p) => p.id === id);
 }
 
 export function ordersForProspect(prospectId: string) {

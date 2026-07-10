@@ -23,9 +23,10 @@ order, the API creates a Stripe Checkout session in `mode: payment`; the order s
 re-checks the Checkout session), at which point it moves to `queued` for fulfillment.
 
 - No subscription tiers, no weekly order caps, no billing portal are in scope for the MVP.
-- The `users.subscription_status` / `users.subscription_plan` columns remain in the schema as
-  **reserved scaffolding** only; nothing reads or enforces them today. Revisit if/when a
-  recurring plan is introduced.
+- The unused `users.subscription_status` / `users.subscription_plan` scaffolding columns were
+  removed (migration `0007`). `users.stripe_customer_id` is kept and is now populated the first
+  time a user checks out, so their orders group under one Stripe customer. Reintroduce
+  subscription columns if/when a recurring plan is introduced.
 
 ## Why these choices
 

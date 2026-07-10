@@ -4,12 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import {
-  GIFT_ORDER_PRICE_USD,
-  cookiePacks,
-  cookiePackLineTotal,
-  labelForGiftId,
-} from "@/lib/mock-data";
+import { cookiePacks, labelForGiftId } from "@/lib/mock-data";
+import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/api";
 
@@ -37,6 +33,7 @@ export function GiftOrderWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { byId: priceById } = useGiftPrices();
 
   useEffect(() => {
     async function loadProspects() {
@@ -70,6 +67,7 @@ export function GiftOrderWizard() {
     [prospectId, prospects],
   );
   const selectedPack = useMemo(() => cookiePacks.find((p) => p.id === giftId), [giftId]);
+  const selectedPriceLabel = formatGiftPrice(priceById.get(giftId));
 
   const canNext =
     step === 0
@@ -199,6 +197,7 @@ export function GiftOrderWizard() {
               >
                 {cookiePacks.map((pack) => {
                   const selected = giftId === pack.id;
+                  const packPrice = formatGiftPrice(priceById.get(pack.id));
                   return (
                     <button
                       key={pack.id}
@@ -214,18 +213,18 @@ export function GiftOrderWizard() {
                     >
                       <span className="block">{pack.cookieCount === 1 ? "1 cookie" : `${pack.cookieCount} cookies`}</span>
                       <span className="mt-0.5 block text-xs font-normal text-stone-600">
-                        ${cookiePackLineTotal(pack)}
+                        {packPrice ?? "Price at checkout"}
                       </span>
                     </button>
                   );
                 })}
               </div>
               <p className="mt-2 text-xs text-stone-500">
-                You pay ${GIFT_ORDER_PRICE_USD} once at Stripe checkout when you submit (any pack size).
+                You pay once at Stripe checkout when you submit.
               </p>
               {selectedPack ? (
                 <p className="mt-2 text-sm font-medium text-espresso">
-                  Order estimate: ${cookiePackLineTotal(selectedPack)}
+                  Order total: {selectedPriceLabel ?? "shown at checkout"}
                 </p>
               ) : null}
             </div>
@@ -295,7 +294,7 @@ export function GiftOrderWizard() {
               <p className="mt-1 font-medium text-espresso">{labelForGiftId(giftId)}</p>
               {selectedPack ? (
                 <p className="mt-2 text-stone-600">
-                  Total at checkout: ${GIFT_ORDER_PRICE_USD}
+                  Total at checkout: {selectedPriceLabel ?? "shown at checkout"}
                 </p>
               ) : null}
             </div>

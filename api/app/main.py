@@ -9,7 +9,7 @@ import stripe
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import settings
+from .config import is_known_gift, settings
 from .db import SessionLocal
 from .models import GiftOrderModel, ProspectModel, UserModel
 from .session_store import delete_session, purge_expired_sessions, refresh_session_if_needed, rotate_session
@@ -17,6 +17,7 @@ from .stripe_payments import (
     create_checkout_session_for_order,
     ensure_stripe_webhook_configured,
     fulfill_order_from_checkout_session,
+    list_gift_prices,
     sync_order_payment_from_stripe,
 )
 
@@ -120,6 +121,15 @@ class GiftOrderCreateResponse(GiftOrderResponse):
 
 class StripeCheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class GiftCatalogItem(BaseModel):
+    gift_id: str
+    cookie_count: int
+    # Live Stripe amount in the smallest currency unit (e.g. cents). None when
+    # Stripe is not configured or the price could not be fetched.
+    unit_amount: int | None = None
+    currency: str | None = None
 
 
 class ProspectUpdateRequest(BaseModel):
@@ -248,6 +258,11 @@ def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.app_env}
 
 
+@app.get("/gifts", response_model=list[GiftCatalogItem])
+def list_gifts() -> list[GiftCatalogItem]:
+    return [GiftCatalogItem(**item) for item in list_gift_prices()]
+
+
 @app.post("/auth/login")
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
     email = _normalize_email(payload.email)
@@ -309,6 +324,9 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dic
         event = stripe.Webhook.construct_event(payload, signature, settings.stripe_webhook_secret)
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid Stripe signature.")
+    except ValueError:
+        # Raised by construct_event when the request body is not valid JSON.
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook payload.")
 
     if event["type"] == "checkout.session.completed":
         fulfill_order_from_checkout_session(event["data"]["object"], db)
@@ -438,6 +456,9 @@ def create_gift_order(
     current_user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> GiftOrderCreateResponse:
+    if not is_known_gift(payload.gift_id.strip()):
+        raise HTTPException(status_code=400, detail="Unknown gift selection.")
+
     prospect = db.get(ProspectModel, payload.prospect_id)
     if not prospect or prospect.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Prospect not found.")
@@ -456,7 +477,15 @@ def create_gift_order(
     db.commit()
     db.refresh(order)
 
-    checkout_url = create_checkout_session_for_order(order, current_user, db)
+    try:
+        checkout_url = create_checkout_session_for_order(order, current_user, db)
+    except HTTPException:
+        # Checkout could not be created (e.g. Stripe not configured). Don't leave
+        # behind an unpayable pending order.
+        db.delete(order)
+        db.commit()
+        raise
+
     db.refresh(order)
     response = _gift_order_response(order)
     return GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)

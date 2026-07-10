@@ -6,7 +6,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { getApiBaseUrl } from "@/lib/api";
-import { GIFT_ORDER_PRICE_USD, cookiePackById, labelForGiftId } from "@/lib/mock-data";
+import { labelForGiftId } from "@/lib/mock-data";
+import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 
 type GiftOrder = {
   id: number;
@@ -36,6 +37,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [payLoading, setPayLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { byId: priceById } = useGiftPrices();
 
   const loadOrder = useCallback(async () => {
     setLoading(true);
@@ -115,7 +117,7 @@ export default function OrderDetailPage() {
     );
   }
 
-  const cookiePack = cookiePackById(order.gift_id);
+  const priceLabel = formatGiftPrice(priceById.get(order.gift_id));
   const needsPayment = order.payment_status === "pending";
 
   return (
@@ -192,10 +194,8 @@ export default function OrderDetailPage() {
             </span>
           </p>
           <p className="mt-4 text-sm text-stone-600">Cookies: {labelForGiftId(order.gift_id)}</p>
-          {cookiePack ? (
-            <p className="mt-1 text-xs text-stone-500">
-              Order total: ${GIFT_ORDER_PRICE_USD} (Stripe at checkout)
-            </p>
+          {priceLabel ? (
+            <p className="mt-1 text-xs text-stone-500">Order total: {priceLabel} (via Stripe)</p>
           ) : null}
           <p className="mt-1 text-sm text-stone-600">Recipient: {order.recipient_name}</p>
           {order.tracking_number ? (

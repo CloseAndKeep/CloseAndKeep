@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import time
+
 import stripe
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from .config import settings, stripe_price_for_gift
+from .config import GIFT_CATALOG, settings, stripe_price_for_gift
 from .models import GiftOrderModel, ProspectModel, UserModel
 from .order_email import send_new_order_notification
 
@@ -21,6 +23,59 @@ def ensure_stripe_webhook_configured() -> None:
     if not settings.stripe_secret_key or not settings.stripe_webhook_secret:
         raise HTTPException(status_code=503, detail="Payment webhooks are not configured.")
     stripe.api_key = settings.stripe_secret_key
+
+
+# Cache live Stripe price lookups so the public /gifts endpoint does not hit
+# Stripe on every page load. (price_id -> (fetched_at_monotonic, unit_amount, currency))
+_PRICE_CACHE: dict[str, tuple[float, int | None, str | None]] = {}
+_PRICE_CACHE_TTL_SECONDS = 300
+
+
+def _price_amount(price_id: str) -> tuple[int | None, str | None]:
+    now = time.monotonic()
+    cached = _PRICE_CACHE.get(price_id)
+    if cached and now - cached[0] < _PRICE_CACHE_TTL_SECONDS:
+        return cached[1], cached[2]
+    price = stripe.Price.retrieve(price_id)
+    unit_amount = price.get("unit_amount")
+    currency = price.get("currency")
+    _PRICE_CACHE[price_id] = (now, unit_amount, currency)
+    return unit_amount, currency
+
+
+def list_gift_prices() -> list[dict]:
+    """Return the catalog with live Stripe unit amounts.
+
+    Amounts are `None` when Stripe is not configured or a price lookup fails, so
+    the UI can fall back gracefully instead of showing a hardcoded number.
+    """
+    stripe_ready = bool(settings.stripe_secret_key)
+    if stripe_ready:
+        stripe.api_key = settings.stripe_secret_key
+
+    amount_by_price: dict[str, tuple[int | None, str | None]] = {}
+    results: list[dict] = []
+    for item in GIFT_CATALOG:
+        gift_id = str(item["id"])
+        price_id = stripe_price_for_gift(gift_id)
+        unit_amount: int | None = None
+        currency: str | None = None
+        if stripe_ready and price_id:
+            if price_id not in amount_by_price:
+                try:
+                    amount_by_price[price_id] = _price_amount(price_id)
+                except Exception:
+                    amount_by_price[price_id] = (None, None)
+            unit_amount, currency = amount_by_price[price_id]
+        results.append(
+            {
+                "gift_id": gift_id,
+                "cookie_count": int(item["cookie_count"]),
+                "unit_amount": unit_amount,
+                "currency": currency,
+            }
+        )
+    return results
 
 
 def resolve_stripe_price_id(gift_id: str) -> str:
@@ -75,6 +130,43 @@ def sync_order_payment_from_stripe(order: GiftOrderModel, db: Session) -> GiftOr
     return order
 
 
+def _ensure_stripe_customer(current_user: UserModel, db: Session) -> str:
+    """Return the user's Stripe customer id, creating and persisting one if needed.
+
+    Reusing a single customer per user keeps their orders grouped in the Stripe
+    dashboard instead of creating a fresh guest customer on every checkout.
+    """
+    if current_user.stripe_customer_id:
+        return current_user.stripe_customer_id
+
+    customer = stripe.Customer.create(
+        email=current_user.email,
+        metadata={"user_id": str(current_user.id)},
+    )
+    current_user.stripe_customer_id = customer["id"]
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user.stripe_customer_id
+
+
+def _reuse_open_checkout_session(order: GiftOrderModel) -> str | None:
+    """Return the URL of the order's existing Checkout Session if it is still open.
+
+    Prevents repeated checkout attempts from creating multiple payable sessions
+    for the same order (which could let a user be charged more than once).
+    """
+    if not order.stripe_checkout_session_id:
+        return None
+    try:
+        session = stripe.checkout.Session.retrieve(order.stripe_checkout_session_id)
+    except stripe.error.StripeError:
+        return None
+    if session.get("status") == "open" and session.get("url"):
+        return session["url"]
+    return None
+
+
 def create_checkout_session_for_order(
     order: GiftOrderModel,
     current_user: UserModel,
@@ -86,7 +178,14 @@ def create_checkout_session_for_order(
         raise HTTPException(status_code=400, detail="This order cannot be paid.")
 
     ensure_stripe_configured()
+
+    reusable_url = _reuse_open_checkout_session(order)
+    if reusable_url:
+        return reusable_url
+
     price_id = resolve_stripe_price_id(order.gift_id)
+
+    customer_id = _ensure_stripe_customer(current_user, db)
 
     session_params: dict = {
         "mode": "payment",
@@ -97,12 +196,9 @@ def create_checkout_session_for_order(
             "gift_order_id": str(order.id),
             "user_id": str(current_user.id),
         },
+        "customer": customer_id,
         "allow_promotion_codes": True,
     }
-    if current_user.stripe_customer_id:
-        session_params["customer"] = current_user.stripe_customer_id
-    else:
-        session_params["customer_email"] = current_user.email
 
     session = stripe.checkout.Session.create(**session_params)
     order.stripe_checkout_session_id = session["id"]

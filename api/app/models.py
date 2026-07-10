@@ -14,8 +14,6 @@ class UserModel(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    subscription_status: Mapped[str] = mapped_column(String(64), nullable=False, default="inactive")
-    subscription_plan: Mapped[str] = mapped_column(String(64), nullable=False, default="free")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

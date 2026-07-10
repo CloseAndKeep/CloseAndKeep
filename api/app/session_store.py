@@ -20,6 +20,18 @@ def _compute_expires_at() -> datetime:
     return datetime.now(UTC) + timedelta(hours=settings.session_ttl_hours)
 
 
+def _as_aware_utc(value: datetime) -> datetime:
+    """Treat naive datetimes as UTC.
+
+    We always persist UTC timestamps, but SQLite (used for local dev) returns
+    them without tzinfo. Comparing a naive value against an aware `datetime.now(UTC)`
+    raises `TypeError`, so we normalise here before any comparison.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
 def create_session(user_id: int) -> SessionRecord:
     session_id = token_urlsafe(32)
     expires_at = _compute_expires_at()
@@ -42,7 +54,8 @@ def get_session(session_id: str | None) -> SessionRecord | None:
         record = db.get(SessionRecordModel, session_id)
         if not record:
             return None
-        if record.expires_at <= datetime.now(UTC):
+        expires_at = _as_aware_utc(record.expires_at)
+        if expires_at <= datetime.now(UTC):
             db.delete(record)
             db.commit()
             return None
@@ -50,7 +63,7 @@ def get_session(session_id: str | None) -> SessionRecord | None:
         return SessionRecord(
             session_id=record.session_id,
             user_id=record.user_id,
-            expires_at=record.expires_at,
+            expires_at=expires_at,
         )
 
 
