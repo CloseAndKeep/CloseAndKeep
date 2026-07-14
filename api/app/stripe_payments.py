@@ -13,6 +13,19 @@ from .models import GiftOrderModel, ProspectModel, UserModel
 from .order_email import send_new_order_notification
 
 
+def _field(obj: object, key: str, default: object | None = None) -> object | None:
+    """Read a field from a Stripe object or plain dict.
+
+    stripe-python 15's ``StripeObject`` no longer supports dict-style ``.get()``,
+    so this reads via subscript and falls back to ``default`` when the key is
+    absent (works for both ``StripeObject`` and plain ``dict``).
+    """
+    try:
+        return obj[key]  # type: ignore[index]
+    except (KeyError, TypeError):
+        return default
+
+
 def ensure_stripe_configured() -> None:
     if not settings.stripe_secret_key:
         raise HTTPException(status_code=503, detail="Payments are not configured.")
@@ -37,8 +50,8 @@ def _price_amount(price_id: str) -> tuple[int | None, str | None]:
     if cached and now - cached[0] < _PRICE_CACHE_TTL_SECONDS:
         return cached[1], cached[2]
     price = stripe.Price.retrieve(price_id)
-    unit_amount = price.get("unit_amount")
-    currency = price.get("currency")
+    unit_amount = _field(price, "unit_amount")
+    currency = _field(price, "currency")
     _PRICE_CACHE[price_id] = (now, unit_amount, currency)
     return unit_amount, currency
 
@@ -125,7 +138,7 @@ def sync_order_payment_from_stripe(order: GiftOrderModel, db: Session) -> GiftOr
 
     ensure_stripe_configured()
     session = stripe.checkout.Session.retrieve(order.stripe_checkout_session_id)
-    if session.get("payment_status") == "paid":
+    if _field(session, "payment_status") == "paid":
         return mark_order_paid(order, db)
     return order
 
@@ -162,7 +175,7 @@ def _reuse_open_checkout_session(order: GiftOrderModel) -> str | None:
         session = stripe.checkout.Session.retrieve(order.stripe_checkout_session_id)
     except stripe.error.StripeError:
         return None
-    if session.get("status") == "open" and session.get("url"):
+    if _field(session, "status") == "open" and _field(session, "url"):
         return session["url"]
     return None
 
@@ -210,10 +223,11 @@ def create_checkout_session_for_order(
 
 
 def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
-    if session.get("mode") != "payment":
+    if _field(session, "mode") != "payment":
         return
 
-    gift_order_id = session.get("metadata", {}).get("gift_order_id")
+    metadata = _field(session, "metadata", {}) or {}
+    gift_order_id = _field(metadata, "gift_order_id")
     if not gift_order_id:
         return
 
@@ -226,6 +240,6 @@ def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
     if not order:
         return
 
-    if session.get("id"):
+    if _field(session, "id"):
         order.stripe_checkout_session_id = session["id"]
     mark_order_paid(order, db)

@@ -15,7 +15,10 @@ class UserModel(Base):
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
 
