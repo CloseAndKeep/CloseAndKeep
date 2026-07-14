@@ -4,7 +4,7 @@ from datetime import datetime
 import bcrypt
 from fastapi import Depends, FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 import stripe
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -100,6 +100,15 @@ class GiftOrderCreateRequest(BaseModel):
     recipient_name: str = Field(min_length=1, max_length=255)
     shipping_address: str = Field(min_length=1, max_length=1000)
     note: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("recipient_name", "shipping_address", "note")
+    @classmethod
+    def _reject_blank(cls, value: str) -> str:
+        # min_length only guards raw length; reject whitespace-only values so a
+        # gift never ships without a recipient, address, or note on the gift.
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
 
 
 class GiftOrderResponse(BaseModel):

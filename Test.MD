@@ -63,15 +63,15 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 **Unit**
 
-- [ ] (U) Email format validation rejects invalid addresses
-- [ ] (U) Password rules enforced when configured (length, complexity)
-- [ ] (U) Duplicate email detection uses same normalization as persistence (e.g. lowercased)
+- [x] (U) Email format validation rejects invalid addresses
+- [x] (U) Password rules enforced when configured (length, complexity)
+- [x] (U) Duplicate email detection uses same normalization as persistence (e.g. lowercased)
 
 **Integration**
 
-- [ ] (I) Valid signup creates user (or auth provider user) and DB row
-- [ ] (I) Duplicate email returns 4xx without leaking which field failed
-- [ ] (I) Invalid payload returns 4xx with field errors
+- [x] (I) Valid signup creates user (or auth provider user) and DB row
+- [x] (I) Duplicate email returns 4xx without leaking which field failed
+- [x] (I) Invalid payload returns 4xx with field errors
 
 **End-to-end**
 
@@ -87,9 +87,9 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 **Integration**
 
-- [ ] (I) Valid credentials return session/JWT and match user id
-- [ ] (I) Invalid password returns generic failure
-- [ ] (I) Unknown email returns same failure class as bad password (no enumeration)
+- [x] (I) Valid credentials return session/JWT and match user id
+- [x] (I) Invalid password returns generic failure
+- [x] (I) Unknown email returns same failure class as bad password (no enumeration)
 
 **End-to-end**
 
@@ -99,7 +99,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 1.3 Logout
 
-- [ ] (I) Logout invalidates session server-side or clears refresh token path
+- [x] (I) Logout invalidates session server-side or clears refresh token path
 - [ ] (E) After logout, protected routes redirect to login
 
 ### 1.4 Password reset
@@ -117,9 +117,9 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 **Integration**
 
-- [ ] (I) `GET /prospects/:id` returns 404 or 403 for another user’s id
-- [ ] (I) `PATCH` on foreign prospect fails
-- [ ] (I) Gift order listing returns only current user (or company) rows
+- [x] (I) `GET /prospects/:id` returns 404 or 403 for another user’s id
+- [x] (I) `PATCH` on foreign prospect fails
+- [x] (I) Gift order listing returns only current user (or company) rows
 
 **End-to-end**
 
@@ -127,7 +127,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 2.2 Admin
 
-- [ ] (I) Non-admin receives 403 on admin API routes
+- [x] (I) Non-admin receives 403 on admin API routes
 - [ ] (E) Non-admin cannot open admin UI routes
 - [ ] (I) Admin actions logged where required
 
@@ -142,13 +142,13 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 3.1 Checkout
 
-- [ ] (I) Checkout session created with correct price id for plan
-- [ ] (I) Successful checkout webhook updates DB subscription fields
+- [x] (I) Checkout session created with correct price id for plan
+- [x] (I) Successful checkout webhook updates DB subscription fields
 - [ ] (E) User completes test checkout and gains paid access
 
 ### 3.2 Webhooks
 
-- [ ] (I) Signature invalid → 400 and no DB change
+- [x] (I) Signature invalid → 400 and no DB change
 - [ ] (I) `customer.subscription.updated` updates status
 - [ ] (I) `invoice.payment_failed` marks past_due or equivalent
 - [ ] (I) `customer.subscription.deleted` revokes paid access per rules
@@ -166,12 +166,12 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 **Unit**
 
-- [ ] (U) Required fields validated; optional fields optional
+- [x] (U) Required fields validated; optional fields optional
 
 **Integration**
 
-- [ ] (I) Create persists with correct `user_id` / `company_id`
-- [ ] (I) Invalid email rejected
+- [x] (I) Create persists with correct `user_id` / `company_id`
+- [x] (I) Invalid email rejected
 
 **End-to-end**
 
@@ -180,12 +180,12 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 4.2 List / search / detail
 
-- [ ] (I) List scoped to owner; search does not leak others’ rows
+- [x] (I) List scoped to owner; search does not leak others’ rows
 - [ ] (E) Detail page matches list selection
 
 ### 4.3 Edit / archive
 
-- [ ] (I) User cannot update another user’s prospect
+- [x] (I) User cannot update another user’s prospect
 - [ ] (E) Archived prospect hidden from default list; **gift orders** remain per retention rules
 
 ---
@@ -196,8 +196,8 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 5.1 Outcome and pipeline fields
 
-- [ ] (I) Deal status / outcome updates persist on **prospect** with correct owner scope
-- [ ] (I) User cannot update another user’s prospect outcome
+- [x] (I) Deal status / outcome updates persist on **prospect** with correct owner scope
+- [x] (I) User cannot update another user’s prospect outcome
 - [ ] (E) User edits outcome on prospect detail; dashboard metrics update
 
 ### 5.2 Prospect detail aggregation
@@ -226,14 +226,14 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 **Unit**
 
-- [ ] (U) Submit rejected when recipient name blank
-- [ ] (U) Submit rejected when address blank/incomplete per rules
-- [ ] (U) Submit rejected when note-on-gift blank or whitespace-only
+- [x] (U) Submit rejected when recipient name blank
+- [x] (U) Submit rejected when address blank/incomplete per rules
+- [x] (U) Submit rejected when note-on-gift blank or whitespace-only
 
 **Integration**
 
-- [ ] (I) Order row stores recipient name, full address, note on gift, **FK to prospect** (and gift)
-- [ ] (I) Idempotent or duplicate-submit behavior defined and tested
+- [x] (I) Order row stores recipient name, full address, note on gift, **FK to prospect** (and gift)
+- [x] (I) Idempotent or duplicate-submit behavior defined and tested
 
 **End-to-end**
 
@@ -243,7 +243,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 7.2 Status lifecycle
 
-- [ ] (I) Status transitions only from allowed states
+- [x] (I) Status transitions only from allowed states
 - [ ] (E) User sees status updates after admin changes
 
 ### 7.3 Plan limits
@@ -258,7 +258,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 ### 8.1 Queue and detail
 
 - [ ] (E) Admin sees queued orders with recipient name, address, note on gift
-- [ ] (I) Status update persists; optional tracking number saved
+- [x] (I) Status update persists; optional tracking number saved
 
 ### 8.2 Notifications
 
@@ -287,7 +287,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 ### 10.1 Counts
 
 - [ ] (U) Conversion rate matches `SoftwareRequirements.MD` §4.11 (won ÷ terminal outcomes in period) for controlled fixtures
-- [ ] (I) Dashboard API matches DB aggregates for seed data
+- [x] (I) Dashboard API matches DB aggregates for seed data
 - [ ] (E) Changing outcome updates visible metrics
 
 ### 10.2 Edge cases
@@ -367,6 +367,6 @@ Double-check after billing or auth changes:
 - [ ] Unpaid user never gains paid-only behavior without subscription
 - [ ] Paid user never blocked incorrectly by stale subscription row
 - [ ] Gift never ships with wrong address or missing note on gift for fulfillment
-- [ ] No cross-tenant data in API responses
-- [ ] Webhook replay or duplicate does not double-charge state
+- [x] No cross-tenant data in API responses
+- [x] Webhook replay or duplicate does not double-charge state
 - [ ] Duplicate follow-up emails not sent for same completed reminder
