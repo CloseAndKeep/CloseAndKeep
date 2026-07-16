@@ -11,17 +11,6 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
           >
             Close<span className="text-wood-dark">&</span>Keep
           </Link>
-          <nav className="flex items-center gap-6 text-sm font-medium text-stone-600">
-            <Link href="/pricing" className="hover:text-espresso transition-colors">
-              Pricing
-            </Link>
-            <Link
-              href="/dashboard"
-              className="rounded-full bg-wood px-4 py-2 text-white shadow-sm hover:bg-wood-dark transition-colors"
-            >
-              Preview app
-            </Link>
-          </nav>
         </div>
       </header>
       <main className="flex-1">{children}</main>

@@ -22,19 +22,13 @@ export default function HomePage() {
         <p className="mt-6 max-w-xl text-lg text-stone-600">
           For people who want to send gifts to potential or current customers.
         </p>
-        <div className="mt-10 flex flex-wrap gap-4">
+        <div className="mt-10 flex justify-center">
           <Link
-            href="/dashboard"
+            href="/login"
             className="inline-flex items-center gap-2 rounded-full bg-wood px-6 py-3 text-sm font-medium text-white shadow-md transition hover:bg-wood-dark"
           >
-            Preview the app
+            Log in
             <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            href="/pricing"
-            className="inline-flex items-center rounded-full border border-stone-300 bg-white/80 px-6 py-3 text-sm font-medium text-espresso shadow-sm hover:bg-white"
-          >
-            See pricing
           </Link>
         </div>
       </section>
