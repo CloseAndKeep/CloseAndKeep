@@ -43,6 +43,31 @@ def test_order_create_starts_checkout_with_correct_price(
     assert f"/orders/{body['id']}?payment=cancel" in params["cancel_url"]
 
 
+def test_checkout_replaces_customer_from_other_stripe_mode(
+    auth_client, prospect_id, stripe_stub
+):
+    """A stored test-mode customer id must be re-minted under live keys.
+
+    Reproduces the "No such customer" failure seen when switching from test to
+    live Stripe keys: the id saved on the user no longer resolves, so checkout
+    must create a fresh customer instead of erroring.
+    """
+    # First order creates and persists a customer id on the user.
+    _create_order(auth_client, prospect_id)
+    assert len(stripe_stub.customer_create_calls) == 1
+
+    # Simulate that stored id not existing in the current Stripe mode.
+    stripe_stub.retrieved_customer = None
+
+    # A subsequent order must not 500; it should re-mint the customer instead.
+    body = _create_order(auth_client, prospect_id)
+
+    assert body["payment_status"] == "pending"
+    assert stripe_stub.customer_retrieve_calls[-1] == "cus_test_123"
+    # A replacement customer was created rather than raising a 500.
+    assert len(stripe_stub.customer_create_calls) == 2
+
+
 def test_checkout_endpoint_returns_url(auth_client, prospect_id, stripe_stub):
     order = _create_order(auth_client, prospect_id)
 

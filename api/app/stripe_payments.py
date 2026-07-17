@@ -150,7 +150,16 @@ def _ensure_stripe_customer(current_user: UserModel, db: Session) -> str:
     dashboard instead of creating a fresh guest customer on every checkout.
     """
     if current_user.stripe_customer_id:
-        return current_user.stripe_customer_id
+        # Verify the stored id still resolves in the current Stripe mode. A
+        # customer created under test keys does not exist once live keys are in
+        # use (Stripe returns "No such customer"), so fall through and mint a
+        # fresh one instead of failing checkout.
+        try:
+            existing = stripe.Customer.retrieve(current_user.stripe_customer_id)
+            if not _field(existing, "deleted"):
+                return current_user.stripe_customer_id
+        except stripe.error.InvalidRequestError:
+            pass
 
     customer = stripe.Customer.create(
         email=current_user.email,

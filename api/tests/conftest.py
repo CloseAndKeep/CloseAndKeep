@@ -87,6 +87,11 @@ class StripeStub:
     def __init__(self) -> None:
         self.session_create_calls: list[dict] = []
         self.customer_create_calls: list[dict] = []
+        self.customer_retrieve_calls: list[str] = []
+        # Response returned by Customer.retrieve. Defaults to a live, existing
+        # customer so a stored id is reused; set to None to simulate a customer
+        # that does not exist in the current Stripe mode (raises InvalidRequest).
+        self.retrieved_customer: dict | None = {"id": "cus_test_123"}
         # Response returned by checkout.Session.create.
         self.created_session = {
             "id": "cs_test_created",
@@ -115,6 +120,18 @@ class StripeStub:
         self.customer_create_calls.append(params)
         return {"id": "cus_test_123"}
 
+    def _customer_retrieve(self, customer_id, **_kwargs):
+        self.customer_retrieve_calls.append(customer_id)
+        if self.retrieved_customer is None:
+            import stripe
+
+            raise stripe.error.InvalidRequestError(
+                f"No such customer: '{customer_id}'", param="customer"
+            )
+        result = dict(self.retrieved_customer)
+        result.setdefault("id", customer_id)
+        return result
+
 
 @pytest.fixture
 def stripe_stub(monkeypatch):
@@ -125,6 +142,7 @@ def stripe_stub(monkeypatch):
     monkeypatch.setattr(stripe.checkout.Session, "create", staticmethod(stub._session_create))
     monkeypatch.setattr(stripe.checkout.Session, "retrieve", staticmethod(stub._session_retrieve))
     monkeypatch.setattr(stripe.Customer, "create", staticmethod(stub._customer_create))
+    monkeypatch.setattr(stripe.Customer, "retrieve", staticmethod(stub._customer_retrieve))
     return stub
 
 
