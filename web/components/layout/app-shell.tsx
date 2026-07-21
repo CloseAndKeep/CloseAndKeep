@@ -10,10 +10,10 @@ import {
   CalendarClock,
   CreditCard,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getApiBaseUrl } from "@/lib/api";
+import { BrandLogo } from "@/components/brand-logo";
 
 const baseNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -25,10 +25,16 @@ const baseNav = [
 
 const adminNavItem = { href: "/admin", label: "Admin", icon: ShieldCheck };
 
+type MeResponse = {
+  role?: string;
+  is_guest?: boolean;
+};
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -38,10 +44,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           credentials: "include",
         });
         if (!response.ok) return;
-        const data = (await response.json()) as { role?: string };
-        if (active && data.role === "admin") {
-          setIsAdmin(true);
-        }
+        const data = (await response.json()) as MeResponse;
+        if (!active) return;
+        setIsAdmin(data.role === "admin");
+        setIsGuest(data.role === "guest" || data.is_guest === true);
       } catch {
         // Non-admins and unauthenticated users simply don't see the admin link.
       }
@@ -52,7 +58,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const nav = isAdmin ? [...baseNav, adminNavItem] : baseNav;
+  const nav = [
+    ...baseNav.filter((item) => !(isGuest && item.href === "/follow-ups")),
+    ...(isAdmin ? [adminNavItem] : []),
+  ];
 
   async function handleLogout() {
     try {
@@ -68,11 +77,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-cream text-espresso">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-stone-200/90 bg-white/70 backdrop-blur-md md:flex">
-        <div className="flex h-16 items-center gap-2 border-b border-stone-200/80 px-5">
-          <Sparkles className="h-6 w-6 text-wood" aria-hidden />
-          <Link href="/" className="font-display text-lg tracking-tight">
-            Close<span className="text-wood-dark">&</span>Keep
-          </Link>
+        <div className="flex h-16 items-center border-b border-stone-200/80 px-4">
+          <BrandLogo priority />
         </div>
         <nav className="flex-1 space-y-0.5 p-3">
           {nav.map(({ href, label, icon: Icon }) => {
@@ -96,8 +102,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="border-t border-stone-200/80 p-4 text-xs text-stone-500 leading-relaxed">
-          <p className="font-medium text-stone-600">Session mode</p>
-          <p className="mt-1">Dashboard routes require an active API session.</p>
+          <p className="font-medium text-stone-600">
+            {isGuest ? "Guest session" : "Session mode"}
+          </p>
+          <p className="mt-1">
+            {isGuest
+              ? "Orders you place are kept for shipping. This session won't come back, and follow-ups are unavailable."
+              : "Dashboard routes require an active API session."}
+          </p>
           <button
             type="button"
             className="mt-3 inline-flex rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-medium text-stone-700 hover:bg-stone-100"
@@ -111,9 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile nav */}
       <div className="md:hidden sticky top-0 z-40 border-b border-stone-200/90 bg-white/95 backdrop-blur">
         <div className="flex h-12 items-center px-3">
-          <Link href="/" className="font-display text-lg shrink-0 mr-3">
-            Close<span className="text-wood-dark">&</span>Keep
-          </Link>
+          <BrandLogo variant="mark" className="mr-3 shrink-0" />
           <div className="flex gap-1 overflow-x-auto pb-1 text-xs font-medium whitespace-nowrap">
             {nav.map(({ href, label }) => {
               const active =

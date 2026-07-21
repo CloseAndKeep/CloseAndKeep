@@ -137,3 +137,107 @@ def test_logout_invalidates_session(client):
 
 def test_me_requires_authentication(client):
     assert client.get("/auth/me").status_code == 401
+
+
+# --- Guest sessions ----------------------------------------------------------
+
+
+def test_guest_login_creates_ephemeral_session(client):
+    resp = client.post("/auth/guest")
+    assert resp.status_code == 200, resp.text
+
+    me = client.get("/auth/me")
+    assert me.status_code == 200
+    body = me.json()
+    assert body["role"] == "guest"
+    assert body["is_guest"] is True
+    assert body["email"].startswith("guest-")
+    assert body["email"].endswith("@guest.example.com")
+
+
+def test_guest_logout_discards_empty_guest(client):
+    from app.db import SessionLocal
+    from app.models import ProspectModel, UserModel
+    from sqlalchemy import select
+
+    assert client.post("/auth/guest").status_code == 200
+    guest_id = client.get("/auth/me").json()["user_id"]
+
+    create = client.post(
+        "/prospects",
+        json={
+            "name": "Temp Prospect",
+            "title": "AE",
+            "company": "Acme",
+            "email": "temp@acme.example",
+        },
+    )
+    assert create.status_code == 201, create.text
+
+    assert client.post("/auth/logout").status_code == 200
+    assert client.get("/auth/me").status_code == 401
+
+    # No gift order → empty guest (and cascaded prospects) can be removed.
+    with SessionLocal() as db:
+        assert db.get(UserModel, guest_id) is None
+        assert db.scalars(select(ProspectModel)).all() == []
+
+
+def test_guest_order_survives_logout_but_next_guest_cannot_see_it(client, stripe_stub):
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel, UserModel
+    from sqlalchemy import select
+
+    assert client.post("/auth/guest").status_code == 200
+    guest_id = client.get("/auth/me").json()["user_id"]
+
+    prospect = client.post(
+        "/prospects",
+        json={
+            "name": "Ship Me",
+            "title": "AE",
+            "company": "Acme",
+            "email": "ship@acme.example",
+        },
+    )
+    assert prospect.status_code == 201, prospect.text
+    prospect_id = prospect.json()["id"]
+
+    order = client.post(
+        "/gift-orders",
+        json={
+            "prospect_id": prospect_id,
+            "gift_id": "cookies-4",
+            "recipient_name": "Ship Me",
+            "shipping_address": "1 Main St",
+            "note": "Thanks for the demo",
+        },
+    )
+    assert order.status_code == 201, order.text
+    order_id = order.json()["id"]
+
+    assert client.post("/auth/logout").status_code == 200
+
+    # Order remains for fulfillment / admin shipping.
+    with SessionLocal() as db:
+        assert db.get(UserModel, guest_id) is not None
+        assert db.get(GiftOrderModel, order_id) is not None
+
+    # A new guest starts clean and cannot see the prior order.
+    assert client.post("/auth/guest").status_code == 200
+    listed = client.get("/gift-orders")
+    assert listed.status_code == 200
+    assert listed.json() == []
+    assert client.get(f"/gift-orders/{order_id}").status_code == 404
+
+
+def test_guest_cannot_password_login(client):
+    assert client.post("/auth/guest").status_code == 200
+    email = client.get("/auth/me").json()["email"]
+    client.post("/auth/logout")
+
+    resp = client.post(
+        "/auth/login",
+        json={"email": email, "password": "anything-at-all"},
+    )
+    assert resp.status_code == 401

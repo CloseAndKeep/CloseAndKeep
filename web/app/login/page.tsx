@@ -5,6 +5,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchErrorMessage, getApiBaseUrl } from "@/lib/api";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function LoginPage() {
   return (
@@ -21,6 +22,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
   const nextPath = searchParams.get("next") || "/dashboard";
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -53,9 +55,36 @@ function LoginForm() {
     }
   }
 
+  async function continueAsGuest() {
+    setError(null);
+    setGuestLoading(true);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/auth/guest`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          detail?: string;
+        } | null;
+        throw new Error(data?.detail ?? "Could not start a guest session.");
+      }
+      router.replace(nextPath.startsWith("/follow-ups") ? "/dashboard" : nextPath);
+    } catch (guestError) {
+      setError(fetchErrorMessage(guestError, "Could not start a guest session."));
+    } finally {
+      setGuestLoading(false);
+    }
+  }
+
+  const busy = loading || guestLoading;
+
   return (
     <main className="min-h-screen bg-cream px-4 py-16">
       <div className="mx-auto w-full max-w-md rounded-2xl border border-stone-200 bg-white/90 p-8 shadow-sm">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo priority />
+        </div>
         <h1 className="font-display text-3xl text-espresso">Login</h1>
         <p className="mt-2 text-sm text-stone-600">
           Sign in to access your CloseAndKeep dashboard.
@@ -101,11 +130,30 @@ function LoginForm() {
           <button
             type="submit"
             className="w-full rounded-xl bg-wood px-3 py-2 text-sm font-semibold text-white transition hover:bg-wood-dark disabled:opacity-70"
-            disabled={loading}
+            disabled={busy}
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
+
+        <div className="mt-5">
+          <div className="relative flex items-center gap-3">
+            <div className="h-px flex-1 bg-stone-200" />
+            <span className="text-xs uppercase tracking-wide text-stone-400">or</span>
+            <div className="h-px flex-1 bg-stone-200" />
+          </div>
+          <button
+            type="button"
+            className="mt-4 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:opacity-70"
+            disabled={busy}
+            onClick={() => void continueAsGuest()}
+          >
+            {guestLoading ? "Starting guest session..." : "Continue as guest"}
+          </button>
+          <p className="mt-2 text-xs text-stone-500">
+            Guest mode does not restore your session later, hides follow-ups, and keeps orders only for shipping.
+          </p>
+        </div>
 
         <p className="mt-4 text-sm text-stone-600">
           Need an account?{" "}

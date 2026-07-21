@@ -1,8 +1,51 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { followUps, prospects } from "@/lib/mock-data";
+import { getApiBaseUrl } from "@/lib/api";
 
 export default function FollowUpsPage() {
+  const router = useRouter();
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function gateGuests() {
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          router.replace("/login?next=/follow-ups");
+          return;
+        }
+        const data = (await response.json()) as { role?: string; is_guest?: boolean };
+        if (data.role === "guest" || data.is_guest) {
+          router.replace("/dashboard");
+          return;
+        }
+        if (active) setAllowed(true);
+      } catch {
+        router.replace("/login?next=/follow-ups");
+      }
+    }
+    void gateGuests();
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  if (!allowed) {
+    return (
+      <div className="rounded-2xl border border-stone-200 bg-white/80 p-6 text-sm text-stone-600">
+        Checking your session...
+      </div>
+    );
+  }
+
   return (
     <>
       <PageHeader

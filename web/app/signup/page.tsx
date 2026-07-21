@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchErrorMessage, getApiBaseUrl } from "@/lib/api";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -55,6 +56,9 @@ export default function SignupPage() {
   return (
     <main className="min-h-screen bg-cream px-4 py-16">
       <div className="mx-auto w-full max-w-md rounded-2xl border border-stone-200 bg-white/90 p-8 shadow-sm">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo priority />
+        </div>
         <h1 className="font-display text-3xl text-espresso">Create account</h1>
         <p className="mt-2 text-sm text-stone-600">
           Start tracking prospects and gift follow-ups in one place.

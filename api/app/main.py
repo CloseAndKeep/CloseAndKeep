@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
+from secrets import token_urlsafe
 
 import bcrypt
 from fastapi import Depends, FastAPI, HTTPException, Response, Request
@@ -12,7 +13,15 @@ from sqlalchemy.orm import Session
 from .config import is_known_gift, settings
 from .db import SessionLocal
 from .models import GiftOrderModel, ProspectModel, UserModel
-from .session_store import delete_session, purge_expired_sessions, refresh_session_if_needed, rotate_session
+from .session_store import (
+    create_session,
+    delete_session,
+    get_session,
+    purge_expired_sessions,
+    purge_orphaned_guests,
+    refresh_session_if_needed,
+    rotate_session,
+)
 from .stripe_payments import (
     create_checkout_session_for_order,
     ensure_stripe_webhook_configured,
@@ -46,6 +55,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     purge_expired_sessions()
+    purge_orphaned_guests()
     yield
 
 
@@ -176,15 +186,19 @@ def get_db() -> Session:
         db.close()
 
 
-def _set_session_cookie(response: Response, session_id: str) -> None:
-    response.set_cookie(
-        key=settings.session_cookie_name,
-        value=session_id,
-        httponly=True,
-        secure=settings.session_cookie_secure,
-        samesite="lax",
-        max_age=60 * 60 * settings.session_ttl_hours,
-    )
+def _set_session_cookie(response: Response, session_id: str, *, persistent: bool = True) -> None:
+    # Guest sessions use a browser session cookie (no max_age) so closing the
+    # browser ends access; registered users get a durable TTL cookie.
+    cookie_kwargs: dict = {
+        "key": settings.session_cookie_name,
+        "value": session_id,
+        "httponly": True,
+        "secure": settings.session_cookie_secure,
+        "samesite": "lax",
+    }
+    if persistent:
+        cookie_kwargs["max_age"] = 60 * 60 * settings.session_ttl_hours
+    response.set_cookie(**cookie_kwargs)
 
 
 def _normalize_email(email: str) -> str:
@@ -192,6 +206,9 @@ def _normalize_email(email: str) -> str:
 
 
 def _sync_admin_role(user: UserModel, db: Session) -> UserModel:
+    # Guest accounts stay guest — never promote/demote via ADMIN_EMAILS.
+    if user.role == "guest":
+        return user
     expected_role = "admin" if user.email in settings.admin_emails else "user"
     if user.role != expected_role:
         user.role = expected_role
@@ -199,6 +216,24 @@ def _sync_admin_role(user: UserModel, db: Session) -> UserModel:
         db.commit()
         db.refresh(user)
     return user
+
+
+def _discard_empty_guest(user: UserModel | None, db: Session) -> None:
+    """Drop a guest account only when it has no gift orders to fulfill.
+
+    Guests who placed orders are kept (their session is already cleared) so
+    admins can still ship. The next guest gets a new user id and cannot see
+    those orders via owner-scoped list endpoints.
+    """
+    if user is None or user.role != "guest":
+        return
+    has_order = db.scalar(
+        select(GiftOrderModel.id).where(GiftOrderModel.owner_user_id == user.id).limit(1)
+    )
+    if has_order:
+        return
+    db.delete(user)
+    db.commit()
 
 
 def _gift_order_response(order: GiftOrderModel) -> GiftOrderResponse:
@@ -252,7 +287,7 @@ def get_current_user(request: Request, response: Response, db: Session = Depends
         raise HTTPException(status_code=401, detail="Not authenticated.")
 
     user = _sync_admin_role(user, db)
-    _set_session_cookie(response, session.session_id)
+    _set_session_cookie(response, session.session_id, persistent=user.role != "guest")
     return user
 
 
@@ -276,13 +311,18 @@ def list_gifts() -> list[GiftCatalogItem]:
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
     email = _normalize_email(payload.email)
     user = db.scalar(select(UserModel).where(UserModel.email == email))
-    if not user or not verify_password(payload.password, user.password_hash):
+    if not user or user.role == "guest" or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     user = _sync_admin_role(user, db)
     previous_session_id = request.cookies.get(settings.session_cookie_name)
+    # Switching from guest → registered account: drop empty guests only.
+    previous = get_session(previous_session_id)
+    if previous and previous.user_id != user.id:
+        previous_user = db.get(UserModel, previous.user_id)
+        _discard_empty_guest(previous_user, db)
     session = rotate_session(previous_session_id, user.id)
-    _set_session_cookie(response, session.session_id)
+    _set_session_cookie(response, session.session_id, persistent=True)
     return {"message": "Logged in."}
 
 
@@ -304,22 +344,63 @@ def signup(payload: SignupRequest, request: Request, response: Response, db: Ses
     db.refresh(user)
 
     previous_session_id = request.cookies.get(settings.session_cookie_name)
+    previous = get_session(previous_session_id)
+    if previous and previous.user_id != user.id:
+        previous_user = db.get(UserModel, previous.user_id)
+        _discard_empty_guest(previous_user, db)
     session = rotate_session(previous_session_id, user.id)
-    _set_session_cookie(response, session.session_id)
+    _set_session_cookie(response, session.session_id, persistent=True)
     return {"message": "Signed up."}
 
 
+@app.post("/auth/guest")
+def guest_login(request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
+    """Start an ephemeral guest session.
+
+    Each guest gets a fresh user id (so they cannot see prior guest data).
+    Gift orders are retained after logout for fulfillment; empty guests are
+    cleaned up. Follow-ups are not offered to guests.
+    """
+    previous_session_id = request.cookies.get(settings.session_cookie_name)
+    previous = get_session(previous_session_id)
+    if previous:
+        previous_user = db.get(UserModel, previous.user_id)
+        delete_session(previous_session_id)
+        _discard_empty_guest(previous_user, db)
+
+    user = UserModel(
+        email=f"guest-{token_urlsafe(12).lower()}@guest.example.com",
+        password_hash=hash_password(token_urlsafe(32)),
+        role="guest",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    session = create_session(user.id)
+    _set_session_cookie(response, session.session_id, persistent=False)
+    return {"message": "Continuing as guest."}
+
+
 @app.post("/auth/logout")
-def logout(request: Request, response: Response) -> dict[str, str]:
+def logout(request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
     session_id = request.cookies.get(settings.session_cookie_name)
+    record = get_session(session_id)
+    user = db.get(UserModel, record.user_id) if record else None
     delete_session(session_id)
+    _discard_empty_guest(user, db)
     response.delete_cookie(key=settings.session_cookie_name)
     return {"message": "Logged out."}
 
 
 @app.get("/auth/me")
-def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | int]:
-    return {"user_id": current_user.id, "email": current_user.email, "role": current_user.role}
+def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | int | bool]:
+    return {
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "role": current_user.role,
+        "is_guest": current_user.role == "guest",
+    }
 
 
 @app.post("/billing/webhook")

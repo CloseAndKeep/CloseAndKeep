@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, PackageCheck, ArrowLeft } from "lucide-react";
+import { PackageCheck, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getApiBaseUrl } from "@/lib/api";
+import { BrandLogo } from "@/components/brand-logo";
 
 const nav = [
   { href: "/admin", label: "Order queue", icon: PackageCheck },
@@ -29,8 +30,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-cream text-espresso">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-stone-200/90 bg-white/70 backdrop-blur-md md:flex">
-        <div className="flex h-16 items-center gap-2 border-b border-stone-200/80 px-5">
-          <LayoutDashboard className="h-6 w-6 text-wood" aria-hidden />
+        <div className="flex h-16 items-center gap-2 border-b border-stone-200/80 px-4">
+          <BrandLogo href="/admin" variant="mark" priority />
           <Link href="/admin" className="font-display text-lg tracking-tight">
             Admin
           </Link>

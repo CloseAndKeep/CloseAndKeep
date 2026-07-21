@@ -6,7 +6,7 @@ from sqlalchemy import delete, select
 
 from .config import settings
 from .db import SessionLocal
-from .models import SessionRecordModel
+from .models import GiftOrderModel, SessionRecordModel, UserModel
 
 
 @dataclass
@@ -103,3 +103,32 @@ def purge_expired_sessions() -> int:
             db.execute(delete(SessionRecordModel).where(SessionRecordModel.expires_at <= now))
         db.commit()
         return count
+
+
+def purge_orphaned_guests() -> int:
+    """Delete session-less guests that never placed a gift order.
+
+    Guests with gift orders are retained so fulfillment can still ship them.
+    A later guest cannot see those orders because each guest has a unique user id.
+    """
+    with SessionLocal() as db:
+        guests = db.scalars(select(UserModel).where(UserModel.role == "guest")).all()
+        deleted = 0
+        for guest in guests:
+            has_session = db.scalar(
+                select(SessionRecordModel.session_id)
+                .where(SessionRecordModel.user_id == guest.id)
+                .limit(1)
+            )
+            if has_session:
+                continue
+            has_order = db.scalar(
+                select(GiftOrderModel.id).where(GiftOrderModel.owner_user_id == guest.id).limit(1)
+            )
+            if has_order:
+                continue
+            db.delete(guest)
+            deleted += 1
+        if deleted:
+            db.commit()
+        return deleted
