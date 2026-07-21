@@ -80,7 +80,7 @@ class ProspectModel(Base):
 
 
 class IntegrationConnectionModel(Base):
-    """OAuth connection to an external CRM (Salesforce first)."""
+    """OAuth connection to an external CRM (Salesforce / HubSpot)."""
 
     __tablename__ = "integration_connections"
     __table_args__ = (

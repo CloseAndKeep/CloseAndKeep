@@ -26,8 +26,13 @@ from .csv_import import (
     template_csv,
 )
 from .db import SessionLocal
+from .integrations import hubspot as hs
 from .integrations import salesforce as sf
-from .integrations.reminders import PROVIDER_SALESFORCE, process_stage_completed_reminder
+from .integrations.reminders import (
+    PROVIDER_HUBSPOT,
+    PROVIDER_SALESFORCE,
+    process_stage_completed_reminder,
+)
 from .models import (
     ApiKeyModel,
     GiftOrderModel,
@@ -340,6 +345,10 @@ class SalesforceConnectResponse(BaseModel):
     authorize_url: str
 
 
+class HubSpotConnectResponse(BaseModel):
+    authorize_url: str
+
+
 class SalesforceEventRequest(BaseModel):
     """Inbound Demo Completed (or configured stage) event from Salesforce Flow / webhook."""
 
@@ -351,6 +360,19 @@ class SalesforceEventRequest(BaseModel):
     company: str = Field(default="", max_length=255)
     connection_id: int | None = None
     org_id: str | None = Field(default=None, max_length=64)
+
+
+class HubSpotEventRequest(BaseModel):
+    """Inbound Demo Completed (or configured stage) event from HubSpot workflow / webhook."""
+
+    deal_id: str = Field(min_length=1, max_length=64)
+    stage_name: str = Field(default="Demo Completed", min_length=1, max_length=255)
+    contact_name: str = Field(min_length=1, max_length=255)
+    contact_email: EmailStr
+    contact_title: str = Field(default="", max_length=255)
+    company: str = Field(default="", max_length=255)
+    connection_id: int | None = None
+    portal_id: str | None = Field(default=None, max_length=64)
 
 
 def get_db() -> Session:
@@ -1574,4 +1596,118 @@ def salesforce_sync(
         results = sf.poll_demo_completed(connection, db)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Salesforce sync failed: {exc}") from exc
+    return {"results": results, "count": len(results)}
+
+
+@app.get("/integrations/hubspot/connect", response_model=HubSpotConnectResponse)
+def hubspot_connect(
+    current_user: UserModel = Depends(get_current_user),
+) -> HubSpotConnectResponse:
+    _require_registered_user(current_user)
+    if not hs.hubspot_configured():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "HubSpot is not configured. "
+                "Set HUBSPOT_CLIENT_ID and HUBSPOT_CLIENT_SECRET."
+            ),
+        )
+    return HubSpotConnectResponse(authorize_url=hs.build_authorize_url(current_user.id))
+
+
+@app.get("/integrations/hubspot/callback")
+def hubspot_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+    db: Session = Depends(get_db),
+):
+    from urllib.parse import quote
+
+    web = settings.web_base_url.rstrip("/")
+    if error:
+        detail = quote(error_description or error, safe="")
+        return RedirectResponse(f"{web}/integrations?error={detail}")
+    if not code or not state:
+        return RedirectResponse(f"{web}/integrations?error=missing_oauth_params")
+    user_id = hs.verify_oauth_state(state)
+    if user_id is None:
+        return RedirectResponse(f"{web}/integrations?error=invalid_oauth_state")
+    try:
+        tokens = hs.exchange_code_for_tokens(code)
+        hs.upsert_connection_from_oauth(db, user_id=user_id, token_payload=tokens)
+    except Exception:
+        return RedirectResponse(f"{web}/integrations?error=oauth_exchange_failed")
+    return RedirectResponse(f"{web}/integrations?connected=hubspot")
+
+
+@app.post("/integrations/hubspot/events")
+def hubspot_stage_event(
+    payload: HubSpotEventRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Immediate intake for Demo Completed (or configured stage) from HubSpot workflow."""
+    auth = request.headers.get("Authorization", "")
+    bearer = auth.removeprefix("Bearer ").strip() if auth.lower().startswith("bearer ") else ""
+    secret = request.headers.get("X-Webhook-Secret") or bearer
+    if not hs.verify_webhook_secret(secret or None):
+        raise HTTPException(status_code=401, detail="Invalid webhook secret.")
+
+    connection: IntegrationConnectionModel | None = None
+    if payload.connection_id is not None:
+        connection = db.get(IntegrationConnectionModel, payload.connection_id)
+    elif payload.portal_id:
+        connection = db.scalar(
+            select(IntegrationConnectionModel).where(
+                IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+                IntegrationConnectionModel.external_org_id == payload.portal_id,
+                IntegrationConnectionModel.enabled.is_(True),
+            )
+        )
+    else:
+        connection = db.scalar(
+            select(IntegrationConnectionModel).where(
+                IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+                IntegrationConnectionModel.enabled.is_(True),
+            )
+        )
+
+    if not connection or connection.provider != PROVIDER_HUBSPOT:
+        raise HTTPException(status_code=404, detail="HubSpot connection not found.")
+
+    return process_stage_completed_reminder(
+        db,
+        connection=connection,
+        opportunity_id=payload.deal_id,
+        stage_name=payload.stage_name,
+        contact_name=payload.contact_name,
+        contact_email=str(payload.contact_email),
+        contact_title=payload.contact_title,
+        company=payload.company,
+    )
+
+
+@app.post("/integrations/hubspot/sync")
+def hubspot_sync(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Poll HubSpot for recent Demo Completed deals (near-immediate fallback)."""
+    _require_registered_user(current_user)
+    connection = db.scalar(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.owner_user_id == current_user.id,
+            IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+        )
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="HubSpot is not connected.")
+    if not connection.enabled:
+        raise HTTPException(status_code=400, detail="HubSpot connection is disabled.")
+    try:
+        results = hs.poll_demo_completed(connection, db)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"HubSpot sync failed: {exc}") from exc
     return {"results": results, "count": len(results)}

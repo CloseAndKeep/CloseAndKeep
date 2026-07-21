@@ -376,7 +376,7 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 - [ ] Public API design docs / versioning
 - [ ] Webhooks outbound to customer systems
 - [ ] Automated vendor API for gifts
-- [ ] HubSpot adapter (same trigger pattern as Salesforce)
+- [x] HubSpot adapter (same trigger pattern as Salesforce) — OAuth, Demo Completed webhook/poll, reminder email, UI
 
 ---
 

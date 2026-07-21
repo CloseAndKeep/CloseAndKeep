@@ -26,7 +26,11 @@ export function GiftOrderWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillProspectId = searchParams.get("prospect_id");
-  const fromSfReminder = searchParams.get("from") === "sf_reminder";
+  const fromParam = searchParams.get("from");
+  const fromCrmReminder =
+    fromParam === "sf_reminder" || fromParam === "hs_reminder" || fromParam === "crm_reminder";
+  const reminderCrmLabel =
+    fromParam === "hs_reminder" ? "HubSpot" : fromParam === "sf_reminder" ? "Salesforce" : "CRM";
   const [step, setStep] = useState(0);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [prospectId, setProspectId] = useState("");
@@ -363,9 +367,9 @@ export function GiftOrderWizard() {
               <label className="block text-sm font-medium text-espresso">
                 Note on the gift (card or enclosure)
               </label>
-              {fromSfReminder ? (
+              {fromCrmReminder ? (
                 <p className="mt-1 text-xs text-wood-dark">
-                  Salesforce demo completed — add a short note they&apos;ll remember.
+                  {reminderCrmLabel} demo completed — add a short note they&apos;ll remember.
                 </p>
               ) : null}
               <textarea

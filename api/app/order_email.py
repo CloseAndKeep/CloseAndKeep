@@ -232,6 +232,7 @@ def send_cookie_reminder(
     prospect_title: str,
     stage_name: str,
     order_url: str,
+    crm_name: str = "Salesforce",
 ) -> None:
     """Remind the salesperson to order cookies after a CRM demo stage change."""
     to = to_email.strip().lower()
@@ -239,9 +240,11 @@ def send_cookie_reminder(
         logger.warning("Salesperson email empty; skipping cookie reminder.")
         return
 
+    crm = (crm_name or "CRM").strip() or "CRM"
+    deal_word = "deal" if crm.casefold() == "hubspot" else "opportunity"
     subject = f"Demo done — send cookies to {prospect_name}?"
     text_body = (
-        f"Your Salesforce opportunity for {prospect_name} at {prospect_company} "
+        f"Your {crm} {deal_word} for {prospect_name} at {prospect_company} "
         f"moved to “{stage_name}”.\n\n"
         "Order cookies while the pitch is fresh — and add a personal note on the gift "
         "so they remember you.\n\n"
@@ -255,7 +258,7 @@ def send_cookie_reminder(
     )
     html_body = (
         "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
-        f"<p>Your Salesforce opportunity for <strong>{esc(prospect_name)}</strong>"
+        f"<p>Your {esc(crm)} {esc(deal_word)} for <strong>{esc(prospect_name)}</strong>"
         f"{title_bit}"
         f" at <strong>{esc(prospect_company)}</strong> moved to "
         f"<strong>{esc(stage_name)}</strong>.</p>"
@@ -271,5 +274,5 @@ def send_cookie_reminder(
         subject=subject,
         text_body=text_body,
         html_body=html_body,
-        context="cookie-reminder-salesforce",
+        context=f"cookie-reminder-{crm.casefold().replace(' ', '-')}",
     )

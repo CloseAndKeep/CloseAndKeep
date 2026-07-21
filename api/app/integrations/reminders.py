@@ -21,6 +21,16 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 PROVIDER_SALESFORCE = "salesforce"
+PROVIDER_HUBSPOT = "hubspot"
+
+_CRM_LABELS = {
+    PROVIDER_SALESFORCE: "Salesforce",
+    PROVIDER_HUBSPOT: "HubSpot",
+}
+_REMINDER_FROM = {
+    PROVIDER_SALESFORCE: "sf_reminder",
+    PROVIDER_HUBSPOT: "hs_reminder",
+}
 
 
 def upsert_prospect_from_crm(
@@ -34,7 +44,7 @@ def upsert_prospect_from_crm(
     title: str = "",
     company: str = "",
 ) -> ProspectModel:
-    """Create or update a prospect keyed by CRM opportunity/contact id."""
+    """Create or update a prospect keyed by CRM opportunity/deal id."""
     existing = db.scalar(
         select(ProspectModel).where(
             ProspectModel.owner_user_id == owner_user_id,
@@ -42,8 +52,11 @@ def upsert_prospect_from_crm(
             ProspectModel.crm_external_id == external_id,
         )
     )
-    clean_name = (name or "").strip() or "Salesforce contact"
-    clean_email = (email or "").strip().lower() or f"{external_id.lower()}@unknown.salesforce"
+    crm_label = _CRM_LABELS.get(provider, provider.title())
+    clean_name = (name or "").strip() or f"{crm_label} contact"
+    clean_email = (
+        (email or "").strip().lower() or f"{external_id.lower()}@unknown.{provider}"
+    )
     clean_title = (title or "").strip() or "—"
     clean_company = (company or "").strip() or "—"
 
@@ -131,9 +144,10 @@ def process_stage_completed_reminder(
     if not owner:
         return {"status": "error", "reason": "owner_missing"}
 
+    from_param = _REMINDER_FROM.get(connection.provider, "crm_reminder")
     order_url = (
         f"{settings.web_base_url.rstrip('/')}/orders/new"
-        f"?prospect_id={prospect.id}&from=sf_reminder"
+        f"?prospect_id={prospect.id}&from={from_param}"
     )
 
     now = datetime.now(UTC)
@@ -173,6 +187,7 @@ def process_stage_completed_reminder(
         prospect_title=prospect.title,
         stage_name=incoming,
         order_url=order_url,
+        crm_name=_CRM_LABELS.get(connection.provider, connection.provider.title()),
     )
 
     logger.info(

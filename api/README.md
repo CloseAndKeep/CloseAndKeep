@@ -81,14 +81,18 @@ See `.env.example` for the full list. Important knobs:
 
 - `GET|POST /api-keys`, `DELETE /api-keys/{id}`
 
-**Integrations (Salesforce)**
+**Integrations (Salesforce + HubSpot)**
 
 - `GET /integrations` — list CRM connections
 - `GET /integrations/salesforce/connect` — OAuth authorize URL
 - `GET /integrations/salesforce/callback` — OAuth callback (redirects to web)
-- `PATCH|DELETE /integrations/{id}` — update trigger stage / disconnect
 - `POST /integrations/salesforce/events` — immediate Demo Completed webhook intake
 - `POST /integrations/salesforce/sync` — poll Opportunities in trigger stage
+- `GET /integrations/hubspot/connect` — OAuth authorize URL
+- `GET /integrations/hubspot/callback` — OAuth callback (redirects to web)
+- `POST /integrations/hubspot/events` — immediate Demo Completed webhook intake
+- `POST /integrations/hubspot/sync` — poll Deals in trigger stage
+- `PATCH|DELETE /integrations/{id}` — update trigger stage / disconnect
 
 **Admin**
 

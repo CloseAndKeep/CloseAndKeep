@@ -97,6 +97,11 @@ class Settings(BaseModel):
         "SALESFORCE_LOGIN_URL", "https://login.salesforce.com"
     ).strip().rstrip("/")
     salesforce_webhook_secret: str = os.getenv("SALESFORCE_WEBHOOK_SECRET", "").strip()
+    # HubSpot private app / OAuth app + cookie-reminder webhooks.
+    hubspot_client_id: str = os.getenv("HUBSPOT_CLIENT_ID", "").strip()
+    hubspot_client_secret: str = os.getenv("HUBSPOT_CLIENT_SECRET", "").strip()
+    hubspot_redirect_uri: str = os.getenv("HUBSPOT_REDIRECT_URI", "").strip()
+    hubspot_webhook_secret: str = os.getenv("HUBSPOT_WEBHOOK_SECRET", "").strip()
     # Fernet key for encrypting CRM OAuth tokens at rest.
     integration_token_fernet_key: str = os.getenv("INTEGRATION_TOKEN_FERNET_KEY", "").strip()
 

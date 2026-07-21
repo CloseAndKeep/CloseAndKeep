@@ -1,1 +1,1 @@
-"""CRM integration helpers (Salesforce first)."""
+"""CRM integration helpers (Salesforce + HubSpot)."""
