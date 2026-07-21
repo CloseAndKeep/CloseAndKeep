@@ -52,9 +52,36 @@ def test_limiter_window_expires_hits(monkeypatch):
     limiter.check("w", limit=1, window_seconds=10)
 
 
-def test_client_ip_prefers_first_forwarded_hop():
+def test_client_ip_ignores_forwarded_when_proxy_untrusted(monkeypatch):
+    from app.config import settings
     from app.rate_limit import client_ip
     from starlette.requests import Request
+
+    monkeypatch.setattr(settings, "trust_proxy", False)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "headers": [(b"x-forwarded-for", b"203.0.113.9, 10.0.0.1")],
+        "client": ("127.0.0.1", 12345),
+        "server": ("test", 80),
+    }
+    request = Request(scope)
+    assert client_ip(request) == "127.0.0.1"
+
+
+def test_client_ip_prefers_first_forwarded_hop_when_trusted(monkeypatch):
+    from app.config import settings
+    from app.rate_limit import client_ip
+    from starlette.requests import Request
+
+    monkeypatch.setattr(settings, "trust_proxy", True)
 
     scope = {
         "type": "http",

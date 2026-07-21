@@ -29,6 +29,9 @@ services:
       # HTTPS-only cookie required on Vercel (frontend is served over https).
       - key: SESSION_COOKIE_SECURE
         value: "true"
+      # Render terminates TLS and sets X-Forwarded-For; trust it for IP rate limits.
+      - key: TRUST_PROXY
+        value: "true"
       - key: SESSION_TTL_HOURS
         value: "24"
       - key: SESSION_REFRESH_THRESHOLD_MINUTES

@@ -292,3 +292,36 @@ def test_guest_then_signup_discards_empty_guest(client):
 
     with SessionLocal() as db:
         assert db.get(UserModel, guest_id) is None
+
+
+def test_auth_endpoints_are_rate_limited(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_auth_ip", 3)
+    monkeypatch.setattr(settings, "rate_limit_auth_email", 100)
+
+    for i in range(3):
+        resp = client.post(
+            "/auth/login",
+            json={"email": f"spray{i}@example.com", "password": "wrong-password"},
+        )
+        assert resp.status_code == 401
+
+    limited = client.post(
+        "/auth/login",
+        json={"email": "spray-more@example.com", "password": "wrong-password"},
+    )
+    assert limited.status_code == 429
+
+
+def test_guest_login_is_rate_limited(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_auth_ip", 2)
+    monkeypatch.setattr(settings, "rate_limit_auth_email", 100)
+
+    assert client.post("/auth/guest").status_code == 200
+    client.post("/auth/logout")
+    assert client.post("/auth/guest").status_code == 200
+    client.post("/auth/logout")
+    assert client.post("/auth/guest").status_code == 429

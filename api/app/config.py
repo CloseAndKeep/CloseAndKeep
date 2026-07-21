@@ -52,6 +52,18 @@ class Settings(BaseModel):
     rate_limit_order_create_ip_window_seconds: int = int(
         os.getenv("RATE_LIMIT_ORDER_CREATE_IP_WINDOW_SECONDS", "60")
     )
+    # Auth endpoints (login / signup / guest) — IP + email buckets.
+    rate_limit_auth_ip: int = int(os.getenv("RATE_LIMIT_AUTH_IP", "30"))
+    rate_limit_auth_ip_window_seconds: int = int(
+        os.getenv("RATE_LIMIT_AUTH_IP_WINDOW_SECONDS", "60")
+    )
+    rate_limit_auth_email: int = int(os.getenv("RATE_LIMIT_AUTH_EMAIL", "10"))
+    rate_limit_auth_email_window_seconds: int = int(
+        os.getenv("RATE_LIMIT_AUTH_EMAIL_WINDOW_SECONDS", "60")
+    )
+    # When true, trust the first X-Forwarded-For hop (only behind a proxy that
+    # overwrites that header). Leave false for direct exposure.
+    trust_proxy: bool = os.getenv("TRUST_PROXY", "false").lower() == "true"
 
 
 # Canonical cookie-pack catalog. This is the single source of truth for which

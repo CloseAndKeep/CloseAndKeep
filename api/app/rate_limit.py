@@ -12,6 +12,8 @@ from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
 
+from .config import settings
+
 
 class SlidingWindowRateLimiter:
     def __init__(self) -> None:
@@ -44,11 +46,18 @@ class SlidingWindowRateLimiter:
 limiter = SlidingWindowRateLimiter()
 
 
-def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        # First hop is the original client when behind a trusted proxy.
-        return forwarded.split(",")[0].strip() or "unknown"
+def client_ip(request: Request, *, trust_proxy: bool | None = None) -> str:
+    """Return the client IP for rate limiting.
+
+    ``X-Forwarded-For`` is only used when ``trust_proxy`` is true (or
+    ``settings.trust_proxy``). Otherwise any client could spoof the header.
+    """
+    use_proxy = settings.trust_proxy if trust_proxy is None else trust_proxy
+    if use_proxy:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            # First hop is the original client when behind a trusted proxy.
+            return forwarded.split(",")[0].strip() or "unknown"
     if request.client and request.client.host:
         return request.client.host
     return "unknown"

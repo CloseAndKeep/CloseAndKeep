@@ -556,10 +556,27 @@ def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
     metadata = _field(session, "metadata", {}) or {}
     pi_id = _payment_intent_id_from_session(session)
     defer = _field(metadata, "defer_capture") == "true"
+    payment_status = _field(session, "payment_status")
 
     for order in orders:
-        if defer or _session_defers_capture(session, order):
+        use_defer = defer or _session_defers_capture(session, order)
+        if use_defer:
+            # Manual capture: Checkout reports unpaid until capture. If the
+            # session is already paid, treat it as a completed charge.
+            if payment_status == "paid":
+                mark_order_paid(order, db)
+                continue
+            if payment_status not in ("unpaid", "no_payment_required"):
+                continue
+            pi = _field(session, "payment_intent")
+            if pi is not None and not isinstance(pi, str):
+                pi_status = _field(pi, "status")
+                if pi_status and pi_status not in ("requires_capture", "succeeded"):
+                    continue
             # Funds are held; do not charge or notify ops until address + capture.
             mark_order_authorized(order, db, payment_intent_id=pi_id)
         else:
+            if payment_status != "paid":
+                # Defense in depth: do not queue fulfillment on incomplete payment.
+                continue
             mark_order_paid(order, db)

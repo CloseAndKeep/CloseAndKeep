@@ -419,3 +419,37 @@ def test_list_gift_orders_sync_not_required_for_listing(
 
     detail = auth_client.get(f"/gift-orders/{order['id']}").json()
     assert detail["payment_status"] == "paid"
+
+
+def test_webhook_unpaid_non_defer_does_not_mark_paid(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    """checkout.session.completed without payment_status=paid must not fulfill."""
+    order = _create_order(auth_client, prospect_id)
+
+    event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_created",
+                "mode": "payment",
+                "metadata": {"gift_order_id": str(order["id"])},
+                "payment_status": "unpaid",
+            }
+        },
+    }
+    monkeypatch.setattr(
+        stripe.Webhook,
+        "construct_event",
+        staticmethod(lambda payload, sig, secret: event),
+    )
+    resp = auth_client.post(
+        "/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "t=1,v1=validsig"},
+    )
+    assert resp.status_code == 200
+
+    fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert fetched["payment_status"] == "pending"
+    assert fetched["status"] == "pending_payment"

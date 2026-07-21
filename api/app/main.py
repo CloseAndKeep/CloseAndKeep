@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 import stripe
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from .api_keys import (
@@ -472,6 +472,20 @@ def _enforce_order_create_rate_limit(request: Request, user: UserModel) -> None:
     )
 
 
+def _enforce_auth_rate_limit(request: Request, *, email: str | None = None) -> None:
+    limiter.check(
+        f"auth:ip:{client_ip(request)}",
+        limit=settings.rate_limit_auth_ip,
+        window_seconds=settings.rate_limit_auth_ip_window_seconds,
+    )
+    if email:
+        limiter.check(
+            f"auth:email:{email}",
+            limit=settings.rate_limit_auth_email,
+            window_seconds=settings.rate_limit_auth_email_window_seconds,
+        )
+
+
 def _api_key_response(record: ApiKeyModel) -> ApiKeyResponse:
     return ApiKeyResponse(
         id=record.id,
@@ -496,6 +510,7 @@ def list_gifts() -> list[GiftCatalogItem]:
 @app.post("/auth/login")
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
     email = _normalize_email(payload.email)
+    _enforce_auth_rate_limit(request, email=email)
     user = db.scalar(select(UserModel).where(UserModel.email == email))
     if not user or user.role == "guest" or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -515,6 +530,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
 @app.post("/auth/signup")
 def signup(payload: SignupRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
     email = _normalize_email(payload.email)
+    _enforce_auth_rate_limit(request, email=email)
     existing = db.scalar(select(UserModel).where(UserModel.email == email))
     if existing:
         raise HTTPException(status_code=409, detail="Email already in use.")
@@ -547,6 +563,7 @@ def guest_login(request: Request, response: Response, db: Session = Depends(get_
     Gift orders are retained after logout for fulfillment; empty guests are
     cleaned up. Follow-ups are not offered to guests.
     """
+    _enforce_auth_rate_limit(request)
     previous_session_id = request.cookies.get(settings.session_cookie_name)
     previous = get_session(previous_session_id)
     if previous:
@@ -1069,11 +1086,34 @@ def submit_address_request(
         )
 
     address = payload.shipping_address.strip()
+    values: dict[str, str] = {"shipping_address": address}
     if payload.recipient_name:
-        order.recipient_name = payload.recipient_name
-    order.shipping_address = address
-    db.add(order)
+        values["recipient_name"] = payload.recipient_name.strip()
+
+    # Atomic claim: only one concurrent submit can transition no_address → address set.
+    result = db.execute(
+        update(GiftOrderModel)
+        .where(
+            GiftOrderModel.id == order.id,
+            GiftOrderModel.status == "no_address",
+            GiftOrderModel.payment_status == "authorized",
+            or_(
+                GiftOrderModel.shipping_address.is_(None),
+                GiftOrderModel.shipping_address == "",
+            ),
+        )
+        .values(**values)
+    )
     db.commit()
+    if result.rowcount == 0:
+        db.refresh(order)
+        return AddressRequestPublicResponse(
+            recipient_name=order.recipient_name,
+            gift_id=order.gift_id,
+            note=order.note,
+            already_submitted=True,
+        )
+
     db.refresh(order)
 
     try:

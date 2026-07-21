@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchErrorMessage, getApiBaseUrl } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
+import { safeInternalPath } from "@/lib/utils";
 
 export default function LoginPage() {
   return (
@@ -23,7 +24,7 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [guestLoading, setGuestLoading] = useState(false);
-  const nextPath = searchParams.get("next") || "/dashboard";
+  const nextPath = safeInternalPath(searchParams.get("next"));
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,7 +70,11 @@ function LoginForm() {
         } | null;
         throw new Error(data?.detail ?? "Could not start a guest session.");
       }
-      router.replace(nextPath.startsWith("/follow-ups") ? "/dashboard" : nextPath);
+      // Guests cannot use follow-ups; send them to the dashboard instead.
+      const guestNext = nextPath === "/follow-ups" || nextPath.startsWith("/follow-ups/")
+        ? "/dashboard"
+        : nextPath;
+      router.replace(guestNext);
     } catch (guestError) {
       setError(fetchErrorMessage(guestError, "Could not start a guest session."));
     } finally {
