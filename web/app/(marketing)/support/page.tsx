@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { contactEmail } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Support",
@@ -13,8 +14,6 @@ export const metadata: Metadata = {
     description: "Get help with CloseAndKeep orders, shipping, and your account.",
   },
 };
-
-const supportEmail = "closeandkeep@gmail.com";
 
 export default function SupportPage() {
   return (
@@ -30,10 +29,10 @@ export default function SupportPage() {
           <p className="mt-2">
             Reach us at{" "}
             <a
-              href={`mailto:${supportEmail}`}
+              href={`mailto:${contactEmail}`}
               className="font-medium text-wood-dark hover:underline"
             >
-              {supportEmail}
+              {contactEmail}
             </a>
             . Include your order details when you can so we can help faster.
           </p>

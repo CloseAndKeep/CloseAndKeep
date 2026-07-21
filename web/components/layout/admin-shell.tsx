@@ -6,6 +6,7 @@ import { PackageCheck, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
+import { SiteFooter } from "@/components/layout/site-footer";
 
 const nav = [
   { href: "/admin", label: "Order queue", icon: PackageCheck },
@@ -25,7 +26,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-cream text-espresso">
+    <div className="min-h-screen bg-cream text-espresso md:flex">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-stone-200/90 bg-white/70 backdrop-blur-md md:flex">
         <div className="flex h-16 items-center gap-2 border-b border-stone-200/80 px-4">
           <BrandLogo href="/admin" variant="mark" priority />
@@ -85,8 +86,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <div className="md:pl-56">
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">{children}</div>
+      <div className="flex min-h-screen flex-1 flex-col md:pl-56">
+        <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">{children}</div>
+        <SiteFooter />
       </div>
     </div>
   );

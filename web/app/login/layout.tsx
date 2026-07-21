@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteFooter } from "@/components/layout/site-footer";
 
 export const metadata: Metadata = {
   title: "Log in",
@@ -13,5 +14,10 @@ export default function LoginLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return (
+    <div className="flex min-h-screen flex-col bg-cream">
+      <div className="flex-1">{children}</div>
+      <SiteFooter />
+    </div>
+  );
 }

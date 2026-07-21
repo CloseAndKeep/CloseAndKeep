@@ -14,3 +14,5 @@ export const siteName = "CloseAndKeep";
 
 export const siteDescription =
   "Send thoughtful follow-up gifts to prospects and customers. Pay once per order — no subscription required.";
+
+export const contactEmail = "closeandkeep@gmail.com";

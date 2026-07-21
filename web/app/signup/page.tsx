@@ -48,7 +48,7 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-cream px-4 py-16">
+    <main className="bg-cream px-4 py-16">
       <div className="mx-auto w-full max-w-md rounded-2xl border border-stone-200 bg-white/90 p-8 shadow-sm">
         <div className="mb-6 flex justify-center">
           <BrandLogo priority />

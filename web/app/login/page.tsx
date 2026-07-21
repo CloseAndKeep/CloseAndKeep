@@ -10,7 +10,7 @@ import { safeInternalPath } from "@/lib/utils";
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-cream px-4 py-16" />}>
+    <Suspense fallback={<main className="bg-cream px-4 py-16" />}>
       <LoginForm />
     </Suspense>
   );
@@ -69,7 +69,7 @@ function LoginForm() {
   const busy = loading || guestLoading;
 
   return (
-    <main className="min-h-screen bg-cream px-4 py-16">
+    <main className="bg-cream px-4 py-16">
       <div className="mx-auto w-full max-w-md rounded-2xl border border-stone-200 bg-white/90 p-8 shadow-sm">
         <div className="mb-6 flex justify-center">
           <BrandLogo priority />
