@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, Fraunces } from "next/font/google";
+import { getSiteUrl, siteDescription, siteName } from "@/lib/site";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -14,10 +15,54 @@ const fraunces = Fraunces({
   display: "swap",
 });
 
+const siteUrl = getSiteUrl();
+
 export const metadata: Metadata = {
-  title: "CloseAndKeep — Simple gifting follow-up for customer teams",
-  description:
-    "A simple way for people to send gifts to potential or current customers.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: `${siteName} — Simple gifting follow-up for customer teams`,
+    template: `%s — ${siteName}`,
+  },
+  description: siteDescription,
+  applicationName: siteName,
+  keywords: [
+    "sales follow-up gifts",
+    "customer gifting",
+    "post-demo gifts",
+    "cookie gifts for sales",
+    "CloseAndKeep",
+  ],
+  authors: [{ name: siteName }],
+  creator: siteName,
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: siteUrl,
+    siteName,
+    title: `${siteName} — Simple gifting follow-up for customer teams`,
+    description: siteDescription,
+    images: [
+      {
+        url: "/brand/mark-512.png",
+        width: 512,
+        height: 512,
+        alt: siteName,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: `${siteName} — Simple gifting follow-up for customer teams`,
+    description: siteDescription,
+    images: ["/brand/mark-512.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  alternates: {
+    canonical: "/",
+  },
 };
 
 export default function RootLayout({

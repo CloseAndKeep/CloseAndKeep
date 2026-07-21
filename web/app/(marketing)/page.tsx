@@ -1,5 +1,22 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
+import { getSiteUrl, siteDescription, siteName } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: {
+    absolute: `${siteName} — Simple gifting follow-up for customer teams`,
+  },
+  description: siteDescription,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    url: "/",
+    title: `${siteName} — Simple gifting follow-up for customer teams`,
+    description: siteDescription,
+  },
+};
 
 const steps = [
   "Log who you’re following up with",
@@ -8,9 +25,28 @@ const steps = [
   "Remind yourself to follow up; track won, lost, or open",
 ];
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: siteName,
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description: siteDescription,
+  url: getSiteUrl(),
+  offers: {
+    "@type": "Offer",
+    priceCurrency: "USD",
+    description: "One-time payment per gift order",
+  },
+};
+
 export default function HomePage() {
   return (
     <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
         <p className="text-sm font-medium uppercase tracking-widest text-wood">
           For teams that send thoughtful follow-up gifts

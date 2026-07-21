@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata = {
-  title: "Terms of Service — CloseAndKeep",
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description: "Terms for using CloseAndKeep, payments, and fulfillment.",
+  alternates: {
+    canonical: "/terms",
+  },
 };
 
 export default function TermsPage() {

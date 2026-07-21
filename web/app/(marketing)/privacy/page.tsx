@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata = {
-  title: "Privacy Policy — CloseAndKeep",
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description: "How CloseAndKeep collects, uses, and protects your data.",
+  alternates: {
+    canonical: "/privacy",
+  },
 };
 
 export default function PrivacyPage() {
