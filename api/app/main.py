@@ -11,6 +11,12 @@ import stripe
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .api_keys import (
+    authenticate_api_key,
+    create_api_key,
+    list_api_keys,
+    revoke_api_key,
+)
 from .config import is_known_gift, settings
 from .csv_import import (
     DEFAULT_IMPORT_NOTE,
@@ -19,8 +25,9 @@ from .csv_import import (
     template_csv,
 )
 from .db import SessionLocal
-from .models import GiftOrderModel, ProspectModel, UserModel
+from .models import ApiKeyModel, GiftOrderModel, ProspectModel, UserModel
 from .order_email import send_orderer_address_received
+from .rate_limit import client_ip, limiter
 from .session_store import (
     create_session,
     delete_session,
@@ -255,6 +262,32 @@ class AdminGiftOrderResponse(GiftOrderResponse):
     prospect_email: str
 
 
+class ApiKeyCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def _reject_blank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
+
+
+class ApiKeyResponse(BaseModel):
+    id: int
+    name: str
+    key_prefix: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+
+class ApiKeyCreateResponse(ApiKeyResponse):
+    """Includes the raw secret once — it cannot be retrieved again."""
+
+    api_key: str
+
+
 def get_db() -> Session:
     db = SessionLocal()
     try:
@@ -357,7 +390,31 @@ def _order_detail_url(order_id: int) -> str:
     return f"{settings.web_base_url.rstrip('/')}/orders/{order_id}"
 
 
+def _bearer_token(request: Request) -> str | None:
+    header = request.headers.get("Authorization")
+    if not header:
+        return None
+    scheme, _, value = header.partition(" ")
+    if scheme.lower() != "bearer" or not value.strip():
+        return None
+    return value.strip()
+
+
 def get_current_user(request: Request, response: Response, db: Session = Depends(get_db)) -> UserModel:
+    """Authenticate via ``Authorization: Bearer cak_…`` or the session cookie.
+
+    API keys are for server-to-server clients (agents, scripts). The Next.js
+    dashboard keeps using HttpOnly cookies. Both resolve to the same user and
+    tenancy rules. Admin routes reject API-key auth (see ``get_current_admin``).
+    """
+    token = _bearer_token(request)
+    if token:
+        user = authenticate_api_key(token, db)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid or revoked API key.")
+        request.state.auth_method = "api_key"
+        return _sync_admin_role(user, db)
+
     session_id = request.cookies.get(settings.session_cookie_name)
     session = refresh_session_if_needed(session_id)
     if not session:
@@ -369,15 +426,61 @@ def get_current_user(request: Request, response: Response, db: Session = Depends
         response.delete_cookie(key=settings.session_cookie_name)
         raise HTTPException(status_code=401, detail="Not authenticated.")
 
+    request.state.auth_method = "session"
     user = _sync_admin_role(user, db)
     _set_session_cookie(response, session.session_id, persistent=user.role != "guest")
     return user
 
 
-def get_current_admin(current_user: UserModel = Depends(get_current_user)) -> UserModel:
+def get_current_admin(
+    request: Request,
+    current_user: UserModel = Depends(get_current_user),
+) -> UserModel:
+    if getattr(request.state, "auth_method", None) == "api_key":
+        raise HTTPException(
+            status_code=403,
+            detail="Admin endpoints require a browser session, not an API key.",
+        )
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required.")
     return current_user
+
+
+def _enforce_api_key_create_rate_limit(request: Request, user: UserModel) -> None:
+    limiter.check(
+        f"api-key-create:user:{user.id}",
+        limit=settings.rate_limit_api_key_create,
+        window_seconds=settings.rate_limit_api_key_create_window_seconds,
+    )
+    limiter.check(
+        f"api-key-create:ip:{client_ip(request)}",
+        limit=settings.rate_limit_api_key_create,
+        window_seconds=settings.rate_limit_api_key_create_window_seconds,
+    )
+
+
+def _enforce_order_create_rate_limit(request: Request, user: UserModel) -> None:
+    limiter.check(
+        f"order-create:user:{user.id}",
+        limit=settings.rate_limit_order_create,
+        window_seconds=settings.rate_limit_order_create_window_seconds,
+    )
+    limiter.check(
+        f"order-create:ip:{client_ip(request)}",
+        limit=settings.rate_limit_order_create_ip,
+        window_seconds=settings.rate_limit_order_create_ip_window_seconds,
+    )
+
+
+def _api_key_response(record: ApiKeyModel) -> ApiKeyResponse:
+    return ApiKeyResponse(
+        id=record.id,
+        name=record.name,
+        key_prefix=record.key_prefix,
+        created_at=record.created_at,
+        last_used_at=record.last_used_at,
+        revoked_at=record.revoked_at,
+    )
 
 
 @app.get("/health")
@@ -484,6 +587,47 @@ def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | i
         "role": current_user.role,
         "is_guest": current_user.role == "guest",
     }
+
+
+@app.get("/api-keys", response_model=list[ApiKeyResponse])
+def get_api_keys(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ApiKeyResponse]:
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest accounts cannot manage API keys.",
+        )
+    return [_api_key_response(record) for record in list_api_keys(current_user, db)]
+
+
+@app.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=201)
+def post_api_key(
+    payload: ApiKeyCreateRequest,
+    request: Request,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiKeyCreateResponse:
+    _enforce_api_key_create_rate_limit(request, current_user)
+    record, raw_key = create_api_key(owner=current_user, name=payload.name, db=db)
+    base = _api_key_response(record)
+    return ApiKeyCreateResponse(**base.model_dump(), api_key=raw_key)
+
+
+@app.delete("/api-keys/{key_id}", response_model=ApiKeyResponse)
+def delete_api_key(
+    key_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiKeyResponse:
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest accounts cannot manage API keys.",
+        )
+    record = revoke_api_key(owner=current_user, key_id=key_id, db=db)
+    return _api_key_response(record)
 
 
 @app.post("/billing/webhook")
@@ -626,9 +770,11 @@ def get_dashboard_summary(
 @app.post("/gift-orders", response_model=GiftOrderCreateResponse, status_code=201)
 def create_gift_order(
     payload: GiftOrderCreateRequest,
+    request: Request,
     current_user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> GiftOrderCreateResponse:
+    _enforce_order_create_rate_limit(request, current_user)
     if not is_known_gift(payload.gift_id.strip()):
         raise HTTPException(status_code=400, detail="Unknown gift selection.")
 
@@ -761,6 +907,7 @@ def download_gift_order_csv_example(
 
 @app.post("/gift-orders/import", response_model=GiftOrderImportResponse, status_code=201)
 async def import_gift_orders_csv(
+    request: Request,
     file: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -771,6 +918,7 @@ async def import_gift_orders_csv(
     Rows without an address request shipping from the recipient via email after
     payment is authorized. Guests cannot import.
     """
+    _enforce_order_create_rate_limit(request, current_user)
     if current_user.role == "guest":
         raise HTTPException(
             status_code=403,
@@ -959,9 +1107,11 @@ def submit_address_request(
 @app.post("/gift-orders/{order_id}/checkout", response_model=StripeCheckoutResponse)
 def checkout_gift_order(
     order_id: int,
+    request: Request,
     current_user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StripeCheckoutResponse:
+    _enforce_order_create_rate_limit(request, current_user)
     order = db.get(GiftOrderModel, order_id)
     if not order or order.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Gift order not found.")

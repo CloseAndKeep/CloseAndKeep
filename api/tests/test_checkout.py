@@ -268,10 +268,10 @@ def test_webhook_replay_does_not_double_process(
     order = _create_order(auth_client, prospect_id)
 
     notifications: list[int] = []
-    import app.stripe_payments as sp
+    import app.fulfillment as fulfillment
 
     monkeypatch.setattr(
-        sp,
+        fulfillment,
         "send_new_order_notification",
         lambda **kwargs: notifications.append(kwargs.get("order_id")),
     )

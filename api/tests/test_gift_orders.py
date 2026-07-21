@@ -99,9 +99,11 @@ def test_payment_triggers_notification_with_order_details(
     order = auth_client.post("/gift-orders", json=payload).json()
 
     captured: dict = {}
-    import app.stripe_payments as sp
+    import app.fulfillment as fulfillment
 
-    monkeypatch.setattr(sp, "send_new_order_notification", lambda **kw: captured.update(kw))
+    monkeypatch.setattr(
+        fulfillment, "send_new_order_notification", lambda **kw: captured.update(kw)
+    )
 
     # Reading the order reconciles it to paid from Stripe, firing the email job.
     stripe_stub.retrieved_session = {

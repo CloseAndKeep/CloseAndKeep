@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .config import GIFT_CATALOG, settings, stripe_price_for_gift
 from .models import GiftOrderModel, ProspectModel, UserModel
-from .order_email import send_new_order_notification, send_recipient_address_request
+from .order_email import send_recipient_address_request
 
 logger = logging.getLogger(__name__)
 
@@ -142,22 +142,11 @@ def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
 
     prospect = db.get(ProspectModel, order.prospect_id)
     owner = db.get(UserModel, order.owner_user_id)
-    if prospect and owner and (order.shipping_address or "").strip():
-        send_new_order_notification(
-            order_id=order.id,
-            requested_at=order.requested_at,
-            gift_id=order.gift_id,
-            recipient_name=order.recipient_name,
-            shipping_address=order.shipping_address or "",
-            note=order.note,
-            status=order.status,
-            prospect_name=prospect.name,
-            prospect_company=prospect.company,
-            prospect_title=prospect.title,
-            prospect_email=prospect.email,
-            prospect_deal_status=prospect.deal_status,
-            placed_by_email=owner.email,
-        )
+    if prospect and owner:
+        # Payment is done; hand off to fulfillment (email today, bakery API later).
+        from .fulfillment import dispatch_queued_fulfillment
+
+        dispatch_queued_fulfillment(order, prospect=prospect, owner=owner, db=db)
     return order
 
 

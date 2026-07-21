@@ -10,6 +10,7 @@ import {
   CalendarClock,
   CreditCard,
   ShieldCheck,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getApiBaseUrl } from "@/lib/api";
@@ -21,6 +22,7 @@ const baseNav = [
   { href: "/orders", label: "Orders", icon: Package },
   { href: "/follow-ups", label: "Follow-ups", icon: CalendarClock },
   { href: "/billing", label: "Payments", icon: CreditCard },
+  { href: "/api-keys", label: "API keys", icon: KeyRound },
 ];
 
 const adminNavItem = { href: "/admin", label: "Admin", icon: ShieldCheck };
@@ -59,7 +61,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const nav = [
-    ...baseNav.filter((item) => !(isGuest && item.href === "/follow-ups")),
+    ...baseNav.filter(
+      (item) =>
+        !(isGuest && item.href === "/follow-ups") && !(isGuest && item.href === "/api-keys"),
+    ),
     ...(isAdmin ? [adminNavItem] : []),
   ];
 

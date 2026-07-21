@@ -39,6 +39,19 @@ class Settings(BaseModel):
         ).split(",")
         if origin.strip()
     ]
+    # Sliding-window limits for API-key create and gift-order create paths.
+    rate_limit_api_key_create: int = int(os.getenv("RATE_LIMIT_API_KEY_CREATE", "10"))
+    rate_limit_api_key_create_window_seconds: int = int(
+        os.getenv("RATE_LIMIT_API_KEY_CREATE_WINDOW_SECONDS", "3600")
+    )
+    rate_limit_order_create: int = int(os.getenv("RATE_LIMIT_ORDER_CREATE", "30"))
+    rate_limit_order_create_window_seconds: int = int(
+        os.getenv("RATE_LIMIT_ORDER_CREATE_WINDOW_SECONDS", "60")
+    )
+    rate_limit_order_create_ip: int = int(os.getenv("RATE_LIMIT_ORDER_CREATE_IP", "60"))
+    rate_limit_order_create_ip_window_seconds: int = int(
+        os.getenv("RATE_LIMIT_ORDER_CREATE_IP_WINDOW_SECONDS", "60")
+    )
 
 
 # Canonical cookie-pack catalog. This is the single source of truth for which

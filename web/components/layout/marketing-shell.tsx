@@ -5,6 +5,7 @@ import { BrandLogo } from "@/components/brand-logo";
 const footerLinks = [
   { href: "/", label: "Home" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/developers", label: "API" },
   { href: "/support", label: "Support" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },

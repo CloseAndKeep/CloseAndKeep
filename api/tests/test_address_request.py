@@ -113,6 +113,7 @@ def test_recipient_submit_captures_payment_and_emails(
     auth_client, prospect_id, stripe_stub, monkeypatch
 ):
     import app.main as main
+    import app.fulfillment as fulfillment
     import app.stripe_payments as sp
     from app.db import SessionLocal
     from app.models import GiftOrderModel
@@ -123,7 +124,9 @@ def test_recipient_submit_captures_payment_and_emails(
         main, "send_orderer_address_received", lambda **kw: orderer_mail.update(kw)
     )
     ops_mail: dict = {}
-    monkeypatch.setattr(sp, "send_new_order_notification", lambda **kw: ops_mail.update(kw))
+    monkeypatch.setattr(
+        fulfillment, "send_new_order_notification", lambda **kw: ops_mail.update(kw)
+    )
 
     order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
     _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)

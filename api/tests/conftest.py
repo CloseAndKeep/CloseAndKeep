@@ -60,10 +60,12 @@ def _create_schema():
 def _clean_tables():
     """Empty every table before each test for isolation."""
     from app.db import Base, engine
+    from app.rate_limit import limiter
 
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
+    limiter.reset()
     yield
 
 
