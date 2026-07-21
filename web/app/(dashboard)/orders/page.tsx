@@ -86,12 +86,20 @@ export default function OrdersPage() {
         title="Gift orders"
         description="All cookie orders submitted from the live flow."
         action={
-          <Link
-            href="/orders/new"
-            className="rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
-          >
-            New cookie order
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/orders/import"
+              className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-espresso shadow-sm hover:bg-stone-50"
+            >
+              Import CSV
+            </Link>
+            <Link
+              href="/orders/new"
+              className="rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
+            >
+              New cookie order
+            </Link>
+          </div>
         }
       />
 

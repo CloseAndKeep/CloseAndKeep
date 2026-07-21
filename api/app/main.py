@@ -3,14 +3,21 @@ from datetime import datetime
 from secrets import token_urlsafe
 
 import bcrypt
-from fastapi import Depends, FastAPI, HTTPException, Response, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Response, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 import stripe
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import is_known_gift, settings
+from .csv_import import (
+    DEFAULT_IMPORT_NOTE,
+    example_csv,
+    parse_gift_orders_csv,
+    template_csv,
+)
 from .db import SessionLocal
 from .models import GiftOrderModel, ProspectModel, UserModel
 from .order_email import send_orderer_address_received
@@ -163,6 +170,16 @@ class GiftOrderResponse(BaseModel):
 
 class GiftOrderCreateResponse(GiftOrderResponse):
     checkout_url: str | None = None
+
+
+class GiftOrderImportRowError(BaseModel):
+    row: int
+    message: str
+
+
+class GiftOrderImportResponse(BaseModel):
+    created: list[GiftOrderCreateResponse]
+    errors: list[GiftOrderImportRowError] = []
 
 
 class StripeCheckoutResponse(BaseModel):
@@ -678,6 +695,165 @@ def create_gift_order(
     db.refresh(order)
     response = _gift_order_response(order)
     return GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)
+
+
+def _find_or_create_prospect_for_import(
+    *,
+    owner: UserModel,
+    name: str,
+    email: str,
+    db: Session,
+) -> ProspectModel:
+    """Reuse an existing prospect with the same email, otherwise create one."""
+    existing = db.scalar(
+        select(ProspectModel).where(
+            ProspectModel.owner_user_id == owner.id,
+            ProspectModel.email == email,
+        )
+    )
+    if existing:
+        return existing
+    prospect = ProspectModel(
+        owner_user_id=owner.id,
+        name=name,
+        title="Contact",
+        company="CSV import",
+        email=email,
+        deal_status="open",
+    )
+    db.add(prospect)
+    db.flush()
+    return prospect
+
+
+@app.get("/gift-orders/import/template")
+def download_gift_order_csv_template(
+    current_user: UserModel = Depends(get_current_user),
+) -> PlainTextResponse:
+    """Blank CSV template (headers only) for bulk cookie orders."""
+    _ = current_user
+    return PlainTextResponse(
+        content=template_csv(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="cookie-orders-template.csv"',
+        },
+    )
+
+
+@app.get("/gift-orders/import/example")
+def download_gift_order_csv_example(
+    current_user: UserModel = Depends(get_current_user),
+) -> PlainTextResponse:
+    """Example CSV with headers and sample rows."""
+    _ = current_user
+    return PlainTextResponse(
+        content=example_csv(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="cookie-orders-example.csv"',
+        },
+    )
+
+
+@app.post("/gift-orders/import", response_model=GiftOrderImportResponse, status_code=201)
+async def import_gift_orders_csv(
+    file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GiftOrderImportResponse:
+    """Create multiple cookie orders from a CSV upload.
+
+    Columns: Name, Email, Cookies (1 / 4 / 12), Address (optional).
+    Rows without an address request shipping from the recipient via email after
+    payment is authorized. Guests cannot import.
+    """
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest accounts cannot import orders. Please create an account.",
+        )
+
+    filename = (file.filename or "").lower()
+    if filename and not filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="CSV file is empty.")
+
+    parsed_rows, parse_errors = parse_gift_orders_csv(raw)
+    if parse_errors:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "CSV validation failed. No orders were created.",
+                "errors": [{"row": e.row, "message": e.message} for e in parse_errors],
+            },
+        )
+
+    created: list[GiftOrderCreateResponse] = []
+    staged_orders: list[GiftOrderModel] = []
+
+    try:
+        for row in parsed_rows:
+            prospect = _find_or_create_prospect_for_import(
+                owner=current_user,
+                name=row.recipient_name,
+                email=row.recipient_email,
+                db=db,
+            )
+            if row.request_recipient_address:
+                order = GiftOrderModel(
+                    owner_user_id=current_user.id,
+                    prospect_id=prospect.id,
+                    gift_id=row.gift_id,
+                    recipient_name=row.recipient_name,
+                    shipping_address=None,
+                    recipient_email=row.recipient_email,
+                    note=DEFAULT_IMPORT_NOTE,
+                    status="no_address",
+                    payment_status="pending",
+                    address_request_token=token_urlsafe(32),
+                    address_request_sent_at=None,
+                )
+            else:
+                order = GiftOrderModel(
+                    owner_user_id=current_user.id,
+                    prospect_id=prospect.id,
+                    gift_id=row.gift_id,
+                    recipient_name=row.recipient_name,
+                    shipping_address=row.shipping_address,
+                    recipient_email=row.recipient_email,
+                    note=DEFAULT_IMPORT_NOTE,
+                    status="pending_payment",
+                    payment_status="pending",
+                )
+            db.add(order)
+            staged_orders.append(order)
+
+        db.commit()
+        for order in staged_orders:
+            db.refresh(order)
+
+        for order in staged_orders:
+            checkout_url = create_checkout_session_for_order(order, current_user, db)
+            db.refresh(order)
+            response = _gift_order_response(order)
+            created.append(
+                GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)
+            )
+    except Exception:
+        # Roll back any orders created for this batch so a failed Stripe setup
+        # does not leave unpaid orphans behind.
+        for order in staged_orders:
+            db_order = db.get(GiftOrderModel, order.id) if order.id else None
+            if db_order:
+                db.delete(db_order)
+        db.commit()
+        raise
+
+    return GiftOrderImportResponse(created=created)
 
 
 @app.get("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
