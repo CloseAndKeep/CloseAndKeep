@@ -4,7 +4,7 @@
 
 Use `- [ ]` for todo and `- [x]` for done. Work top-to-bottom within each section unless you’re parallelizing.
 
-Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test.MD` (**full recursive test catalog** — implement and check off tests there; cite anchors **`TEST-REG`** / **`TEST-LAUNCH`** / **`TEST-RISK`** for release gates).
+Deeper context: `README.md`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test.MD` (**full recursive test catalog** — implement and check off tests there; cite anchors **`TEST-REG`** / **`TEST-LAUNCH`** / **`TEST-RISK`** for release gates).
 
 ---
 
@@ -17,44 +17,50 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 ---
 
-## Current status (refreshed 2026-06-10)
+## Current status (refreshed 2026-07-21)
 
 **Built and working:**
-- Backend (FastAPI) with app-managed sessions: signup, login, logout, `/auth/me`, admin-role sync via `ADMIN_EMAILS`.
-- Postgres (Neon) schema + Alembic migrations `0001`–`0006`.
+- Backend (FastAPI) with app-managed sessions: signup, login, logout, guest, `/auth/me`, admin-role sync via `ADMIN_EMAILS`.
+- Password policy (min length + letter/digit) and anti-enumeration on duplicate signup.
+- Postgres (Neon) schema + Alembic migrations through `0011_address_request_expiry`.
 - Prospects: list / create / get / **update (deal outcome)**, all user-scoped.
 - Dashboard summary metrics (open / won / lost / total) wired to live data.
-- Gift orders: create / list / get + **one-time Stripe Checkout per order** and webhook (no subscription).
-- **Admin fulfillment:** `/admin` order queue + order detail with status, tracking number, and internal notes (admin endpoints + admin guard).
-- Frontend (Next.js) wired to the API for all of the above; legal placeholder pages + dashboard loading/error patterns.
+- Gift orders: create / list / get + **one-time Stripe Checkout** + webhook + amount verification vs catalog prices.
+- Deferred recipient address (authorize hold + public token + capture) with token TTL.
+- CSV gift-order import (template/example + size/row caps).
+- API keys (create / list / revoke) with rate limits.
+- **Admin fulfillment:** `/admin` order queue + order detail; cancel of authorized orders fails closed if Stripe cancel fails.
+- Frontend (Next.js) wired via `apiFetch`; gift labels in `gift-catalog.ts`; `/ship/[token]` address form.
+- Rate limits: in-process + optional Redis (`REDIS_URL`); `SESSION_COOKIE_SECURE` defaults true in production.
+- Automated API pytest suite (`api/tests/`, including medium-hardening coverage).
 
 **Deferred (explicitly on hold):**
-- Follow-ups feature (table, API, UI, reminder email).
+- Follow-ups feature backend (table, reminder email job); UI scaffold remains.
 - Status-change emails to customers (only the internal new-order email exists).
 - Auth gaps: password reset and account settings.
 
-**Placeholder / pre-launch:** legal pages, error/loading patterns, automated tests, this checklist.
+**Placeholder / pre-launch:** legal pages (real copy), E2E browser suite, production monitoring polish.
 
 ---
 
 ## Product (locked / planning)
 
 - [x] Product name: **CloseAndKeep**
-- [x] Write one-sentence value proposition (see `ReadMe.MD`, `SoftwareRequirements.MD` §1.1)
+- [x] Write one-sentence value proposition (see `README.md`, `SoftwareRequirements.MD` §1.1)
 - [x] Define first ideal customer (ICP): SaaS salespeople (AEs / reps)
 - [x] Decide MVP: manual fulfillment vs any automation — **MVP = manual fulfillment + tracking;** automation not a near-term customer or build focus
-- [x] Decide pricing model: **subscription** (not leading with per-gift or credits for positioning)
-- [x] List subscription plan names and limits (even if rough): **Individual** (1 box/week), **Enterprise** (5 boxes/week) — placeholders in `ReadMe.MD` / `SoftwareRequirements.MD`
+- [x] Decide pricing model: **one-time payment per gift order** (see `DECISIONS.md`; no subscription in MVP)
+- [x] List pricing presentation: per-order cookie packs on `/pricing` (no subscription plan names in product)
 
 ---
 
 ## Planning documentation hygiene (from planning review)
 
-- [x] Record finalized stack, auth, DB, email, and hosting choices in one place when decided (`ReadMe.MD` “Technical decisions” block or `DECISIONS.md`)
+- [x] Record finalized stack, auth, DB, email, and hosting choices in one place when decided (`README.md` / `DECISIONS.md`)
 - [x] Confirm MVP stays **solo-user-first**; optional `company`/team schema is scaffolding only until teams are in scope ([SoftwareRequirements.MD](SoftwareRequirements.MD) §2)
 - [x] Implement **admin bootstrap** — `ADMIN_EMAILS` env allowlist syncs `role=admin` on signup/login
 - [ ] **Milestone 0:** explicit stop/review after concierge or discovery validation—decide whether to proceed with full product build (ties to “Optional: manual concierge test” below)
-- [x] Refresh [ReadMe.MD](ReadMe.MD) **Current Status** when planning or build phase advances
+- [x] Refresh [README.md](README.md) when planning or build phase advances
 
 ---
 
@@ -111,14 +117,14 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 
 - [x] Create dev database (Neon Postgres)
 - [x] Pick migration tool — **Alembic**
-- [x] Users table (with role + reserved subscription columns)
+- [x] Users table (with role; subscription scaffolding removed in `0007`)
 - [ ] Companies table (if using teams later; optional for MVP)
 - [x] Prospects table
 - [ ] *(Optional)* Sales pitches / touchpoints table — **not** required if prospect-only model stays
-- [ ] Gifts (catalog) table — gifts are static cookie packs in `web/lib/mock-data.ts` for now
-- [x] Gift orders table (recipient name, full shipping address, note, FK to prospect, status, payment, tracking, admin notes)
+- [x] Gifts (catalog) — static cookie packs in API `GIFT_CATALOG` + `web/lib/gift-catalog.ts` (prices from Stripe via `GET /gifts`)
+- [x] Gift orders table (recipient name, shipping address or address-request token+expiry, note, FK to prospect, status, payment, tracking, admin notes)
 - [ ] Follow-ups table — **deferred**
-- [x] Stripe fields on user/order — per-order payment fields on `gift_orders`; subscription columns on `users` are reserved scaffolding (unused)
+- [x] Stripe fields on user/order — per-order payment fields on `gift_orders`; `users.stripe_customer_id` populated at checkout
 - [ ] Seed script or admin SQL for first test gifts (optional)
 
 ---
@@ -141,8 +147,8 @@ Deeper context: `ReadMe.MD`, `Architecture.MD`, `SoftwareRequirements.MD`, `Test
 - [x] Landing page: hero and primary CTA (`app/(marketing)/page.tsx`)
 - [x] Landing page: how it works (3–5 steps)
 - [x] Landing page: pricing teaser or link to pricing
-- [x] Landing page: **Preview app** CTA instead of signup/login (auth skipped for UI preview)
-- [ ] Email waitlist or direct signup (pick one for MVP)
+- [x] Landing page: primary CTA is **Log in** → `/login`
+- [ ] Email waitlist or direct signup CTA on landing (signup exists at `/signup`)
 - [x] Basic page title (metadata in root `layout.tsx`) — custom favicon still TODO
 
 ---
@@ -171,12 +177,14 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 - [x] Checkout: start one-time session from app (on order submit + retry)
 - [x] Checkout: success and cancel URLs handled (`/orders/[id]?payment=...`)
 - [x] Webhook endpoint implemented and secured (signature) + fetch-time fallback sync
-- [ ] Persist Stripe customer ID (currently uses `customer_email`; optional)
-- [x] Mark order paid → queued on `checkout.session.completed`
-- [ ] Test: successful payment
-- [ ] Test: canceled checkout leaves order unpaid
-- [ ] Test: failed payment handling
-- [ ] Refund / cancel policy wired (admin can set `canceled`; refunds still manual in Stripe)
+- [x] Persist Stripe customer ID on first checkout (`users.stripe_customer_id`)
+- [x] Mark order paid → queued on `checkout.session.completed` (with catalog amount verification)
+- [x] Test: successful payment / webhook sync (API integration suite)
+- [x] Test: canceled checkout / unpaid remains unpaid
+- [x] Test: amount mismatch does not mark paid
+- [x] Test: admin cancel fails closed when Stripe cancel fails
+- [x] Test: `payment_intent.canceled` expires authorization + clears address token
+- [ ] Refund policy UX (admin can set `canceled`; card refunds still manual in Stripe Dashboard)
 
 ---
 
@@ -190,8 +198,11 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 - [x] `/prospects` and `/prospects/[id]` (inline create on list)
 - [x] `/gifts` (redirects to `/orders/new`)
 - [x] `/orders`, `/orders/new`, `/orders/[id]` (wired to API)
-- [x] `/follow-ups` — UI only, still mock data (**deferred** backend)
+- [x] `/follow-ups` — placeholder “coming soon” (**deferred** backend; no mock data)
 - [x] `/billing` (payment history, wired to API)
+- [x] `/api-keys` (create / list / revoke)
+- [x] `/ship/[token]` (public recipient address form)
+- [x] `/support` and `/developers` (marketing)
 - [x] `/admin` and `/admin/orders/[id]` (admin-only)
 
 ---
@@ -219,12 +230,12 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 
 ## Gift catalog
 
-- [ ] API: list active gifts
+- [x] API: list active gifts (`GET /gifts` with live prices)
 - [ ] API: admin create gift
 - [ ] API: admin update gift
 - [ ] API: admin activate/deactivate gift
-- [ ] UI: user catalog grid or list
-- [ ] UI: gift detail or modal
+- [x] UI: pack selection in gift-order wizard (labels from `gift-catalog.ts`)
+- [ ] UI: standalone gift detail or modal
 - [ ] Placeholder images or real assets for first gifts
 
 ---
@@ -234,13 +245,14 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 - [x] Select prospect
 - [x] Select gift (cookie pack)
 - [x] Enter or confirm **recipient name**
-- [x] Enter or confirm **full shipping address** (required)
+- [x] Enter or confirm **full shipping address**, or request recipient address by email
 - [x] Enter **note to leave on the gift** (required)
-- [x] Validate: block submit if name, address, or note is missing/blank
-- [x] Review step shows recipient, address, and note clearly
-- [x] Submit creates order (`pending_payment` → `queued` after payment)
+- [x] Validate: block submit if name, note, or (when not deferred) address is missing/blank
+- [x] Review step shows recipient, address (or address-request), and note clearly
+- [x] Submit creates order (`pending_payment` → paid/`queued`, or authorize/`no_address` then capture)
 - [x] User-facing confirmation / order detail state
 - [x] User can see order status on the orders list and order detail
+- [x] CSV import at `/orders/import` (API capped by bytes/rows)
 
 ---
 
@@ -272,12 +284,12 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 
 ## Analytics and dashboard
 
-- [ ] Dashboard: count of prospects or open deals (time range optional)
+- [x] Dashboard: open / won / lost / total prospect counts (`GET /dashboard/summary`)
+- [x] Dashboard: simple win rate `won / (won + lost)`
 - [ ] Dashboard: gifts sent count
-- [ ] Dashboard: follow-ups due
-- [ ] Dashboard: won vs lost vs pending
-- [ ] Dashboard: conversion rate matches **SoftwareRequirements.MD** §4.11 definition (and note formula in code comments)
-- [ ] Empty state for new accounts
+- [ ] Dashboard: follow-ups due — blocked on follow-ups feature
+- [ ] Dashboard: time-ranged conversion matching a documented formula
+- [ ] Empty state polish for new accounts
 
 ---
 
@@ -296,19 +308,20 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 
 - [ ] Admin: full gift CRUD UI
 - [ ] Admin: view users list
-- [ ] Admin: view subscription status per user
+- [ ] Admin: view payment / order health per user (no subscription status in MVP)
 - [ ] Admin: handle failed orders list (optional)
 
 ---
 
 ## Security and reliability
 
-- [ ] HTTPS in production
-- [ ] Secrets only in env / secret manager
-- [ ] Rate limit auth and webhook routes
-- [ ] Validate and sanitize all API inputs
-- [ ] Authorization checks on every id-scoped resource
-- [ ] Stripe webhook signature verification
+- [x] Confirm TLS terminated in production (Vercel + Render) — verify headers / HSTS as needed
+- [x] Secrets only in env / secret manager
+- [x] Rate limit auth, order create, API-key create (optional Redis)
+- [x] Validate and sanitize all API inputs (incl. password policy)
+- [x] Authorization checks on every id-scoped resource
+- [x] Stripe webhook signature verification + amount verification
+- [x] CSV import size/row caps; address-request token TTL
 - [ ] Database backups enabled (provider settings)
 - [ ] Basic error logging (Sentry or provider logs)
 
@@ -324,7 +337,7 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 
 ## Launch prep
 
-- [~] Automated test scaffold — placeholder `api/tests/` + `requirements-dev.txt` added; expand against `Test.MD`
+- [x] Automated API test suite — `api/tests/` (pytest); expand E2E against `Test.MD`
 - [ ] Staging environment matches prod setup
 - [ ] Run through `Test.MD` regression gate (**`TEST-REG`**) in staging
 - [ ] Production Stripe keys and webhook URL
@@ -342,6 +355,7 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 
 ## Nice-to-have (after core MVP)
 
+- [x] CSV import for gift orders (prospect CSV still nice-to-have)
 - [ ] CSV import for prospects
 - [ ] Email templates editable in admin
 - [ ] Saved gift message templates
@@ -357,8 +371,8 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 - [ ] OAuth and CRM connection settings page
 - [ ] Import contacts / deals from CRM
 - [ ] Push gift activity to CRM
-- [ ] Public API design
-- [ ] API keys and developer docs
+- [x] API keys (user-scoped create/list/revoke) — expand with public developer docs later
+- [ ] Public API design docs / versioning
 - [ ] Webhooks outbound to customer systems
 - [ ] Automated vendor API for gifts
 
@@ -377,7 +391,7 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 
 ## Success metrics (track when you have users)
 
-- [ ] Define where you log signups and paying subscribers
+- [ ] Define where you log signups and paying customers (per-order revenue, not subscribers)
 - [ ] Define how you measure gifts sent per month
 - [ ] Define how you measure gift-to-close rate
 - [ ] Review metrics monthly

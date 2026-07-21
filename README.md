@@ -26,8 +26,20 @@ cd api
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env
+python -m alembic upgrade head
 uvicorn app.main:app --reload
 ```
+
+API tests:
+
+```bash
+cd api
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+```
+
+See `api/README.md` and `api/.env.example` for env vars (Stripe, Resend, optional `REDIS_URL`, CSV caps, address-request TTL, password policy).
 
 ## Deployment
 
@@ -43,6 +55,9 @@ The frontend deploys to Vercel from `web/`. The backend deploys to Render from `
    - `WEB_BASE_URL` - public URL of the Vercel app (used in Stripe redirects).
    - `API_BASE_URL` - public URL of this Render service (for example `https://closeandkeep-api.onrender.com`).
    - `ADMIN_EMAILS`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` - leave blank or fill in as available.
+   - `SESSION_COOKIE_SECURE` is set to `true` in `render.yaml` (also the default when `APP_ENV=production`).
+   - `TRUST_PROXY=true` on Render so IP rate limits use `X-Forwarded-For`.
+   - Optional `REDIS_URL` if you scale beyond a single uvicorn worker/instance (shares rate-limit counters).
    - **Order emails:** set `RESEND_API_KEY` (replace the `re_xxxxxxxxx` placeholder with your real key). For internal alerts only, the default `RESEND_FROM` is `onboarding@resend.dev`. With that sender, Resend only allows mail to **your Resend account email** (match is **case-sensitive**—we normalize `ORDER_NOTIFICATION_TO` to lowercase before sending). For other recipients or customer-facing mail, verify a domain at Resend and set `RESEND_FROM` to an address on that domain.
 4. The build runs `pip install -r requirements.txt && python -m alembic upgrade head`, so each deploy runs migrations against Neon before the new code starts serving.
 5. After the first successful deploy, verify with `curl https://<your-render-host>/health`.
@@ -62,21 +77,23 @@ CloseAndKeep helps SaaS sellers close more deals and keep more customers by turn
 The MVP focuses on:
 
 - landing page and pricing
-- signup and login
+- signup and login (password policy + anti-enumeration)
 - dashboard
 - prospect tracking (with deal outcome / win-rate)
-- gift ordering workflow (pay-per-order at checkout)
+- gift ordering workflow (pay-per-order at checkout; optional recipient address link)
+- CSV gift-order import (size/row capped)
 - admin fulfillment queue (status + tracking)
-- follow-up reminders
 - deal outcome tracking
+- follow-up reminders (UI scaffold; backend deferred)
 
 ## Project notes
 
-- Frontend: Next.js 14, React, TypeScript, Tailwind CSS
+- Frontend: Next.js 14, React, TypeScript, Tailwind CSS (`web/lib/api.ts`, `web/lib/gift-catalog.ts`)
 - Backend: FastAPI, Python
-- Database: Neon Postgres
-- Auth: secure server-managed sessions
-- Payments: Stripe Checkout, **one-time payment per gift order** (no subscriptions)
+- Database: Neon Postgres (Alembic through `0011_address_request_expiry`)
+- Auth: secure server-managed sessions (`SESSION_COOKIE_SECURE` defaults true in production)
+- Payments: Stripe Checkout, **one-time payment per gift order** (no subscriptions); reject Checkout amounts that exceed catalog prices on fulfill
 - Admin: `ADMIN_EMAILS` allowlist grants the admin role; admins fulfill orders at `/admin`
+- Rate limits: in-process by default; optional Redis via `REDIS_URL`
 
 See `DECISIONS.md` for locked technical choices and `Architecture.MD` for system design details.

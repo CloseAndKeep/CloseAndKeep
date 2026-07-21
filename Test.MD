@@ -28,7 +28,7 @@ These IDs stay fixed even if section numbers shift. Other docs should cite **`TE
 
 ### Goals
 
-Confirm signup/login, billing gates, **prospect → gift** flows (including recipient name, address, note on the gift), prospect outcomes, admin fulfillment, follow-ups, analytics, authz, and regression before release.
+Confirm signup/login, one-time Checkout, **prospect → gift** flows (including recipient name, address or address-request, note on the gift), prospect outcomes, admin fulfillment, authz, and regression before release. Follow-up reminders are deferred and are not part of the current MVP gate.
 
 ### Suggested tools
 
@@ -46,14 +46,14 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### Reference fixtures (build data for tests)
 
-- [ ] Fixture: individual paid user
-- [ ] Fixture: individual unpaid / lapsed user
+- [x] Fixture: authenticated user (pytest `auth_client`)
+- [ ] Fixture: individual unpaid order path (pending_payment)
 - [ ] Fixture: team owner + team member (if applicable)
-- [ ] Fixture: internal admin
-- [ ] Fixture: prospect with full address
+- [x] Fixture: internal admin (`admin_client`)
+- [x] Fixture: prospect with contact fields (`name` / `title` / `company` / `email`)
 - [ ] Fixture: prospect with minimal fields
-- [ ] Fixture: gift order in each status (draft, queued, ordered, shipped, delivered, failed, canceled) as needed
-- [ ] Fixture: subscription active, trialing, past_due, canceled, incomplete
+- [x] Fixture: gift order payment/status variants exercised in checkout + address-request suites
+- [ ] ~~Fixture: subscription states~~ — N/A (MVP is pay-per-order; no subscription gate)
 
 ---
 
@@ -104,6 +104,8 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 1.4 Password reset
 
+**Deferred** — no reset tokens/emails/routes. Keep rows unchecked until the feature ships.
+
 - [ ] (I) Reset request creates token or provider flow with expiry
 - [ ] (I) Expired token cannot set password
 - [ ] (I) Used token cannot be reused
@@ -133,8 +135,8 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 2.3 Subscription gate
 
-- [ ] (I) Gift order POST returns 402/403 when subscription inactive per rules
-- [ ] (E) Unpaid user cannot complete gift request past review/submit
+- [x] (I) N/A for MVP — no subscription gate; gift create requires auth + payment at Checkout (covered by gift-order / checkout suites)
+- [ ] (E) Unpaid / abandoned Checkout leaves order unfulfilled (staging smoke)
 
 ---
 
@@ -142,21 +144,26 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 3.1 Checkout
 
-- [x] (I) Checkout session created with correct price id for plan
-- [x] (I) Successful checkout webhook updates DB subscription fields
-- [ ] (E) User completes test checkout and gains paid access
+- [x] (I) Checkout session created with correct price id for gift pack
+- [x] (I) Successful checkout webhook / fulfill marks order paid (or authorized when deferring address)
+- [x] (I) Amount above catalog price is rejected (order stays unpaid / not advanced)
+- [ ] (E) User completes test checkout in browser
 
 ### 3.2 Webhooks
 
 - [x] (I) Signature invalid → 400 and no DB change
-- [ ] (I) `customer.subscription.updated` updates status
-- [ ] (I) `invoice.payment_failed` marks past_due or equivalent
-- [ ] (I) `customer.subscription.deleted` revokes paid access per rules
+- [x] (I) `payment_intent.canceled` cancels authorized order and clears address token
+- [x] (I) Replay / duplicate `checkout.session.completed` is idempotent (`test_webhook_replay_does_not_double_process`)
 
-### 3.3 Billing portal
+### 3.3 Authorize / capture and admin cancel
 
-- [ ] (E) User opens portal and returns without breaking session
-- [ ] (I) Cancellation webhook aligns app state
+- [x] (I) Deferred-address path authorizes then captures after address submit
+- [x] (I) Admin cancel fails closed when Stripe PaymentIntent.cancel fails
+- [ ] (E) Recipient completes `/ship/[token]` and order becomes queued
+
+### 3.4 Billing portal / subscriptions
+
+- [x] Out of scope for MVP (no Customer Portal / subscription webhooks)
 
 ---
 
@@ -170,13 +177,13 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 **Integration**
 
-- [x] (I) Create persists with correct `user_id` / `company_id`
+- [x] (I) Create persists with correct `owner_user_id`
 - [x] (I) Invalid email rejected
 
 **End-to-end**
 
 - [ ] (E) Create form shows validation errors
-- [ ] (E) Shipping address saved and shown on detail
+- [ ] (E) Contact fields saved and shown on detail (prospects have no shipping address)
 
 ### 4.2 List / search / detail
 
@@ -202,7 +209,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 5.2 Prospect detail aggregation
 
-- [ ] (E) Prospect detail shows contact, **gift orders**, follow-ups, and outcome
+- [ ] (E) Prospect detail shows contact + deal status (gift-order / follow-up lists deferred)
 
 ---
 
@@ -210,13 +217,13 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 6.1 User-facing
 
-- [ ] (I) Inactive gifts excluded from catalog API
-- [ ] (E) Catalog displays name, image, description, category
+- [x] (I) `GET /gifts` returns known packs with prices
+- [ ] (E) Catalog / wizard displays pack labels from `gift-catalog.ts`
 
 ### 6.2 Admin
 
-- [ ] (I) Admin CRUD gift; non-admin forbidden
-- [ ] (E) Deactivated gift disappears from user catalog after refresh
+- [ ] (I) Admin CRUD gift; non-admin forbidden — deferred (static catalog)
+- [ ] (E) Deactivated gift disappears from user catalog after refresh — deferred
 
 ---
 
@@ -227,7 +234,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 **Unit**
 
 - [x] (U) Submit rejected when recipient name blank
-- [x] (U) Submit rejected when address blank/incomplete per rules
+- [x] (U) Submit rejected when address blank/incomplete unless address-request path
 - [x] (U) Submit rejected when note-on-gift blank or whitespace-only
 
 **Integration**
@@ -246,10 +253,12 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 - [x] (I) Status transitions only from allowed states
 - [ ] (E) User sees status updates after admin changes
 
-### 7.3 Plan limits
+### 7.3 Plan limits / CSV caps
 
-- [ ] (I) At-limit user cannot queue another gift
-- [ ] (E) Clear messaging when limit hit
+- [x] (I) N/A plan weekly limits — pay per order
+- [x] (I) CSV import rejects oversized upload
+- [x] (I) CSV import rejects too many rows
+- [ ] (E) Clear messaging when CSV import fails validation
 
 ---
 
@@ -269,6 +278,8 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ## 9. Follow-up reminders
 
+**Deferred** — no API/table/jobs. Keep rows unchecked until the feature ships.
+
 ### 9.1 Scheduling
 
 - [ ] (I) Follow-up stored with **prospect** id and due date
@@ -286,9 +297,10 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 10.1 Counts
 
-- [ ] (U) Conversion rate matches `SoftwareRequirements.MD` §4.11 (won ÷ terminal outcomes in period) for controlled fixtures
-- [x] (I) Dashboard API matches DB aggregates for seed data
+- [ ] (U) Win rate `won / (won + lost)` — computed in web dashboard UI (no API unit test yet)
+- [x] (I) Dashboard API matches DB aggregates for seed data (`open_deals` / `won` / `lost` / `total_prospects`)
 - [ ] (E) Changing outcome updates visible metrics
+- [ ] (U) Time-ranged conversion formula — deferred until analytics expands
 
 ### 10.2 Edge cases
 
@@ -314,7 +326,15 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 ### 12.2 Secrets and transport
 
 - [x] (I) Webhook raw body used for signature verification
-- [ ] (E) No API keys in browser bundle
+- [x] (I) Production default enables Secure session cookie (`SESSION_COOKIE_SECURE`)
+- [ ] (E) No API secrets in browser bundle
+
+### 12.3 Auth / tokens / rate limits
+
+- [x] (I) Signup password complexity enforced
+- [x] (I) Duplicate signup does not enumerate emails
+- [x] (I) Address-request token expires after TTL
+- [x] (I) Auth / sensitive routes rate-limited (see `test_rate_limit.py`)
 
 ---
 
@@ -333,15 +353,15 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 - [ ] (E) Signup or login
 - [ ] (E) Stripe checkout (test mode)
-- [ ] (E) Create prospect → gift order with name, address, note (optional: set prospect outcome)
+- [ ] (E) Create prospect → gift order with name, address (or address-request), note
 - [ ] (E) Admin moves order to shipped; user sees update
-- [ ] (E) Follow-up reminder path (or verify job in logs)
 - [ ] (E) Logout and authz spot-check
+- [ ] Follow-up reminder path — **N/A until follow-ups ship**
 
 **Automated suite**
 
-- [ ] Full unit suite green
-- [ ] Integration suite green (or agreed subset + nightly full)
+- [x] Full API unit/integration suite green locally (`python -m pytest tests/` — 166+ as of 2026-07-21)
+- [ ] Integration suite green in CI on every PR
 - [ ] Critical E2E suite green
 
 ---
@@ -364,8 +384,8 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 Double-check after billing or auth changes:
 
-- [ ] Unpaid user never gains paid-only behavior without subscription
-- [ ] Paid user never blocked incorrectly by stale subscription row
+- [x] Unpaid / amount-mismatched Checkout never advances to fulfilled payment state
+- [x] Authorized hold cancel fails closed if Stripe cancel fails
 - [ ] Gift never ships with wrong address or missing note on gift for fulfillment
 - [x] No cross-tenant data in API responses
 - [x] Webhook replay or duplicate does not double-charge state

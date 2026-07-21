@@ -25,16 +25,20 @@ The initial product will focus on individual salespeople and small teams.
 **MVP v1 focus:** optimize for **solo salespeople** (one login per paid seat). `company` / team entities and shared data may exist in the schema as optional scaffolding for later, but **team collaboration and company dashboards are not required to ship the first paid MVP** unless you explicitly move them into scope.
 
 The first version should support:
-- User accounts
+- User accounts (signup / login / logout; password reset deferred)
 - One-time payment per gift order (no subscription)
-- Manual prospect entry
-- **Prospect pipeline / outcome tracking** (deal status on the prospect—no separate Pitch UI or pitch entity required)
-- Gift selection
-- Gift order request tracking (linked to prospect)
-- Follow-up reminders (linked to prospect)
-- Sales outcome tracking (on prospect)
-- Basic analytics
+- Manual prospect entry (`name`, `title`, `company`, `email`, `deal_status`)
+- **Prospect pipeline / outcome tracking** (`open` / `won` / `lost`)
+- Gift selection (static cookie packs)
+- Gift order request tracking (linked to prospect; optional deferred address)
+- CSV gift-order import (capped)
+- Basic dashboard metrics
 - Admin fulfillment workflow
+
+Deferred within MVP product surface (explicitly on hold):
+- Follow-up reminders (API, jobs, emails)
+- Password reset / profile settings
+- Customer-facing status emails
 
 Future versions may support:
 - CRM integrations
@@ -63,13 +67,13 @@ The person or company contact the user is working. The user may send gifts to th
 A small physical item sent to the prospect, such as chocolate, cookies, coffee, or another thoughtful item.
 
 ### Gift Order
-The record of a gift request, fulfillment status, and delivery status. Each gift order must include **recipient name**, **full shipping address**, and **note to leave on the gift** (text for the card or enclosure—required so fulfillment can attach or print it).
+The record of a gift request, fulfillment status, and delivery status. Each gift order must include **recipient name** and **note to leave on the gift**. **Full shipping address** is required before fulfillment; it may be entered by the seller at create time or collected later via a time-limited recipient address-request link.
 
 ### Follow-Up
 A reminder or email related to checking in with the **prospect** after a gift or touchpoint.
 
 ### Outcome
-The result of the opportunity for a **prospect** (e.g., open, won, lost, no response), stored and updated on the prospect (or a prospect-scoped outcome record), not on a separate pitch entity.
+The result of the opportunity for a **prospect** (`open`, `won`, or `lost`), stored on the prospect. Additional statuses (e.g. no response) and deal-value fields are deferred.
 
 ---
 
@@ -81,9 +85,11 @@ The result of the opportunity for a **prospect** (e.g., open, won, lost, no resp
 The system shall allow a new user to create an account.
 
 Acceptance criteria:
-- User can enter name, email, and password
+- User can enter email and password (name optional / deferred for MVP profile)
+- Password meets policy: minimum length (default 12; `PASSWORD_MIN_LENGTH`) and includes at least one letter and one digit
 - User receives confirmation or is redirected into onboarding
 - Duplicate email addresses are not allowed
+- Duplicate signup returns a **generic** client error (no “email already in use” enumeration)
 - Invalid emails are rejected
 
 ### Requirement: User Login
@@ -96,21 +102,10 @@ Acceptance criteria:
 - Unauthenticated users are redirected to login
 
 ### Requirement: Password Reset
-The system shall allow users to reset forgotten passwords.
-
-Acceptance criteria:
-- User can request password reset by email
-- Reset link expires after a defined time
-- User can create a new password
+**Deferred for MVP.** No forgot-password flow, reset tokens, or reset emails are shipped. Users who lose access must be helped manually (or re-signup is blocked by email uniqueness).
 
 ### Requirement: User Profile
-The system shall allow users to manage basic profile information.
-
-Acceptance criteria:
-- User can view name and email
-- User can update name
-- User can access billing settings
-- User can log out
+**Partial for MVP.** Logout and session `/auth/me` are shipped. There is no profile name field or Stripe customer portal. `/billing` shows the user’s gift-order payment history only.
 
 ---
 
@@ -132,18 +127,38 @@ The system shall allow users to pay for a gift order through Stripe Checkout in 
 
 Acceptance criteria:
 - User submits a gift order and is redirected to Stripe Checkout
-- Successful payment marks the order paid and moves it to `queued` for fulfillment
+- Successful payment marks the order paid and moves it to `queued` for fulfillment (unless address is deferred — see below)
+- Before advancing payment state, the API rejects Checkout amounts that **exceed** the sum of catalog Stripe prices for the linked order(s) (amounts below catalog are allowed for promos)
 - Failed or canceled checkout leaves the order in `pending_payment` and does not start fulfillment
 - The user can retry checkout for an unpaid order
+
+### Requirement: Deferred recipient address (authorize / capture)
+The system shall support collecting shipping address from the recipient after payment authorization.
+
+Acceptance criteria:
+- Seller may request recipient address at order create (email + public token link)
+- Card is authorized (not captured) until a valid address is submitted
+- Address-request tokens expire after a configured TTL (default 7 days, aligned with Stripe hold)
+- Tokens are cleared after successful submit, order cancel, or authorization expiry (`payment_intent.canceled`)
+- Expired or already-used tokens are rejected
 
 ### Requirement: Stripe Webhooks
 The system shall listen for Stripe payment events.
 
 Acceptance criteria:
 - Webhook signatures are verified
-- `checkout.session.completed` marks the matching gift order paid/queued
-- A fetch-time fallback re-checks the Checkout session if the webhook is missed
+- `checkout.session.completed` marks the matching gift order paid/queued (or authorized/`no_address` when deferring address), subject to amount verification
+- `payment_intent.canceled` cancels the matching authorized order and clears address tokens
+- A fetch-time fallback re-checks the Checkout session if the webhook is missed (also subject to amount verification)
+- Amount mismatches do not advance payment state; failures are logged
 - Failures are logged
+
+### Requirement: Admin cancel of authorized orders
+When an admin cancels an order with an open card authorization, the system shall cancel the Stripe PaymentIntent before updating local payment state.
+
+Acceptance criteria:
+- If Stripe cancel fails for an open hold, the API returns an error and leaves local status unchanged (fail closed)
+- If Stripe already shows a terminal status (`canceled` / `succeeded`), local cancel may proceed
 
 > **Out of scope for MVP:** subscription plans, recurring billing, weekly order caps, and the Stripe customer billing portal. The unused `users.subscription_status` / `users.subscription_plan` columns were dropped (migration `0007`); `users.stripe_customer_id` is retained and populated at first checkout.
 
@@ -154,12 +169,12 @@ Acceptance criteria:
 ### Requirement: User Dashboard
 The system shall provide a dashboard after login.
 
-Acceptance criteria:
-- Dashboard shows **recent gift activity** and/or **prospects** the user cares about (not a separate “pitches” list)
-- Dashboard shows gifts sent or queued
-- Dashboard shows follow-up reminders
-- Dashboard shows basic conversion metrics (prospect-based—see §4.11)
-- Dashboard has clear navigation
+Acceptance criteria (as shipped):
+- Dashboard shows prospect outcome counts: open, won, lost, and total
+- Dashboard shows a simple win rate: `won / (won + lost)` when the denominator is non-zero
+- Dashboard has clear navigation into prospects and orders
+
+Deferred dashboard items: gifts-sent count, follow-up due list, time-ranged analytics, and the richer §4.11 conversion definition.
 
 ### Requirement: Empty States
 The system shall show helpful empty states for new users.
@@ -176,19 +191,18 @@ Acceptance criteria:
 ### Requirement: Create Prospect
 The system shall allow users to create a prospect.
 
-Acceptance criteria:
-- User can enter first name, last name, company, email, phone, and shipping address (prospect data can prefill a gift order; every **gift order** must still capture recipient name, full address, and note on the gift—see §4.7)
+Acceptance criteria (as shipped):
+- User can enter **name**, **title**, **company**, and **email**
 - Required fields are validated
-- Prospect is associated with the correct user/company
-
+- Prospect is associated with the owning user
+- Gift orders store their own recipient name / address / note (prospect does not store shipping address)
 ### Requirement: View Prospects
 The system shall allow users to view a list of prospects.
 
 Acceptance criteria:
-- User can see only their own or company-accessible prospects
-- User can search or filter prospects
+- User can see only their own prospects
 - User can open prospect detail page
-
+- Search / filter on the list is nice-to-have (not required for MVP)
 ### Requirement: Edit Prospect
 The system shall allow users to edit prospect information.
 
@@ -198,12 +212,7 @@ Acceptance criteria:
 - User cannot edit prospects they do not have permission to access
 
 ### Requirement: Delete or Archive Prospect
-The system should allow users to remove or archive a prospect.
-
-Acceptance criteria:
-- User can archive a prospect
-- Archived prospects do not appear in default list
-- Historical **gift orders** and prospect records remain intact (subject to your retention rules)
+**Deferred for MVP.** No archive/delete prospect API or UI is shipped yet.
 
 ---
 
@@ -214,20 +223,20 @@ The product does **not** include a dedicated **Sales Pitch** screen or entity. P
 ### Requirement: Prospect outcome and pipeline fields
 The system shall allow users to record and update pipeline information **on the prospect**.
 
-Acceptance criteria:
-- User can set **deal status / outcome** (e.g., open, won, lost, no response—or equivalent enum fixed at implementation)
-- User can enter optional fields such as estimated deal value, close date, and notes **on the prospect**
-- User can see gift orders and follow-ups for that prospect on **prospect detail** (no separate pitch detail page)
+Acceptance criteria (as shipped):
+- User can set **deal status** to one of: `open`, `won`, `lost`
+- Deal status updates are scoped to the owning user
+
+Deferred: estimated deal value, close date, prospect notes, `no_response` status.
 
 ### Requirement: Prospect detail
-The prospect detail experience shall consolidate what the user needs in one place.
+The prospect detail experience shall show contact fields and deal status.
 
-Acceptance criteria:
-- Shows contact / company information
-- Lists **gift orders** for this prospect with status
-- Shows scheduled **follow-ups** linked to this prospect
-- Shows current **outcome / deal status**
+Acceptance criteria (as shipped):
+- Shows name, title, company, email
+- Shows and edits current **deal status**
 
+Deferred on detail: gift-order list for the prospect, follow-ups list.
 **Note:** CRM integrations may import external “deals” or “opportunities” later; that does not require a first-class **Pitch** table in CloseAndKeep as long as activity remains attributable to a **prospect**.
 
 ---
@@ -235,23 +244,15 @@ Acceptance criteria:
 ## 4.6 Gift Catalog
 
 ### Requirement: View Gift Catalog
-The system shall allow users to browse available gifts.
+The system shall expose the cookie-pack catalog for ordering.
 
-Acceptance criteria:
-- User can view gift name, image, description, and category
-- Inactive gifts are hidden from normal users
-- User can select a gift during the gift workflow
+Acceptance criteria (as shipped):
+- `GET /gifts` returns known pack ids with live Stripe unit amounts when configured
+- Web UI labels packs via `web/lib/gift-catalog.ts`
+- User selects a pack during the gift-order wizard
 
 ### Requirement: Manage Gifts
-The admin shall be able to manage gift options.
-
-Acceptance criteria:
-- Admin can create gift
-- Admin can edit gift
-- Admin can activate/deactivate gift
-- Admin can update gift price/cost
-- Admin can add image URL
-
+**Deferred for MVP.** Catalog is static in API config + Stripe Price env vars. No admin gift CRUD UI/API.
 ---
 
 ## 4.7 Gift Ordering
@@ -261,23 +262,32 @@ The system shall allow a user to request a gift for a prospect.
 
 Acceptance criteria:
 - User selects **prospect**
-- User selects gift
+- User selects gift (must be a known catalog id)
 - User enters or confirms **recipient name** (delivery name)
-- User enters or confirms **full shipping address** (required for delivery)
+- User enters or confirms **full shipping address**, **or** elects recipient address request (email + public link)
 - User enters **note to leave on the gift** (required text for the card or enclosure; empty or whitespace-only is invalid)
-- Order is saved with queued status
+- Order is saved; payment via Checkout; fulfillment status becomes `queued` after paid capture (or after address submit when deferred)
 - User sees confirmation
+
+### Requirement: CSV gift-order import
+The system shall allow authenticated users to import multiple gift orders from CSV.
+
+Acceptance criteria:
+- Template and example CSV are available from the API
+- Uploads exceeding configured byte or row caps are rejected
+- Invalid rows are reported without creating partial Stripe sessions for those rows (per implemented error contract)
+- Successful rows create orders and Checkout as for single create
 
 ### Requirement: Gift Order Status
 The system shall track gift order status.
 
 Acceptance criteria:
-- Gift order can be draft, queued, ordered, shipped, delivered, failed, or canceled
+- Gift order can be `pending_payment`, `no_address`, `queued`, `ordered`, `shipped`, `delivered`, or `canceled` (as implemented)
 - User can view current status
 - Admin can update status
 
 ### Requirement: Usage Limits
-**Not applicable to the MVP.** Because billing is one-time per gift order, there is no plan-based weekly cap to enforce — each order is paid for individually at checkout. Usage limits would only return if a recurring subscription tier is introduced later.
+**Not applicable to the MVP.** Because billing is one-time per gift order, there is no plan-based weekly cap to enforce — each order is paid for individually at checkout. Usage limits would only return if a recurring subscription tier is introduced later. Sensitive create paths are still **rate-limited** (per user / IP; optional Redis-backed shared store).
 
 ---
 
@@ -298,8 +308,8 @@ The MVP shall support manual fulfillment.
 
 Acceptance criteria:
 - Admin can manually place gift order outside the system
-- Admin can record vendor/order details
-- User is notified when status changes
+- Admin can record tracking / status / internal notes
+- Customer-facing status-change emails are **deferred** (only the internal new-order Resend notification is shipped)
 
 ### Future Requirement: Automated Vendor Fulfillment
 The system may later connect to gift vendor APIs.
@@ -313,22 +323,10 @@ Acceptance criteria:
 
 ## 4.9 Follow-Up Reminders
 
-### Requirement: Schedule Follow-Up
-The system shall allow a user to schedule a follow-up reminder.
+**Deferred for MVP.** The `/follow-ups` page is an honest “coming soon” placeholder. There is no follow-up table, API, reminder job, or reminder email yet.
 
-Acceptance criteria:
-- User can choose a follow-up date
-- Follow-up is linked to **prospect** (optional link to a specific **gift order** if useful)
-- Reminder appears on dashboard
-- Reminder can be marked complete
-
-### Requirement: Email Reminder
-The system should send reminder emails to the salesperson.
-
-Acceptance criteria:
-- Email sends on or before scheduled date
-- Email includes **prospect** context (and gift order context if applicable)
-- Failed emails are logged
+### Future requirement: Schedule Follow-Up
+When implemented, the system shall allow a user to schedule a follow-up reminder linked to a prospect (optional link to a gift order), show due items on the dashboard, and email the salesperson.
 
 ---
 
@@ -337,11 +335,9 @@ Acceptance criteria:
 ### Requirement: Mark outcome
 The system shall allow users to mark an **outcome for the prospect** (same fields as §4.5; may be implemented as one flow).
 
-Acceptance criteria:
-- User can mark won, lost, open/pending, no response, or unknown
-- User can enter final deal value
-- User can enter close date
-- Outcome updates dashboard metrics
+Acceptance criteria (as shipped):
+- User can mark `open`, `won`, or `lost`
+- Outcome updates dashboard open / won / lost / total metrics
 
 ---
 
@@ -350,24 +346,14 @@ Acceptance criteria:
 ### Requirement: Basic Dashboard Metrics
 The system shall show basic analytics.
 
-Acceptance criteria:
-- Total **prospects** (or open deals) shown as appropriate
-- Gifts sent shown
-- Follow-ups due shown
-- Won deals shown
-- Lost deals shown
-- Pending / open deals shown
-- Basic conversion rate shown (see definition below)
+Acceptance criteria (as shipped):
+- Open / won / lost / total prospect counts
+- Win rate = `won / (won + lost)` when `(won + lost) > 0` (else empty / zero display)
 
-**Definition — conversion rate (dashboard, default):** in the selected time range, **number of prospects with outcome “won”** divided by **number of prospects with a terminal outcome** (outcome is **won**, **lost**, or **no response**—exclude prospects still open or pending a final outcome). If the denominator is zero, the UI should show `0%`, an em dash, or another agreed empty state (document the choice in the app). Product, code, and **Test.MD** analytics checks must use the same formula so metrics and tests do not drift.
+**Target conversion definition (not yet implemented):** in a selected time range, **won ÷ terminal outcomes** where terminal means `won` or `lost`. Product, code, and **Test.MD** must stay aligned when time-ranged analytics ship.
 
 ### Requirement: Gift Impact Metrics
-The system should estimate whether gifting helps sales.
-
-Acceptance criteria:
-- System can show close rate for **prospects** who received gifts vs those who did not (when data supports it)
-- System can show estimated revenue won after gifts
-- Future system can compare gifted vs non-gifted **opportunities** (still prospect-centric)
+**Deferred.** Gifted vs non-gifted close-rate and revenue influence are not shipped.
 
 ---
 
@@ -377,12 +363,9 @@ Acceptance criteria:
 The system shall provide admin-only pages.
 
 Acceptance criteria:
-- Only admin users can access admin dashboard
-- Admin can view users
-- Admin can view companies
-- Admin can view gift orders
-- Admin can manage gift catalog
-- Admin actions are logged where appropriate
+- Only admin users can access admin dashboard / APIs
+- Admin can view and update gift orders (status, tracking, notes)
+- Admin gift-catalog CRUD and user list are deferred
 
 ### Requirement: Admin bootstrap (MVP)
 
@@ -426,13 +409,17 @@ The system shall protect user and prospect data.
 
 Requirements:
 - HTTPS required
-- Secure authentication
+- Secure authentication (HttpOnly session cookie; `Secure` default when `APP_ENV=production`)
 - Role-based access control
 - Input validation
-- Secure password storage if passwords are managed directly
+- Secure password storage (bcrypt) with min length + letter/digit policy
+- No email enumeration on duplicate signup
 - Environment variables for secrets
 - Stripe webhook signature verification
-- Rate limiting for sensitive endpoints
+- Checkout amount verification against catalog prices
+- Rate limiting for sensitive endpoints (auth, order create, API-key create; optional Redis)
+- CSV import size and row caps
+- Address-request token expiry
 - Regular database backups
 
 ## 5.4 Privacy
@@ -474,14 +461,18 @@ Requirements:
 ## Stripe
 Used for:
 - One-time Checkout (`mode: payment`) per gift order
-- Payment webhooks (`checkout.session.completed`)
-- Per-order payment status
+- Authorize / capture when recipient address is deferred
+- Payment webhooks (`checkout.session.completed`, `payment_intent.canceled`, …)
+- Per-order payment status with catalog amount verification
 
 ## Email Provider
-Used for:
+Used for (as shipped):
+- Internal new-order notification (Resend)
+
+Deferred:
 - Follow-up reminders
-- Gift status updates
-- Account emails
+- Gift status updates to the seller
+- Account / password-reset emails
 - Payment issue notices
 
 ## Gift Vendors
@@ -505,20 +496,17 @@ Future:
 
 The MVP is complete when:
 
-- A user can create an account
+- A user can create an account (password policy enforced; no email enumeration on duplicate)
 - A logged-in user can access the dashboard
-- A user can pay for a gift order with Stripe (one-time, at checkout)
-- A user can create a prospect
-- A user can update **prospect outcome / deal status** (pipeline without a separate pitch record)
-- A user can choose a gift
-- A user can submit a gift request with recipient name, shipping address, and note on the gift
-- Admin can view and manage gift orders
-- Admin can update gift order status
-- User can schedule a follow-up reminder
-- User can mark a sales outcome
-- Dashboard shows basic metrics
-- Basic email notifications work
+- A user can pay for a gift order with Stripe (one-time, at checkout; amount cannot exceed catalog)
+- A user can create a prospect and set deal status (`open` / `won` / `lost`)
+- A user can choose a cookie pack and submit a gift order (address now or via recipient link)
+- Admin can view and manage gift orders (status / tracking / notes)
+- Dashboard shows open / won / lost / total and a simple win rate
+- Internal new-order email works when Resend is configured
 - Unauthorized users cannot access protected data
+
+Explicitly **not** required to call MVP complete: follow-up reminders, password reset, customer status emails, admin gift CRUD.
 
 ### Verification traceability
 
@@ -530,8 +518,12 @@ MVP acceptance is demonstrated against **Test.MD**, the recursive test checklist
 
 The following are not required for the first version:
 
+- Follow-up reminder backend / emails
+- Password reset
+- Customer-facing order status emails
+- Admin gift catalog CRUD
 - CRM integrations
-- Public API
+- Broad public API / outbound webhooks (user API keys exist; docs/versioning deferred)
 - Automated gift vendor API ordering
 - Advanced analytics
 - AI recommendations
@@ -560,27 +552,28 @@ The following are not required for the first version:
 ## 10. Recommended Requirement Priority
 
 ## Priority 1
-- Signup/login
-- Stripe one-time payment per gift order
-- Dashboard
-- Prospects (including outcome / deal status on prospect)
-- Gift requests
-- Admin order queue
-- Follow-up reminders
-- Outcome tracking
+- Signup/login (password policy + anti-enumeration)
+- Stripe one-time payment per gift order (incl. deferred address + amount checks)
+- Dashboard (open / won / lost / total)
+- Prospects (deal status on prospect)
+- Gift requests + admin order queue
+- Outcome tracking (`open` / `won` / `lost`)
 
 ## Priority 2
-- Better analytics
+- Follow-up reminders
+- Password reset / account settings
+- Customer status emails
+- Better analytics (time range, gifts sent)
 - Team accounts
-- CSV import
 - Gift templates
 - Improved onboarding
-- Better admin tools
+- Better admin tools (user list, gift CRUD)
 
 ## Priority 3
 - CRM integration
 - Gift vendor API integration
-- Public API
-- Webhooks
+- Broader public API / outbound webhooks
 - Advanced reporting
 - Enterprise features
+
+> Gift-order CSV import and user API keys are already implemented (see `api/README.md`).
