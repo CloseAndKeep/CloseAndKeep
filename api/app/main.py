@@ -34,6 +34,7 @@ from .stripe_payments import (
     cancel_payment_authorization,
     capture_authorized_order,
     create_checkout_session_for_order,
+    create_checkout_session_for_orders,
     ensure_stripe_webhook_configured,
     fulfill_order_from_checkout_session,
     list_gift_prices,
@@ -179,6 +180,8 @@ class GiftOrderImportRowError(BaseModel):
 
 class GiftOrderImportResponse(BaseModel):
     created: list[GiftOrderCreateResponse]
+    # Single Checkout URL covering every imported row that already has an address.
+    batch_checkout_url: str | None = None
     errors: list[GiftOrderImportRowError] = []
 
 
@@ -794,6 +797,7 @@ async def import_gift_orders_csv(
 
     created: list[GiftOrderCreateResponse] = []
     staged_orders: list[GiftOrderModel] = []
+    batch_checkout_url: str | None = None
 
     try:
         for row in parsed_rows:
@@ -836,12 +840,33 @@ async def import_gift_orders_csv(
         for order in staged_orders:
             db.refresh(order)
 
-        for order in staged_orders:
+        known_address = [
+            o for o in staged_orders if o.status == "pending_payment" and o.shipping_address
+        ]
+        needs_address = [o for o in staged_orders if o.status == "no_address"]
+
+        checkout_by_id: dict[int, str | None] = {}
+
+        if known_address:
+            batch_checkout_url = create_checkout_session_for_orders(
+                known_address, current_user, db
+            )
+            for order in known_address:
+                db.refresh(order)
+                checkout_by_id[order.id] = batch_checkout_url
+
+        for order in needs_address:
             checkout_url = create_checkout_session_for_order(order, current_user, db)
             db.refresh(order)
+            checkout_by_id[order.id] = checkout_url
+
+        for order in staged_orders:
             response = _gift_order_response(order)
             created.append(
-                GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)
+                GiftOrderCreateResponse(
+                    **response.model_dump(),
+                    checkout_url=checkout_by_id.get(order.id),
+                )
             )
     except Exception:
         # Roll back any orders created for this batch so a failed Stripe setup
@@ -853,7 +878,7 @@ async def import_gift_orders_csv(
         db.commit()
         raise
 
-    return GiftOrderImportResponse(created=created)
+    return GiftOrderImportResponse(created=created, batch_checkout_url=batch_checkout_url)
 
 
 @app.get("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)

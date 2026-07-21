@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { getApiBaseUrl } from "@/lib/api";
@@ -29,6 +29,16 @@ export default function ImportOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<ImportError[]>([]);
   const [created, setCreated] = useState<CreatedOrder[] | null>(null);
+  const [batchCheckoutUrl, setBatchCheckoutUrl] = useState<string | null>(null);
+
+  const withAddress = useMemo(
+    () => (created ?? []).filter((order) => Boolean(order.shipping_address)),
+    [created],
+  );
+  const needsAddress = useMemo(
+    () => (created ?? []).filter((order) => !order.shipping_address),
+    [created],
+  );
 
   async function downloadCsv(kind: "template" | "example") {
     setError(null);
@@ -65,6 +75,7 @@ export default function ImportOrdersPage() {
     setError(null);
     setRowErrors([]);
     setCreated(null);
+    setBatchCheckoutUrl(null);
     try {
       const body = new FormData();
       body.append("file", file);
@@ -76,6 +87,7 @@ export default function ImportOrdersPage() {
       const data = (await response.json()) as {
         detail?: string | { message?: string; errors?: ImportError[] };
         created?: CreatedOrder[];
+        batch_checkout_url?: string | null;
         errors?: ImportError[];
       };
 
@@ -92,6 +104,7 @@ export default function ImportOrdersPage() {
       }
 
       setCreated(data.created ?? []);
+      setBatchCheckoutUrl(data.batch_checkout_url ?? null);
       setFile(null);
       if (inputRef.current) {
         inputRef.current.value = "";
@@ -143,8 +156,8 @@ Bob Jones,bob@example.com,1,`}</pre>
         <section className="rounded-2xl border border-stone-200/90 bg-white/90 p-5 shadow-sm">
           <h2 className="text-base font-semibold text-espresso">Upload</h2>
           <p className="mt-1 text-sm text-stone-600">
-            After import, complete Stripe checkout for each order. Rows without an address
-            authorize payment first; we email the recipient for shipping, then charge.
+            Rows with an address are charged together in one Stripe checkout. Rows without an
+            address each get their own authorize-then-capture payment.
           </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
@@ -188,47 +201,87 @@ Bob Jones,bob@example.com,1,`}</pre>
             <h2 className="text-base font-semibold text-espresso">
               Created {created.length} order{created.length === 1 ? "" : "s"}
             </h2>
-            <p className="mt-1 text-sm text-stone-600">
-              Pay each order below. You can also finish payment later from the order detail page.
-            </p>
-            <ul className="mt-4 divide-y divide-emerald-100/80 overflow-hidden rounded-xl border border-emerald-200/70 bg-white">
-              {created.map((order) => (
-                <li
-                  key={order.id}
-                  className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+
+            {batchCheckoutUrl && withAddress.length > 0 ? (
+              <div className="mt-4 rounded-xl border border-emerald-200/80 bg-white px-4 py-4">
+                <p className="text-sm text-stone-600">
+                  {withAddress.length} order{withAddress.length === 1 ? "" : "s"} with an address —
+                  pay once for all of them.
+                </p>
+                <a
+                  href={batchCheckoutUrl}
+                  className="mt-3 inline-flex rounded-full bg-wood px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
                 >
-                  <div>
-                    <div className="font-medium text-espresso">
-                      <Link href={`/orders/${order.id}`} className="hover:underline">
-                        {order.recipient_name}
-                      </Link>
-                    </div>
-                    <div className="text-xs text-stone-500">
-                      {order.recipient_email} · {labelForGiftId(order.gift_id)} ·{" "}
-                      {order.shipping_address
-                        ? "Address on file"
-                        : "Will request address after payment"}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      href={`/orders/${order.id}`}
-                      className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-espresso hover:bg-stone-50"
-                    >
-                      View
-                    </Link>
-                    {order.checkout_url ? (
-                      <a
-                        href={order.checkout_url}
-                        className="rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
+                  Pay {withAddress.length} order{withAddress.length === 1 ? "" : "s"} together
+                </a>
+                <ul className="mt-4 divide-y divide-stone-100 border-t border-stone-100">
+                  {withAddress.map((order) => (
+                    <li key={order.id} className="flex items-center justify-between gap-3 py-2">
+                      <div>
+                        <div className="text-sm font-medium text-espresso">
+                          <Link href={`/orders/${order.id}`} className="hover:underline">
+                            {order.recipient_name}
+                          </Link>
+                        </div>
+                        <div className="text-xs text-stone-500">
+                          {order.recipient_email} · {labelForGiftId(order.gift_id)}
+                        </div>
+                      </div>
+                      <Link
+                        href={`/orders/${order.id}`}
+                        className="text-xs font-medium text-stone-600 hover:underline"
                       >
-                        Pay now
-                      </a>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                        View
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {needsAddress.length > 0 ? (
+              <div className="mt-4">
+                <p className="text-sm text-stone-600">
+                  {needsAddress.length} order{needsAddress.length === 1 ? "" : "s"} need an address
+                  from the recipient — authorize each separately, then we email them for shipping.
+                </p>
+                <ul className="mt-3 divide-y divide-emerald-100/80 overflow-hidden rounded-xl border border-emerald-200/70 bg-white">
+                  {needsAddress.map((order) => (
+                    <li
+                      key={order.id}
+                      className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <div className="font-medium text-espresso">
+                          <Link href={`/orders/${order.id}`} className="hover:underline">
+                            {order.recipient_name}
+                          </Link>
+                        </div>
+                        <div className="text-xs text-stone-500">
+                          {order.recipient_email} · {labelForGiftId(order.gift_id)}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/orders/${order.id}`}
+                          className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-espresso hover:bg-stone-50"
+                        >
+                          View
+                        </Link>
+                        {order.checkout_url ? (
+                          <a
+                            href={order.checkout_url}
+                            className="rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
+                          >
+                            Authorize payment
+                          </a>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
         ) : null}
       </div>

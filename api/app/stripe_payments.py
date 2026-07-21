@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import stripe
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import GIFT_CATALOG, settings, stripe_price_for_gift
@@ -271,6 +272,45 @@ def cancel_payment_authorization(order: GiftOrderModel) -> None:
         )
 
 
+def _orders_sharing_checkout_session(
+    session_id: str | None, db: Session
+) -> list[GiftOrderModel]:
+    if not session_id:
+        return []
+    return list(
+        db.scalars(
+            select(GiftOrderModel).where(GiftOrderModel.stripe_checkout_session_id == session_id)
+        ).all()
+    )
+
+
+def _orders_from_checkout_metadata(session: object, db: Session) -> list[GiftOrderModel]:
+    """Resolve orders from Checkout metadata when session-id lookup finds none."""
+    metadata = _field(session, "metadata", {}) or {}
+    order_ids: list[int] = []
+    multi = _field(metadata, "gift_order_ids")
+    if multi:
+        for part in str(multi).split(","):
+            part = part.strip()
+            if part.isdigit():
+                order_ids.append(int(part))
+    single = _field(metadata, "gift_order_id")
+    if single:
+        try:
+            oid = int(str(single))
+        except ValueError:
+            oid = None
+        if oid is not None and oid not in order_ids:
+            order_ids.append(oid)
+
+    orders: list[GiftOrderModel] = []
+    for order_id in order_ids:
+        order = db.get(GiftOrderModel, order_id)
+        if order:
+            orders.append(order)
+    return orders
+
+
 def sync_order_payment_from_stripe(order: GiftOrderModel, db: Session) -> GiftOrderModel:
     if order.payment_status == "paid" or not order.stripe_checkout_session_id:
         return order
@@ -282,7 +322,13 @@ def sync_order_payment_from_stripe(order: GiftOrderModel, db: Session) -> GiftOr
     )
 
     if _field(session, "payment_status") == "paid":
-        return mark_order_paid(order, db)
+        # Batch checkouts share one session — mark every linked order paid.
+        siblings = _orders_sharing_checkout_session(order.stripe_checkout_session_id, db)
+        targets = siblings or [order]
+        for sibling in targets:
+            mark_order_paid(sibling, db)
+        db.refresh(order)
+        return order
 
     if order.payment_status == "authorized":
         return order
@@ -374,7 +420,63 @@ def create_checkout_session_for_order(
     if defer_capture:
         if order.status != "no_address":
             raise HTTPException(status_code=400, detail="This order cannot be paid.")
-    else:
+        ensure_stripe_configured()
+
+        reusable_url = _reuse_open_checkout_session(order)
+        if reusable_url:
+            return reusable_url
+
+        price_id = resolve_stripe_price_id(order.gift_id)
+        customer_id = _ensure_stripe_customer(current_user, db)
+        session_params: dict = {
+            "mode": "payment",
+            "line_items": [{"price": price_id, "quantity": 1}],
+            "success_url": f"{settings.web_base_url}/orders/{order.id}?payment=success",
+            "cancel_url": f"{settings.web_base_url}/orders/{order.id}?payment=cancel",
+            "metadata": {
+                "gift_order_id": str(order.id),
+                "gift_order_ids": str(order.id),
+                "user_id": str(current_user.id),
+                "defer_capture": "true",
+            },
+            "customer": customer_id,
+            "allow_promotion_codes": True,
+            # Authorize now; capture only after the recipient submits an address.
+            "payment_intent_data": {"capture_method": "manual"},
+        }
+        session = stripe.checkout.Session.create(**session_params)
+        order.stripe_checkout_session_id = session["id"]
+        order.stripe_price_id = price_id
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return session["url"]
+
+    return create_checkout_session_for_orders([order], current_user, db)
+
+
+def create_checkout_session_for_orders(
+    orders: list[GiftOrderModel],
+    current_user: UserModel,
+    db: Session,
+) -> str:
+    """One Checkout Session covering one or more known-address orders.
+
+    Used by CSV import so the buyer enters their card once for every row that
+    already has a shipping address. Address-request orders must stay on their
+    own authorize-then-capture sessions and must not be passed here.
+    """
+    if not orders:
+        raise HTTPException(status_code=400, detail="No orders to check out.")
+
+    for order in orders:
+        if order.payment_status == "paid":
+            raise HTTPException(status_code=400, detail="This order is already paid.")
+        if order.payment_status == "authorized":
+            raise HTTPException(
+                status_code=400,
+                detail="Payment is already authorized. Waiting for the recipient's shipping address.",
+            )
         if not (order.shipping_address or "").strip():
             raise HTTPException(
                 status_code=400,
@@ -382,40 +484,62 @@ def create_checkout_session_for_order(
             )
         if order.status not in {"pending_payment"}:
             raise HTTPException(status_code=400, detail="This order cannot be paid.")
+        if order.owner_user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Order not found.")
 
     ensure_stripe_configured()
 
-    reusable_url = _reuse_open_checkout_session(order)
-    if reusable_url:
-        return reusable_url
+    # Reuse when every order already points at the same still-open session.
+    shared_session_ids = {o.stripe_checkout_session_id for o in orders}
+    if len(shared_session_ids) == 1:
+        shared_id = next(iter(shared_session_ids))
+        if shared_id:
+            reusable_url = _reuse_open_checkout_session(orders[0])
+            if reusable_url:
+                return reusable_url
 
-    price_id = resolve_stripe_price_id(order.gift_id)
+    line_items: list[dict] = []
+    for order in orders:
+        price_id = resolve_stripe_price_id(order.gift_id)
+        order.stripe_price_id = price_id
+        line_items.append({"price": price_id, "quantity": 1})
 
     customer_id = _ensure_stripe_customer(current_user, db)
+    order_ids = ",".join(str(o.id) for o in orders)
+    # Stripe metadata values max out at 500 chars; session-id lookup is the
+    # primary fulfill path, so truncate ids in metadata if the batch is huge.
+    metadata_ids = order_ids if len(order_ids) <= 500 else order_ids[:497] + "..."
+
+    if len(orders) == 1:
+        success_url = f"{settings.web_base_url}/orders/{orders[0].id}?payment=success"
+        cancel_url = f"{settings.web_base_url}/orders/{orders[0].id}?payment=cancel"
+    else:
+        success_url = f"{settings.web_base_url}/orders?payment=success"
+        cancel_url = f"{settings.web_base_url}/orders?payment=cancel"
 
     session_params: dict = {
         "mode": "payment",
-        "line_items": [{"price": price_id, "quantity": 1}],
-        "success_url": f"{settings.web_base_url}/orders/{order.id}?payment=success",
-        "cancel_url": f"{settings.web_base_url}/orders/{order.id}?payment=cancel",
+        "line_items": line_items,
+        "success_url": success_url,
+        "cancel_url": cancel_url,
         "metadata": {
-            "gift_order_id": str(order.id),
+            "gift_order_id": str(orders[0].id),
+            "gift_order_ids": metadata_ids,
             "user_id": str(current_user.id),
-            "defer_capture": "true" if defer_capture else "false",
+            "defer_capture": "false",
         },
         "customer": customer_id,
         "allow_promotion_codes": True,
     }
-    if defer_capture:
-        # Authorize now; capture only after the recipient submits an address.
-        session_params["payment_intent_data"] = {"capture_method": "manual"}
 
     session = stripe.checkout.Session.create(**session_params)
-    order.stripe_checkout_session_id = session["id"]
-    order.stripe_price_id = price_id
-    db.add(order)
+    session_id = session["id"]
+    for order in orders:
+        order.stripe_checkout_session_id = session_id
+        db.add(order)
     db.commit()
-    db.refresh(order)
+    for order in orders:
+        db.refresh(order)
     return session["url"]
 
 
@@ -423,31 +547,30 @@ def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
     if _field(session, "mode") != "payment":
         return
 
-    metadata = _field(session, "metadata", {}) or {}
-    gift_order_id = _field(metadata, "gift_order_id")
-    if not gift_order_id:
+    session_id = _field(session, "id")
+    orders = _orders_sharing_checkout_session(
+        session_id if isinstance(session_id, str) else None, db
+    )
+    if not orders:
+        orders = _orders_from_checkout_metadata(session, db)
+    if not orders:
         return
 
-    try:
-        order_id = int(gift_order_id)
-    except ValueError:
-        return
-
-    order = db.get(GiftOrderModel, order_id)
-    if not order:
-        return
-
-    if _field(session, "id"):
-        order.stripe_checkout_session_id = session["id"]
-        db.add(order)
+    if isinstance(session_id, str) and session_id:
+        for order in orders:
+            order.stripe_checkout_session_id = session_id
+            db.add(order)
         db.commit()
-        db.refresh(order)
+        for order in orders:
+            db.refresh(order)
 
+    metadata = _field(session, "metadata", {}) or {}
     pi_id = _payment_intent_id_from_session(session)
+    defer = _field(metadata, "defer_capture") == "true"
 
-    if _session_defers_capture(session, order) or _field(metadata, "defer_capture") == "true":
-        # Funds are held; do not charge or notify ops until address + capture.
-        mark_order_authorized(order, db, payment_intent_id=pi_id)
-        return
-
-    mark_order_paid(order, db)
+    for order in orders:
+        if defer or _session_defers_capture(session, order):
+            # Funds are held; do not charge or notify ops until address + capture.
+            mark_order_authorized(order, db, payment_intent_id=pi_id)
+        else:
+            mark_order_paid(order, db)

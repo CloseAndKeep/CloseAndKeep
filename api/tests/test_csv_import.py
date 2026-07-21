@@ -48,13 +48,14 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     data = resp.json()
     assert len(data["created"]) == 3
     assert data["errors"] == []
+    assert data["batch_checkout_url"] == stripe_stub.created_session["url"]
 
     by_email = {o["recipient_email"]: o for o in data["created"]}
     jane = by_email["jane@example.com"]
     assert jane["gift_id"] == "cookies-4"
     assert jane["status"] == "pending_payment"
     assert "123 Main St" in (jane["shipping_address"] or "")
-    assert jane["checkout_url"]
+    assert jane["checkout_url"] == data["batch_checkout_url"]
 
     bob = by_email["bob@example.com"]
     assert bob["gift_id"] == "cookies-1"
@@ -65,14 +66,79 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     alex = by_email["alex@example.com"]
     assert alex["gift_id"] == "cookies-12"
     assert alex["status"] == "pending_payment"
+    assert alex["checkout_url"] == data["batch_checkout_url"]
 
-    # Address-request rows use manual capture; known-address rows do not.
-    defer_flags = [
-        call.get("metadata", {}).get("defer_capture") for call in stripe_stub.session_create_calls
-    ]
-    assert defer_flags.count("true") == 1
-    assert len(stripe_stub.session_create_calls) == 3
+    # One batched immediate-capture session for Jane+Alex, one manual-capture for Bob.
+    assert len(stripe_stub.session_create_calls) == 2
+    batch_call = next(
+        c for c in stripe_stub.session_create_calls if c["metadata"].get("defer_capture") == "false"
+    )
+    address_call = next(
+        c for c in stripe_stub.session_create_calls if c["metadata"].get("defer_capture") == "true"
+    )
+    assert len(batch_call["line_items"]) == 2
+    assert "payment_intent_data" not in batch_call
+    assert address_call["payment_intent_data"] == {"capture_method": "manual"}
+    assert set(batch_call["metadata"]["gift_order_ids"].split(",")) == {
+        str(jane["id"]),
+        str(alex["id"]),
+    }
 
+
+def test_batch_checkout_webhook_marks_all_known_address_orders_paid(
+    auth_client, stripe_stub, monkeypatch
+):
+    csv_text = (
+        "Name,Email,Cookies,Address\n"
+        "Jane Smith,jane@example.com,4,123 Main St\n"
+        "Alex Rivera,alex@example.com,12,456 Oak Ave\n"
+    )
+    resp = _upload(auth_client, csv_text)
+    assert resp.status_code == 201, resp.text
+    created = resp.json()["created"]
+    order_ids = [o["id"] for o in created]
+    session_id = "cs_test_created"
+
+    import stripe
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    with SessionLocal() as db:
+        for oid in order_ids:
+            order = db.get(GiftOrderModel, oid)
+            assert order.stripe_checkout_session_id == session_id
+
+    event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": session_id,
+                "mode": "payment",
+                "metadata": {
+                    "gift_order_ids": ",".join(str(i) for i in order_ids),
+                    "gift_order_id": str(order_ids[0]),
+                    "defer_capture": "false",
+                },
+                "payment_status": "paid",
+            }
+        },
+    }
+    monkeypatch.setattr(
+        stripe.Webhook,
+        "construct_event",
+        staticmethod(lambda payload, sig, secret: event),
+    )
+    webhook = auth_client.post(
+        "/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "t=1,v1=validsig"},
+    )
+    assert webhook.status_code == 200
+
+    for oid in order_ids:
+        fetched = auth_client.get(f"/gift-orders/{oid}").json()
+        assert fetched["payment_status"] == "paid"
+        assert fetched["status"] == "queued"
 
 def test_import_rejects_invalid_cookie_count(auth_client, stripe_stub):
     csv_text = (
