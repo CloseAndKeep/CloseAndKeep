@@ -21,6 +21,8 @@ type AdminGiftOrder = {
 
 const FILTERS = [
   { value: "queued", label: "Queued" },
+  { value: "no_address", label: "No address" },
+  { value: "pending_payment", label: "Pending payment" },
   { value: "ordered", label: "Ordered" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
@@ -38,6 +40,10 @@ function statusClasses(status: string): string {
       return "bg-indigo-100 text-indigo-800";
     case "canceled":
       return "bg-rose-100 text-rose-800";
+    case "no_address":
+      return "bg-orange-100 text-orange-900";
+    case "pending_payment":
+      return "bg-stone-100 text-stone-700";
     default:
       return "bg-amber-100 text-amber-900";
   }
@@ -78,7 +84,7 @@ export default function AdminQueuePage() {
     <>
       <PageHeader
         title="Order queue"
-        description="Paid gift orders awaiting fulfillment. Update status and add tracking."
+        description="Gift orders awaiting fulfillment. Filter by status — including orders still waiting on a shipping address."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -162,7 +168,7 @@ export default function AdminQueuePage() {
                   </span>
                   {order.payment_status !== "paid" ? (
                     <span className="ml-1 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
-                      unpaid
+                      {order.payment_status === "authorized" ? "authorized" : "unpaid"}
                     </span>
                   ) : null}
                 </td>

@@ -88,6 +88,8 @@ class StripeStub:
         self.session_create_calls: list[dict] = []
         self.customer_create_calls: list[dict] = []
         self.customer_retrieve_calls: list[str] = []
+        self.payment_intent_capture_calls: list[dict] = []
+        self.payment_intent_cancel_calls: list[dict] = []
         # Response returned by Customer.retrieve. Defaults to a live, existing
         # customer so a stored id is reused; set to None to simulate a customer
         # that does not exist in the current Stripe mode (raises InvalidRequest).
@@ -105,6 +107,10 @@ class StripeStub:
             "payment_status": "unpaid",
             "url": "https://checkout.stripe.test/pay/cs_test_created",
         }
+        self.retrieved_payment_intent = {
+            "id": "pi_test_123",
+            "status": "requires_capture",
+        }
 
     # --- fake Stripe SDK surface --------------------------------------------
     def _session_create(self, **params):
@@ -114,6 +120,27 @@ class StripeStub:
     def _session_retrieve(self, session_id, **_kwargs):
         result = dict(self.retrieved_session)
         result.setdefault("id", session_id)
+        return result
+
+    def _payment_intent_retrieve(self, payment_intent_id, **_kwargs):
+        result = dict(self.retrieved_payment_intent)
+        result.setdefault("id", payment_intent_id)
+        return result
+
+    def _payment_intent_capture(self, payment_intent_id, **params):
+        self.payment_intent_capture_calls.append({"id": payment_intent_id, **params})
+        result = dict(self.retrieved_payment_intent)
+        result["id"] = payment_intent_id
+        result["status"] = "succeeded"
+        self.retrieved_payment_intent = result
+        return result
+
+    def _payment_intent_cancel(self, payment_intent_id, **params):
+        self.payment_intent_cancel_calls.append({"id": payment_intent_id, **params})
+        result = dict(self.retrieved_payment_intent)
+        result["id"] = payment_intent_id
+        result["status"] = "canceled"
+        self.retrieved_payment_intent = result
         return result
 
     def _customer_create(self, **params):
@@ -143,6 +170,15 @@ def stripe_stub(monkeypatch):
     monkeypatch.setattr(stripe.checkout.Session, "retrieve", staticmethod(stub._session_retrieve))
     monkeypatch.setattr(stripe.Customer, "create", staticmethod(stub._customer_create))
     monkeypatch.setattr(stripe.Customer, "retrieve", staticmethod(stub._customer_retrieve))
+    monkeypatch.setattr(
+        stripe.PaymentIntent, "retrieve", staticmethod(stub._payment_intent_retrieve)
+    )
+    monkeypatch.setattr(
+        stripe.PaymentIntent, "capture", staticmethod(stub._payment_intent_capture)
+    )
+    monkeypatch.setattr(
+        stripe.PaymentIntent, "cancel", staticmethod(stub._payment_intent_cancel)
+    )
     return stub
 
 

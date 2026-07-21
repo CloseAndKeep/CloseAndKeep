@@ -20,6 +20,8 @@ type Prospect = {
   deal_status: "open" | "won" | "lost";
 };
 
+type AddressMode = "known" | "request";
+
 export function GiftOrderWizard() {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -27,8 +29,11 @@ export function GiftOrderWizard() {
   const [prospectId, setProspectId] = useState("");
   const [giftId, setGiftId] = useState(cookiePacks[0]?.id ?? "");
   const [recipientName, setRecipientName] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [addressMode, setAddressMode] = useState<AddressMode>("known");
   const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
+  const [isGuest, setIsGuest] = useState(false);
   const [loadingProspects, setLoadingProspects] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,16 +45,25 @@ export function GiftOrderWizard() {
       setLoadingProspects(true);
       setError(null);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/prospects`, {
-          credentials: "include",
-        });
-        if (!response.ok) {
+        const [prospectsResponse, meResponse] = await Promise.all([
+          fetch(`${getApiBaseUrl()}/prospects`, { credentials: "include" }),
+          fetch(`${getApiBaseUrl()}/auth/me`, { credentials: "include" }),
+        ]);
+        if (!prospectsResponse.ok) {
           throw new Error("Unable to load prospects.");
         }
-        const data = (await response.json()) as Prospect[];
+        const data = (await prospectsResponse.json()) as Prospect[];
         setProspects(data);
         if (data.length > 0) {
           setProspectId(String(data[0].id));
+        }
+        if (meResponse.ok) {
+          const me = (await meResponse.json()) as { role?: string; is_guest?: boolean };
+          const guest = me.role === "guest" || me.is_guest === true;
+          setIsGuest(guest);
+          if (guest) {
+            setAddressMode("known");
+          }
         }
       } catch (loadError) {
         const message =
@@ -68,12 +82,19 @@ export function GiftOrderWizard() {
   );
   const selectedPack = useMemo(() => cookiePacks.find((p) => p.id === giftId), [giftId]);
   const selectedPriceLabel = formatGiftPrice(priceById.get(giftId));
+  const requestAddress = !isGuest && addressMode === "request";
 
   const canNext =
     step === 0
       ? Boolean(prospectId && giftId)
       : step === 1
-        ? recipientName.trim() && address.trim() && note.trim()
+        ? Boolean(
+            recipientName.trim() &&
+              note.trim() &&
+              (requestAddress
+                ? recipientEmail.trim().includes("@")
+                : address.trim()),
+          )
         : true;
 
   function next() {
@@ -93,23 +114,32 @@ export function GiftOrderWizard() {
     setError(null);
     setSuccessMessage(null);
     try {
+      const body: Record<string, unknown> = {
+        prospect_id: selectedProspect.id,
+        gift_id: selectedPack.id,
+        recipient_name: recipientName.trim(),
+        note: note.trim(),
+      };
+      if (requestAddress) {
+        body.request_recipient_address = true;
+        body.recipient_email = recipientEmail.trim();
+      } else {
+        body.shipping_address = address.trim();
+      }
+
       const response = await fetch(`${getApiBaseUrl()}/gift-orders`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({
-          prospect_id: selectedProspect.id,
-          gift_id: selectedPack.id,
-          recipient_name: recipientName.trim(),
-          shipping_address: address.trim(),
-          note: note.trim(),
-        }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(data?.detail ?? "Unable to submit order.");
+        throw new Error(
+          typeof data?.detail === "string" ? data.detail : "Unable to submit order.",
+        );
       }
       const data = (await response.json()) as { id: number; checkout_url?: string | null };
       if (data.checkout_url) {
@@ -220,7 +250,9 @@ export function GiftOrderWizard() {
                 })}
               </div>
               <p className="mt-2 text-xs text-stone-500">
-                You pay once at Stripe checkout when you submit.
+                {requestAddress
+                  ? "You authorize payment at checkout. We charge only after the recipient submits their address."
+                  : "You pay once at Stripe checkout when you submit."}
               </p>
               {selectedPack ? (
                 <p className="mt-2 text-sm font-medium text-espresso">
@@ -254,17 +286,73 @@ export function GiftOrderWizard() {
                 placeholder={selectedProspect?.name ?? "Full name"}
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-espresso">
-                Full shipping address
-              </label>
-              <textarea
-                className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm min-h-[100px]"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Street, city, state, ZIP / postal code"
-              />
-            </div>
+
+            {!isGuest ? (
+              <fieldset>
+                <legend className="block text-sm font-medium text-espresso">Shipping address</legend>
+                <div className="mt-2 space-y-2">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 px-4 py-3 text-sm has-[:checked]:border-wood has-[:checked]:bg-wood/5">
+                    <input
+                      type="radio"
+                      name="address-mode"
+                      className="mt-1"
+                      checked={addressMode === "known"}
+                      onChange={() => setAddressMode("known")}
+                    />
+                    <span>
+                      <span className="font-medium text-espresso">I know the address</span>
+                      <span className="mt-0.5 block text-xs text-stone-500">
+                        Enter the full shipping address now and pay at checkout.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 px-4 py-3 text-sm has-[:checked]:border-wood has-[:checked]:bg-wood/5">
+                    <input
+                      type="radio"
+                      name="address-mode"
+                      className="mt-1"
+                      checked={addressMode === "request"}
+                      onChange={() => setAddressMode("request")}
+                    />
+                    <span>
+                      <span className="font-medium text-espresso">Email recipient for address</span>
+                      <span className="mt-0.5 block text-xs text-stone-500">
+                        Authorize payment now. We email them a link for shipping, and charge only after they reply.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+            ) : null}
+
+            {requestAddress ? (
+              <div>
+                <label className="block text-sm font-medium text-espresso">Recipient email</label>
+                <input
+                  type="email"
+                  className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm"
+                  value={recipientEmail}
+                  onChange={(e) => setRecipientEmail(e.target.value)}
+                  placeholder={selectedProspect?.email ?? "recipient@company.com"}
+                />
+                <p className="mt-1 text-xs text-stone-500">
+                  They will get a secure link to enter their shipping address.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-espresso">
+                  Full shipping address
+                </label>
+                <textarea
+                  className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm min-h-[100px]"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Street, city, state, ZIP / postal code"
+                />
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-espresso">
                 Note on the gift (card or enclosure)
@@ -275,9 +363,6 @@ export function GiftOrderWizard() {
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Short personal message — required before fulfillment."
               />
-              <p className="mt-1 text-xs text-stone-500">
-                Fulfillment uses this text verbatim (placeholder — API will enforce required).
-              </p>
             </div>
           </div>
         )}
@@ -294,21 +379,32 @@ export function GiftOrderWizard() {
               <p className="mt-1 font-medium text-espresso">{labelForGiftId(giftId)}</p>
               {selectedPack ? (
                 <p className="mt-2 text-stone-600">
-                  Total at checkout: {selectedPriceLabel ?? "shown at checkout"}
+                  Total: {selectedPriceLabel ?? "shown at checkout"}
                 </p>
               ) : null}
             </div>
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Ship to</p>
               <p className="mt-1 font-medium text-espresso">{recipientName}</p>
-              <p className="text-stone-600 whitespace-pre-line">{address}</p>
+              {requestAddress ? (
+                <>
+                  <p className="text-stone-600">{recipientEmail}</p>
+                  <p className="mt-2 text-xs text-stone-500">
+                    Address will be collected from the recipient by email.
+                  </p>
+                </>
+              ) : (
+                <p className="text-stone-600 whitespace-pre-line">{address}</p>
+              )}
             </div>
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Note</p>
               <p className="text-stone-700 whitespace-pre-line">{note}</p>
             </div>
             <p className="text-stone-500">
-              Submitting saves your order and opens Stripe to pay once. Fulfillment starts after payment.
+              {requestAddress
+                ? "Submitting opens Stripe to authorize payment. After that, we email the recipient for their address — you are charged only when they submit it."
+                : "Submitting saves your order and opens Stripe to pay once. Fulfillment starts after payment."}
             </p>
           </div>
         )}
@@ -332,7 +428,11 @@ export function GiftOrderWizard() {
             </Button>
           ) : (
             <Button type="button" variant="primary" disabled={!canNext || submitting} onClick={submitOrder}>
-              {submitting ? "Redirecting to payment..." : "Pay & submit order"}
+              {submitting
+                ? "Redirecting to payment..."
+                : requestAddress
+                  ? "Authorize & request address"
+                  : "Pay & submit order"}
             </Button>
           )}
         </div>

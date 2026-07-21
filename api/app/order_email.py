@@ -1,4 +1,4 @@
-"""Notify operations when a gift order is created (Resend)."""
+"""Transactional emails for gift orders (Resend)."""
 
 from __future__ import annotations
 
@@ -13,8 +13,42 @@ from .config import settings
 logger = logging.getLogger(__name__)
 
 
+def _resend_ready() -> tuple[str, str] | None:
+    """Return (api_key, from_addr) when Resend can send, else None."""
+    key = (settings.resend_api_key or "").strip()
+    if not key:
+        logger.warning("RESEND_API_KEY is not set; skipping email.")
+        return None
+    from_addr = (settings.resend_from or "").strip()
+    if not from_addr:
+        logger.warning("RESEND_FROM is empty; skipping email.")
+        return None
+    return key, from_addr
+
+
 def _lines(**fields: str) -> str:
     return "\n".join(f"{k}: {v}" for k, v in fields.items())
+
+
+def _send(*, to: str, subject: str, text_body: str, html_body: str, context: str) -> None:
+    ready = _resend_ready()
+    if not ready:
+        return
+    key, from_addr = ready
+    resend.api_key = key
+    try:
+        resend.Emails.send(
+            {
+                "from": from_addr,
+                "to": [to],
+                "subject": subject,
+                "text": text_body,
+                "html": html_body,
+            }
+        )
+        logger.info("Email accepted by Resend (%s) to=%s", context, to)
+    except Exception:
+        logger.exception("Failed to send email (%s) to=%s", context, to)
 
 
 def send_new_order_notification(
@@ -33,23 +67,11 @@ def send_new_order_notification(
     prospect_deal_status: str,
     placed_by_email: str,
 ) -> None:
-    key = (settings.resend_api_key or "").strip()
-    if not key:
-        logger.warning("RESEND_API_KEY is not set; skipping new-order notification email.")
-        return
-
     to = (settings.order_notification_to or "").strip().lower()
     if not to:
         logger.warning("ORDER_NOTIFICATION_TO is empty; skipping new-order notification email.")
         return
 
-    # Resend test sender only delivers to your Resend account email; that match is case-sensitive.
-    from_addr = (settings.resend_from or "").strip()
-    if not from_addr:
-        logger.warning("RESEND_FROM is empty; skipping new-order notification email.")
-        return
-
-    resend.api_key = key
     subject = f"New cookie order #{order_id}"
     when = requested_at.isoformat(timespec="seconds")
 
@@ -106,20 +128,97 @@ def send_new_order_notification(
         "</table></body></html>"
     )
 
-    try:
-        resend.Emails.send(
-            {
-                "from": from_addr,
-                "to": [to],
-                "subject": subject,
-                "text": text_body,
-                "html": html_body,
-            }
-        )
-        logger.info(
-            "Order notification email accepted by Resend for order_id=%s to=%s",
-            order_id,
-            to,
-        )
-    except Exception:
-        logger.exception("Failed to send order notification email for order_id=%s", order_id)
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"ops-new-order order_id={order_id}",
+    )
+
+
+def send_recipient_address_request(
+    *,
+    recipient_name: str,
+    recipient_email: str,
+    address_form_url: str,
+    gift_id: str,
+    note: str,
+) -> None:
+    """Ask the gift recipient to enter the shipping address via a magic link."""
+    to = recipient_email.strip().lower()
+    if not to:
+        logger.warning("Recipient email empty; skipping address-request email.")
+        return
+
+    subject = "Please share your shipping address for a gift"
+    text_body = (
+        f"Hi {recipient_name},\n\n"
+        "Someone ordered cookies for you through Close & Keep.\n"
+        "Use this link to enter the address where we should send them:\n\n"
+        f"{address_form_url}\n\n"
+        f"Gift: {gift_id}\n"
+        f"Note from the sender:\n{note}\n"
+    )
+    esc = html.escape
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>Hi {esc(recipient_name)},</p>"
+        "<p>Someone ordered cookies for you through Close &amp; Keep.</p>"
+        "<p>Use the button below to enter the address where we should send them.</p>"
+        f"<p><a href='{esc(address_form_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "Enter shipping address</a></p>"
+        f"<p style='color:#666;font-size:13px'>Gift: {esc(gift_id)}</p>"
+        f"<p style='white-space:pre-wrap'><strong>Note from the sender:</strong><br/>{esc(note)}</p>"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context="recipient-address-request",
+    )
+
+
+def send_orderer_address_received(
+    *,
+    order_id: int,
+    orderer_email: str,
+    recipient_name: str,
+    shipping_address: str,
+    order_url: str,
+) -> None:
+    """Confirm to the person who ordered that address was received and payment captured."""
+    to = orderer_email.strip().lower()
+    if not to:
+        logger.warning("Orderer email empty; skipping address-received confirmation.")
+        return
+
+    subject = f"Address received — order #{order_id} is confirmed"
+    text_body = (
+        f"Good news — {recipient_name} submitted a shipping address for order #{order_id}.\n\n"
+        f"Shipping address:\n{shipping_address}\n\n"
+        "Your payment has been completed and the order is queued for fulfillment.\n"
+        f"View order: {order_url}\n"
+    )
+    esc = html.escape
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>Good news — <strong>{esc(recipient_name)}</strong> submitted a shipping address "
+        f"for order #{order_id}.</p>"
+        f"<p style='white-space:pre-wrap'><strong>Shipping address:</strong><br/>{esc(shipping_address)}</p>"
+        "<p>Your payment has been completed and the order is queued for fulfillment.</p>"
+        f"<p><a href='{esc(order_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "View order</a></p>"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"orderer-address-received order_id={order_id}",
+    )

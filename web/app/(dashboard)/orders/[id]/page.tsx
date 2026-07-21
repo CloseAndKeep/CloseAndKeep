@@ -14,7 +14,8 @@ type GiftOrder = {
   prospect_id: number;
   gift_id: string;
   recipient_name: string;
-  shipping_address: string;
+  shipping_address: string | null;
+  recipient_email?: string | null;
   note: string;
   status: string;
   payment_status: string;
@@ -118,7 +119,12 @@ export default function OrderDetailPage() {
   }
 
   const priceLabel = formatGiftPrice(priceById.get(order.gift_id));
-  const needsPayment = order.payment_status === "pending";
+  const awaitingAddress = order.status === "no_address";
+  const paymentAuthorized = order.payment_status === "authorized";
+  const needsAuthorization =
+    awaitingAddress && order.payment_status === "pending";
+  const needsPayment =
+    order.payment_status === "pending" && !awaitingAddress;
 
   return (
     <>
@@ -130,6 +136,16 @@ export default function OrderDetailPage() {
       {paymentNotice === "success" && order.payment_status === "paid" ? (
         <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           Payment received. Your order is queued for fulfillment.
+        </p>
+      ) : null}
+      {paymentNotice === "success" && paymentAuthorized ? (
+        <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Payment authorized. We emailed the recipient for their shipping address — you are charged when they submit it.
+        </p>
+      ) : null}
+      {paymentNotice === "success" && needsAuthorization ? (
+        <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Authorization is processing. Refresh in a moment if status does not update.
         </p>
       ) : null}
       {paymentNotice === "success" && needsPayment ? (
@@ -146,6 +162,41 @@ export default function OrderDetailPage() {
         <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </p>
+      ) : null}
+
+      {needsAuthorization ? (
+        <div className="mb-6 rounded-2xl border border-amber-200/90 bg-amber-50/60 p-6">
+          <h2 className="font-medium text-espresso">Authorization required</h2>
+          <p className="mt-2 text-sm text-stone-600">
+            Complete Stripe checkout to authorize payment. We will email the recipient for their
+            address afterward — you are charged only when they submit it.
+          </p>
+          <Button
+            type="button"
+            variant="primary"
+            className="mt-4"
+            disabled={payLoading}
+            onClick={completePayment}
+          >
+            {payLoading ? "Redirecting..." : "Authorize payment"}
+          </Button>
+        </div>
+      ) : null}
+
+      {awaitingAddress && paymentAuthorized ? (
+        <div className="mb-6 rounded-2xl border border-orange-200/90 bg-orange-50/60 p-6">
+          <h2 className="font-medium text-espresso">Waiting for shipping address</h2>
+          <p className="mt-2 text-sm text-stone-600">
+            Payment is authorized (not charged yet). We emailed the recipient to enter where to
+            send the cookies. You will get a confirmation when they submit — then we capture
+            payment and queue fulfillment.
+          </p>
+          {order.recipient_email ? (
+            <p className="mt-2 text-sm text-stone-600">
+              Sent to: <span className="font-medium text-espresso">{order.recipient_email}</span>
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {needsPayment ? (
@@ -187,7 +238,9 @@ export default function OrderDetailPage() {
               className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
                 order.payment_status === "paid"
                   ? "bg-emerald-100 text-emerald-800"
-                  : "bg-amber-100 text-amber-900"
+                  : order.payment_status === "authorized"
+                    ? "bg-sky-100 text-sky-800"
+                    : "bg-amber-100 text-amber-900"
               }`}
             >
               Payment: {order.payment_status}
@@ -210,7 +263,11 @@ export default function OrderDetailPage() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
           Shipping address
         </h2>
-        <p className="mt-2 whitespace-pre-line text-sm text-stone-700">{order.shipping_address}</p>
+        {order.shipping_address ? (
+          <p className="mt-2 whitespace-pre-line text-sm text-stone-700">{order.shipping_address}</p>
+        ) : (
+          <p className="mt-2 text-sm text-stone-500">Not submitted yet.</p>
+        )}
       </section>
 
       <section className="mt-6 rounded-2xl border border-stone-200/90 bg-white/90 p-6 shadow-sm">

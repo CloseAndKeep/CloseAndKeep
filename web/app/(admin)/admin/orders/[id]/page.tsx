@@ -13,7 +13,8 @@ type AdminGiftOrder = {
   prospect_id: number;
   gift_id: string;
   recipient_name: string;
-  shipping_address: string;
+  shipping_address: string | null;
+  recipient_email?: string | null;
   note: string;
   status: string;
   payment_status: string;
@@ -26,7 +27,15 @@ type AdminGiftOrder = {
   prospect_email: string;
 };
 
-const STATUS_OPTIONS = ["queued", "ordered", "shipped", "delivered", "canceled"];
+const STATUS_OPTIONS = [
+  "no_address",
+  "pending_payment",
+  "queued",
+  "ordered",
+  "shipped",
+  "delivered",
+  "canceled",
+];
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -142,8 +151,17 @@ export default function AdminOrderDetailPage() {
             Recipient
           </h2>
           <p className="mt-2 font-medium text-espresso">{order.recipient_name}</p>
+          {order.recipient_email ? (
+            <p className="mt-1 text-sm text-stone-500">{order.recipient_email}</p>
+          ) : null}
           <p className="mt-3 whitespace-pre-line text-sm text-stone-700">
-            {order.shipping_address}
+            {order.shipping_address || "No address yet"}
+          </p>
+          <p className="mt-4 text-sm text-stone-600">
+            Status:{" "}
+            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium capitalize text-stone-700">
+              {order.status.replace("_", " ")}
+            </span>
           </p>
           <p className="mt-4 text-sm text-stone-600">Cookies: {labelForGiftId(order.gift_id)}</p>
           <p className="mt-1 text-sm text-stone-600">
@@ -152,7 +170,9 @@ export default function AdminOrderDetailPage() {
               className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                 order.payment_status === "paid"
                   ? "bg-emerald-100 text-emerald-800"
-                  : "bg-amber-100 text-amber-900"
+                  : order.payment_status === "authorized"
+                    ? "bg-sky-100 text-sky-800"
+                    : "bg-amber-100 text-amber-900"
               }`}
             >
               {order.payment_status}

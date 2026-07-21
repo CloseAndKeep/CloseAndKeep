@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import time
+from datetime import UTC, datetime
 
 import stripe
 from fastapi import HTTPException
@@ -10,7 +12,9 @@ from sqlalchemy.orm import Session
 
 from .config import GIFT_CATALOG, settings, stripe_price_for_gift
 from .models import GiftOrderModel, ProspectModel, UserModel
-from .order_email import send_new_order_notification
+from .order_email import send_new_order_notification, send_recipient_address_request
+
+logger = logging.getLogger(__name__)
 
 
 def _field(obj: object, key: str, default: object | None = None) -> object | None:
@@ -101,6 +105,30 @@ def resolve_stripe_price_id(gift_id: str) -> str:
     return price_id
 
 
+def _address_form_url(token: str) -> str:
+    return f"{settings.web_base_url.rstrip('/')}/ship/{token}"
+
+
+def _payment_intent_id_from_session(session: object) -> str | None:
+    pi = _field(session, "payment_intent")
+    if isinstance(pi, str) and pi:
+        return pi
+    if pi is not None:
+        pi_id = _field(pi, "id")
+        if isinstance(pi_id, str) and pi_id:
+            return pi_id
+    return None
+
+
+def _session_defers_capture(session: object, order: GiftOrderModel) -> bool:
+    """True when this checkout only authorized funds (manual capture)."""
+    metadata = _field(session, "metadata", {}) or {}
+    if _field(metadata, "defer_capture") == "true":
+        return True
+    # Fallback: address-request orders always use authorize-then-capture.
+    return bool(order.recipient_email) and order.status == "no_address" and not order.shipping_address
+
+
 def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
     if order.payment_status == "paid":
         return order
@@ -113,13 +141,13 @@ def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
 
     prospect = db.get(ProspectModel, order.prospect_id)
     owner = db.get(UserModel, order.owner_user_id)
-    if prospect and owner:
+    if prospect and owner and (order.shipping_address or "").strip():
         send_new_order_notification(
             order_id=order.id,
             requested_at=order.requested_at,
             gift_id=order.gift_id,
             recipient_name=order.recipient_name,
-            shipping_address=order.shipping_address,
+            shipping_address=order.shipping_address or "",
             note=order.note,
             status=order.status,
             prospect_name=prospect.name,
@@ -132,14 +160,149 @@ def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
     return order
 
 
+def mark_order_authorized(
+    order: GiftOrderModel,
+    db: Session,
+    *,
+    payment_intent_id: str | None = None,
+) -> GiftOrderModel:
+    """Record a successful card authorization (funds held, not captured yet)."""
+    if order.payment_status == "paid":
+        return order
+
+    if payment_intent_id:
+        order.stripe_payment_intent_id = payment_intent_id
+    order.payment_status = "authorized"
+    # Stay on no_address until the recipient submits a ship-to.
+    if order.status != "no_address" and not (order.shipping_address or "").strip():
+        order.status = "no_address"
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    # Email the recipient only after authorization succeeds (and only once).
+    if (
+        order.address_request_token
+        and order.recipient_email
+        and order.address_request_sent_at is None
+    ):
+        send_recipient_address_request(
+            recipient_name=order.recipient_name,
+            recipient_email=order.recipient_email,
+            address_form_url=_address_form_url(order.address_request_token),
+            gift_id=order.gift_id,
+            note=order.note,
+        )
+        order.address_request_sent_at = datetime.now(UTC)
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+
+    return order
+
+
+def capture_authorized_order(order: GiftOrderModel, db: Session) -> GiftOrderModel:
+    """Capture a previously authorized PaymentIntent and queue the order."""
+    if order.payment_status == "paid":
+        return order
+    if order.payment_status != "authorized":
+        raise HTTPException(
+            status_code=400,
+            detail="Payment has not been authorized for this order yet.",
+        )
+    if not (order.shipping_address or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="A shipping address is required before capturing payment.",
+        )
+
+    ensure_stripe_configured()
+
+    pi_id = order.stripe_payment_intent_id
+    if not pi_id and order.stripe_checkout_session_id:
+        session = stripe.checkout.Session.retrieve(order.stripe_checkout_session_id)
+        pi_id = _payment_intent_id_from_session(session)
+        if pi_id:
+            order.stripe_payment_intent_id = pi_id
+            db.add(order)
+            db.commit()
+
+    if not pi_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to capture payment: missing Stripe payment intent.",
+        )
+
+    try:
+        intent = stripe.PaymentIntent.retrieve(pi_id)
+        status = _field(intent, "status")
+        if status == "requires_capture":
+            stripe.PaymentIntent.capture(pi_id)
+        elif status == "succeeded":
+            pass
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Payment cannot be captured (status: {status}).",
+            )
+    except HTTPException:
+        raise
+    except stripe.error.StripeError as exc:
+        logger.exception("Stripe capture failed for order_id=%s", order.id)
+        raise HTTPException(status_code=502, detail="Unable to capture payment.") from exc
+
+    return mark_order_paid(order, db)
+
+
+def cancel_payment_authorization(order: GiftOrderModel) -> None:
+    """Release an uncaptured authorization when an order is canceled."""
+    if order.payment_status != "authorized" or not order.stripe_payment_intent_id:
+        return
+    try:
+        ensure_stripe_configured()
+        intent = stripe.PaymentIntent.retrieve(order.stripe_payment_intent_id)
+        if _field(intent, "status") == "requires_capture":
+            stripe.PaymentIntent.cancel(order.stripe_payment_intent_id)
+    except Exception:
+        logger.exception(
+            "Failed to cancel authorization for order_id=%s pi=%s",
+            order.id,
+            order.stripe_payment_intent_id,
+        )
+
+
 def sync_order_payment_from_stripe(order: GiftOrderModel, db: Session) -> GiftOrderModel:
     if order.payment_status == "paid" or not order.stripe_checkout_session_id:
         return order
 
     ensure_stripe_configured()
-    session = stripe.checkout.Session.retrieve(order.stripe_checkout_session_id)
+    session = stripe.checkout.Session.retrieve(
+        order.stripe_checkout_session_id,
+        expand=["payment_intent"],
+    )
+
     if _field(session, "payment_status") == "paid":
         return mark_order_paid(order, db)
+
+    if order.payment_status == "authorized":
+        return order
+
+    if _session_defers_capture(session, order):
+        pi = _field(session, "payment_intent")
+        pi_status = _field(pi, "status") if pi is not None and not isinstance(pi, str) else None
+        if isinstance(pi, str):
+            try:
+                intent = stripe.PaymentIntent.retrieve(pi)
+                pi_status = _field(intent, "status")
+            except stripe.error.StripeError:
+                pi_status = None
+        if pi_status in {"requires_capture", "succeeded"} or _field(session, "status") == "complete":
+            return mark_order_authorized(
+                order,
+                db,
+                payment_intent_id=_payment_intent_id_from_session(session),
+            )
+
     return order
 
 
@@ -196,8 +359,29 @@ def create_checkout_session_for_order(
 ) -> str:
     if order.payment_status == "paid":
         raise HTTPException(status_code=400, detail="This order is already paid.")
-    if order.status not in {"pending_payment"}:
-        raise HTTPException(status_code=400, detail="This order cannot be paid.")
+    if order.payment_status == "authorized":
+        raise HTTPException(
+            status_code=400,
+            detail="Payment is already authorized. Waiting for the recipient's shipping address.",
+        )
+
+    defer_capture = (
+        order.status == "no_address"
+        and bool(order.recipient_email)
+        and not (order.shipping_address or "").strip()
+    )
+
+    if defer_capture:
+        if order.status != "no_address":
+            raise HTTPException(status_code=400, detail="This order cannot be paid.")
+    else:
+        if not (order.shipping_address or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Waiting for the recipient to submit a shipping address before payment.",
+            )
+        if order.status not in {"pending_payment"}:
+            raise HTTPException(status_code=400, detail="This order cannot be paid.")
 
     ensure_stripe_configured()
 
@@ -217,10 +401,14 @@ def create_checkout_session_for_order(
         "metadata": {
             "gift_order_id": str(order.id),
             "user_id": str(current_user.id),
+            "defer_capture": "true" if defer_capture else "false",
         },
         "customer": customer_id,
         "allow_promotion_codes": True,
     }
+    if defer_capture:
+        # Authorize now; capture only after the recipient submits an address.
+        session_params["payment_intent_data"] = {"capture_method": "manual"}
 
     session = stripe.checkout.Session.create(**session_params)
     order.stripe_checkout_session_id = session["id"]
@@ -251,4 +439,15 @@ def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
 
     if _field(session, "id"):
         order.stripe_checkout_session_id = session["id"]
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+
+    pi_id = _payment_intent_id_from_session(session)
+
+    if _session_defers_capture(session, order) or _field(metadata, "defer_capture") == "true":
+        # Funds are held; do not charge or notify ops until address + capture.
+        mark_order_authorized(order, db, payment_intent_id=pi_id)
+        return
+
     mark_order_paid(order, db)

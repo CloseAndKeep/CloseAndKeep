@@ -5,7 +5,7 @@ from secrets import token_urlsafe
 import bcrypt
 from fastapi import Depends, FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 import stripe
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .config import is_known_gift, settings
 from .db import SessionLocal
 from .models import GiftOrderModel, ProspectModel, UserModel
+from .order_email import send_orderer_address_received
 from .session_store import (
     create_session,
     delete_session,
@@ -23,6 +24,8 @@ from .session_store import (
     rotate_session,
 )
 from .stripe_payments import (
+    cancel_payment_authorization,
+    capture_authorized_order,
     create_checkout_session_for_order,
     ensure_stripe_webhook_configured,
     fulfill_order_from_checkout_session,
@@ -108,17 +111,40 @@ class GiftOrderCreateRequest(BaseModel):
     prospect_id: int
     gift_id: str = Field(min_length=1, max_length=64)
     recipient_name: str = Field(min_length=1, max_length=255)
-    shipping_address: str = Field(min_length=1, max_length=1000)
+    # Required unless request_recipient_address is true (recipient fills it in later).
+    shipping_address: str | None = Field(default=None, max_length=1000)
     note: str = Field(min_length=1, max_length=1000)
+    # When true, authorize payment at checkout, email the recipient a link to
+    # enter shipping, then capture only after they submit. Guests cannot use this.
+    request_recipient_address: bool = False
+    recipient_email: EmailStr | None = None
 
-    @field_validator("recipient_name", "shipping_address", "note")
+    @field_validator("recipient_name", "note")
     @classmethod
     def _reject_blank(cls, value: str) -> str:
         # min_length only guards raw length; reject whitespace-only values so a
-        # gift never ships without a recipient, address, or note on the gift.
+        # gift never ships without a recipient or note on the gift.
         if not value.strip():
             raise ValueError("must not be blank")
         return value
+
+    @field_validator("shipping_address")
+    @classmethod
+    def _strip_address(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @model_validator(mode="after")
+    def _address_or_request(self) -> "GiftOrderCreateRequest":
+        if self.request_recipient_address:
+            if not self.recipient_email:
+                raise ValueError("recipient_email is required when requesting an address from the recipient")
+            return self
+        if not self.shipping_address:
+            raise ValueError("shipping_address is required unless requesting an address from the recipient")
+        return self
 
 
 class GiftOrderResponse(BaseModel):
@@ -126,7 +152,8 @@ class GiftOrderResponse(BaseModel):
     prospect_id: int
     gift_id: str
     recipient_name: str
-    shipping_address: str
+    shipping_address: str | None = None
+    recipient_email: str | None = None
     note: str
     status: str
     payment_status: str
@@ -140,6 +167,33 @@ class GiftOrderCreateResponse(GiftOrderResponse):
 
 class StripeCheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class AddressRequestPublicResponse(BaseModel):
+    recipient_name: str
+    gift_id: str
+    note: str
+    already_submitted: bool = False
+
+
+class AddressSubmitRequest(BaseModel):
+    shipping_address: str = Field(min_length=1, max_length=1000)
+    recipient_name: str | None = Field(default=None, max_length=255)
+
+    @field_validator("shipping_address")
+    @classmethod
+    def _reject_blank_address(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("recipient_name")
+    @classmethod
+    def _strip_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
 
 class GiftCatalogItem(BaseModel):
@@ -164,7 +218,10 @@ ADMIN_ORDER_STATUSES = ("queued", "ordered", "shipped", "delivered", "canceled")
 
 
 class AdminOrderUpdateRequest(BaseModel):
-    status: str | None = Field(default=None, pattern="^(queued|ordered|shipped|delivered|canceled)$")
+    status: str | None = Field(
+        default=None,
+        pattern="^(no_address|pending_payment|queued|ordered|shipped|delivered|canceled)$",
+    )
     tracking_number: str | None = Field(default=None, max_length=255)
     admin_notes: str | None = Field(default=None, max_length=2000)
 
@@ -243,6 +300,7 @@ def _gift_order_response(order: GiftOrderModel) -> GiftOrderResponse:
         gift_id=order.gift_id,
         recipient_name=order.recipient_name,
         shipping_address=order.shipping_address,
+        recipient_email=order.recipient_email,
         note=order.note,
         status=order.status,
         payment_status=order.payment_status,
@@ -260,6 +318,7 @@ def _admin_gift_order_response(
         gift_id=order.gift_id,
         recipient_name=order.recipient_name,
         shipping_address=order.shipping_address,
+        recipient_email=order.recipient_email,
         note=order.note,
         status=order.status,
         payment_status=order.payment_status,
@@ -272,6 +331,10 @@ def _admin_gift_order_response(
         prospect_company=prospect.company if prospect else "",
         prospect_email=prospect.email if prospect else "",
     )
+
+
+def _order_detail_url(order_id: int) -> str:
+    return f"{settings.web_base_url.rstrip('/')}/orders/{order_id}"
 
 
 def get_current_user(request: Request, response: Response, db: Session = Depends(get_db)) -> UserModel:
@@ -553,12 +616,48 @@ def create_gift_order(
     if not prospect or prospect.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Prospect not found.")
 
+    if payload.request_recipient_address:
+        if current_user.role == "guest":
+            raise HTTPException(
+                status_code=403,
+                detail="Guest accounts cannot request a shipping address from the recipient.",
+            )
+        token = token_urlsafe(32)
+        order = GiftOrderModel(
+            owner_user_id=current_user.id,
+            prospect_id=payload.prospect_id,
+            gift_id=payload.gift_id.strip(),
+            recipient_name=payload.recipient_name.strip(),
+            shipping_address=None,
+            recipient_email=str(payload.recipient_email).strip().lower(),
+            note=payload.note.strip(),
+            status="no_address",
+            payment_status="pending",
+            address_request_token=token,
+            # Email is sent after Stripe authorization succeeds — not yet.
+            address_request_sent_at=None,
+        )
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+
+        try:
+            checkout_url = create_checkout_session_for_order(order, current_user, db)
+        except HTTPException:
+            db.delete(order)
+            db.commit()
+            raise
+
+        db.refresh(order)
+        response = _gift_order_response(order)
+        return GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)
+
     order = GiftOrderModel(
         owner_user_id=current_user.id,
         prospect_id=payload.prospect_id,
         gift_id=payload.gift_id.strip(),
         recipient_name=payload.recipient_name.strip(),
-        shipping_address=payload.shipping_address.strip(),
+        shipping_address=payload.shipping_address.strip() if payload.shipping_address else None,
         note=payload.note.strip(),
         status="pending_payment",
         payment_status="pending",
@@ -579,6 +678,81 @@ def create_gift_order(
     db.refresh(order)
     response = _gift_order_response(order)
     return GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)
+
+
+@app.get("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
+def get_address_request(token: str, db: Session = Depends(get_db)) -> AddressRequestPublicResponse:
+    order = db.scalar(
+        select(GiftOrderModel).where(GiftOrderModel.address_request_token == token)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
+    return AddressRequestPublicResponse(
+        recipient_name=order.recipient_name,
+        gift_id=order.gift_id,
+        note=order.note,
+        already_submitted=order.status != "no_address" or bool(order.shipping_address),
+    )
+
+
+@app.post("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
+def submit_address_request(
+    token: str,
+    payload: AddressSubmitRequest,
+    db: Session = Depends(get_db),
+) -> AddressRequestPublicResponse:
+    order = db.scalar(
+        select(GiftOrderModel).where(GiftOrderModel.address_request_token == token)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
+    if order.status != "no_address" or order.shipping_address:
+        return AddressRequestPublicResponse(
+            recipient_name=order.recipient_name,
+            gift_id=order.gift_id,
+            note=order.note,
+            already_submitted=True,
+        )
+    if order.payment_status != "authorized":
+        raise HTTPException(
+            status_code=400,
+            detail="This gift is not ready for an address yet. Please try again later.",
+        )
+
+    address = payload.shipping_address.strip()
+    if payload.recipient_name:
+        order.recipient_name = payload.recipient_name
+    order.shipping_address = address
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    try:
+        # Capture the held payment now that we have a ship-to address.
+        order = capture_authorized_order(order, db)
+    except HTTPException:
+        # Keep the link usable if capture fails (e.g. expired auth hold).
+        order.shipping_address = None
+        db.add(order)
+        db.commit()
+        raise
+
+    owner = db.get(UserModel, order.owner_user_id)
+    if owner:
+        send_orderer_address_received(
+            order_id=order.id,
+            orderer_email=owner.email,
+            recipient_name=order.recipient_name,
+            shipping_address=address,
+            order_url=_order_detail_url(order.id),
+        )
+
+    return AddressRequestPublicResponse(
+        recipient_name=order.recipient_name,
+        gift_id=order.gift_id,
+        note=order.note,
+        already_submitted=True,
+    )
 
 
 @app.post("/gift-orders/{order_id}/checkout", response_model=StripeCheckoutResponse)
@@ -666,11 +840,22 @@ def admin_update_gift_order(
         raise HTTPException(status_code=404, detail="Gift order not found.")
 
     if payload.status is not None:
-        if order.payment_status != "paid" and payload.status != "canceled":
+        # Unpaid orders stay in pre-pay statuses (or can be canceled). Paid
+        # orders move through fulfillment statuses.
+        unpaid_allowed = {"no_address", "pending_payment", "canceled"}
+        if order.payment_status != "paid" and payload.status not in unpaid_allowed:
             raise HTTPException(
                 status_code=400,
                 detail="Order must be paid before it can move through fulfillment.",
             )
+        if order.payment_status == "paid" and payload.status in {"no_address", "pending_payment"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Paid orders cannot return to a pre-payment status.",
+            )
+        if payload.status == "canceled" and order.payment_status == "authorized":
+            cancel_payment_authorization(order)
+            order.payment_status = "canceled"
         order.status = payload.status
     if payload.tracking_number is not None:
         order.tracking_number = payload.tracking_number.strip() or None

@@ -59,14 +59,23 @@ class GiftOrderModel(Base):
     )
     gift_id: Mapped[str] = mapped_column(String(64), nullable=False)
     recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    shipping_address: Mapped[str] = mapped_column(String(1000), nullable=False)
+    # Null while status is no_address (recipient has not submitted a ship-to yet).
+    shipping_address: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    recipient_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     note: Mapped[str] = mapped_column(String(1000), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_payment")
     payment_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     tracking_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
     admin_notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     stripe_price_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_request_token: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    address_request_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True
     )
