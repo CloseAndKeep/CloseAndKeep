@@ -66,3 +66,20 @@ services:
         sync: false
       - key: STRIPE_PRICE_ID
         sync: false
+      # CRM OAuth apps + webhook secrets (Integrations → Connect Salesforce / HubSpot).
+      # Without these, /integrations/*/connect returns 503 "not configured".
+      - key: SALESFORCE_CLIENT_ID
+        sync: false
+      - key: SALESFORCE_CLIENT_SECRET
+        sync: false
+      - key: SALESFORCE_WEBHOOK_SECRET
+        sync: false
+      - key: HUBSPOT_CLIENT_ID
+        sync: false
+      - key: HUBSPOT_CLIENT_SECRET
+        sync: false
+      - key: HUBSPOT_WEBHOOK_SECRET
+        sync: false
+      # Encrypts CRM OAuth tokens at rest. Generate once and keep stable.
+      - key: INTEGRATION_TOKEN_FERNET_KEY
+        sync: false

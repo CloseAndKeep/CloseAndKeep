@@ -55,6 +55,7 @@ The frontend deploys to Vercel from `web/`. The backend deploys to Render from `
    - `WEB_BASE_URL` - public URL of the Vercel app (used in Stripe redirects).
    - `API_BASE_URL` - public URL of this Render service (for example `https://closeandkeep-api.onrender.com`).
    - `ADMIN_EMAILS`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` - leave blank or fill in as available.
+   - CRM (optional until you use Integrations): `SALESFORCE_CLIENT_ID`, `SALESFORCE_CLIENT_SECRET`, `SALESFORCE_WEBHOOK_SECRET`, `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_WEBHOOK_SECRET`, `INTEGRATION_TOKEN_FERNET_KEY`. Without the client id/secret for a provider, Connect returns 503.
    - `SESSION_COOKIE_SECURE` is set to `true` in `render.yaml` (also the default when `APP_ENV=production`).
    - `TRUST_PROXY=true` on Render so IP rate limits use `X-Forwarded-For`.
    - Optional `REDIS_URL` if you scale beyond a single uvicorn worker/instance (shares rate-limit counters).
