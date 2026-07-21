@@ -117,3 +117,43 @@ def test_payment_triggers_notification_with_order_details(
     assert captured["recipient_name"] == payload["recipient_name"]
     assert captured["shipping_address"] == payload["shipping_address"]
     assert captured["note"] == payload["note"]
+
+
+def test_create_requires_authentication(client, stripe_stub):
+    resp = client.post("/gift-orders", json=make_order_payload(1))
+    assert resp.status_code == 401
+
+
+def test_get_missing_order_returns_404(auth_client):
+    assert auth_client.get("/gift-orders/999999").status_code == 404
+
+
+def test_fulfillment_skips_notify_without_shipping_address(monkeypatch):
+    """Address-request orders must not email ops until an address exists."""
+    from app.fulfillment import ManualEmailFulfillment
+    from types import SimpleNamespace
+
+    sent: list = []
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_order_notification",
+        lambda **kw: sent.append(kw),
+    )
+    provider = ManualEmailFulfillment()
+    order = SimpleNamespace(
+        id=1,
+        shipping_address=None,
+        requested_at=None,
+        gift_id="cookies-4",
+        recipient_name="X",
+        note="n",
+        status="no_address",
+    )
+    provider.submit_queued_order(
+        order,
+        prospect=SimpleNamespace(
+            name="P", company="C", title="T", email="e@x.com", deal_status="open"
+        ),
+        owner=SimpleNamespace(email="o@x.com"),
+        db=None,
+    )
+    assert sent == []

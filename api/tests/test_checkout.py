@@ -332,3 +332,90 @@ def test_get_order_stays_pending_when_stripe_unpaid(auth_client, prospect_id, st
     fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
     assert fetched["payment_status"] == "pending"
     assert fetched["status"] == "pending_payment"
+
+
+def test_webhook_ignores_unrelated_event_types(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    order = _create_order(auth_client, prospect_id)
+
+    monkeypatch.setattr(
+        stripe.Webhook,
+        "construct_event",
+        staticmethod(
+            lambda payload, sig, secret: {
+                "type": "customer.created",
+                "data": {"object": {"id": "cus_x"}},
+            }
+        ),
+    )
+    resp = auth_client.post(
+        "/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "t=1,v1=validsig"},
+    )
+    assert resp.status_code == 200
+    fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert fetched["payment_status"] == "pending"
+
+
+def test_webhook_invalid_json_body_returns_400(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    order = _create_order(auth_client, prospect_id)
+
+    def _raise(payload, sig, secret):
+        raise ValueError("Invalid payload")
+
+    monkeypatch.setattr(stripe.Webhook, "construct_event", staticmethod(_raise))
+    resp = auth_client.post(
+        "/billing/webhook",
+        content=b"not-json",
+        headers={"Stripe-Signature": "t=1,v1=validsig"},
+    )
+    assert resp.status_code == 400
+    fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert fetched["payment_status"] == "pending"
+
+
+def test_webhook_passes_raw_body_to_construct_event(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    """Signature verification must see the exact raw request body (TEST.MD §12.2)."""
+    order = _create_order(auth_client, prospect_id)
+    seen: dict = {}
+
+    def _capture(payload, sig, secret):
+        seen["payload"] = payload
+        seen["sig"] = sig
+        seen["secret"] = secret
+        return _completed_event(order["id"])
+
+    monkeypatch.setattr(stripe.Webhook, "construct_event", staticmethod(_capture))
+    raw = b'{"id":"evt_test_raw_body"}'
+    resp = auth_client.post(
+        "/billing/webhook",
+        content=raw,
+        headers={"Stripe-Signature": "t=1,v1=validsig"},
+    )
+    assert resp.status_code == 200
+    assert seen["payload"] == raw
+    assert seen["sig"] == "t=1,v1=validsig"
+
+
+def test_list_gift_orders_sync_not_required_for_listing(
+    auth_client, prospect_id, stripe_stub
+):
+    """Listing does not auto-reconcile; detail GET does."""
+    order = _create_order(auth_client, prospect_id)
+    stripe_stub.retrieved_session = {
+        "id": "cs_test_created",
+        "status": "complete",
+        "payment_status": "paid",
+    }
+
+    listed = auth_client.get("/gift-orders").json()
+    assert listed[0]["payment_status"] == "pending"
+
+    detail = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert detail["payment_status"] == "paid"

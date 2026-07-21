@@ -100,3 +100,30 @@ def test_dashboard_summary_matches_prospect_outcomes(auth_client):
 
     summary = auth_client.get("/dashboard/summary").json()
     assert summary == {"open_deals": 2, "won": 1, "lost": 1, "total_prospects": 4}
+
+
+def test_dashboard_summary_empty_for_new_user(auth_client):
+    summary = auth_client.get("/dashboard/summary").json()
+    assert summary == {"open_deals": 0, "won": 0, "lost": 0, "total_prospects": 0}
+
+
+def test_dashboard_summary_is_scoped(make_client):
+    owner = signup(make_client(), "owner@example.com")
+    other = signup(make_client(), "other@example.com")
+    create_prospect(owner, name="Owned", email="owned@example.com", deal_status="won")
+
+    assert other.get("/dashboard/summary").json()["total_prospects"] == 0
+    assert owner.get("/dashboard/summary").json()["won"] == 1
+
+
+def test_get_missing_prospect_returns_404(auth_client):
+    assert auth_client.get("/prospects/999999").status_code == 404
+
+
+def test_update_rejects_invalid_deal_status(auth_client):
+    body = create_prospect(auth_client)
+    resp = auth_client.patch(
+        f"/prospects/{body['id']}",
+        json={"deal_status": "maybe"},
+    )
+    assert resp.status_code == 422

@@ -83,7 +83,7 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 **Unit**
 
-- [ ] (U) Session or token expiry logic behaves as configured
+- [x] (U) Session or token expiry logic behaves as configured
 
 **Integration**
 
@@ -308,12 +308,12 @@ Confirm signup/login, billing gates, **prospect → gift** flows (including reci
 
 ### 12.1 Input / output
 
-- [ ] (I) XSS payloads stored do not execute in rendered pages (escape/limit)
-- [ ] (I) SQL injection strings do not alter unintended rows (parameterized queries)
+- [x] (I) XSS payloads stored do not execute in rendered pages (escape/limit)
+- [x] (I) SQL injection strings do not alter unintended rows (parameterized queries)
 
 ### 12.2 Secrets and transport
 
-- [ ] (I) Webhook raw body used for signature verification
+- [x] (I) Webhook raw body used for signature verification
 - [ ] (E) No API keys in browser bundle
 
 ---

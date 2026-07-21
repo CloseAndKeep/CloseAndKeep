@@ -122,3 +122,47 @@ def test_api_key_cannot_access_other_users_prospect(make_client, stripe_stub):
         json=make_order_payload(prospect["id"]),
     )
     assert ok.status_code == 201, ok.text
+
+
+def test_cannot_revoke_another_users_api_key(make_client):
+    owner_a = make_client()
+    signup(owner_a, "owner-a@example.com")
+    key_a = _create_key(owner_a)
+
+    owner_b = make_client()
+    signup(owner_b, "owner-b@example.com")
+
+    resp = owner_b.delete(f"/api-keys/{key_a['id']}")
+    assert resp.status_code == 404
+
+    # Key still works for A.
+    api = make_client()
+    me = api.get("/auth/me", headers={"Authorization": f"Bearer {key_a['api_key']}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "owner-a@example.com"
+
+
+def test_blank_api_key_name_rejected(auth_client):
+    assert auth_client.post("/api-keys", json={"name": "   "}).status_code == 422
+
+
+def test_api_key_usage_updates_last_used_at(make_client, stripe_stub):
+    browser = make_client()
+    signup(browser, "usage@example.com")
+    created = _create_key(browser)
+    assert created["last_used_at"] is None
+
+    api = make_client()
+    assert api.get("/auth/me", headers={"Authorization": f"Bearer {created['api_key']}"}).status_code == 200
+
+    listed = browser.get("/api-keys").json()
+    assert listed[0]["last_used_at"] is not None
+
+
+def test_revoke_is_idempotent(auth_client):
+    created = _create_key(auth_client)
+    first = auth_client.delete(f"/api-keys/{created['id']}")
+    second = auth_client.delete(f"/api-keys/{created['id']}")
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["revoked_at"] is not None

@@ -241,3 +241,54 @@ def test_guest_cannot_password_login(client):
         json={"email": email, "password": "anything-at-all"},
     )
     assert resp.status_code == 401
+
+
+def test_login_rotates_session_cookie(client):
+    from app.config import settings
+
+    client.post(
+        "/auth/signup",
+        json={"email": "rotate@example.com", "password": "strong-pass-123"},
+    )
+    first = client.cookies.get(settings.session_cookie_name)
+    client.post("/auth/logout")
+
+    client.post(
+        "/auth/login",
+        json={"email": "rotate@example.com", "password": "strong-pass-123"},
+    )
+    second = client.cookies.get(settings.session_cookie_name)
+    assert first and second and first != second
+
+
+def test_signup_promotes_admin_email(client):
+    resp = client.post(
+        "/auth/signup",
+        json={"email": "admin@example.com", "password": "admin-strong-pass"},
+    )
+    assert resp.status_code == 200
+    me = client.get("/auth/me").json()
+    assert me["role"] == "admin"
+    assert me["is_guest"] is False
+
+
+def test_guest_then_signup_discards_empty_guest(client):
+    from app.db import SessionLocal
+    from app.models import UserModel
+
+    assert client.post("/auth/guest").status_code == 200
+    guest_id = client.get("/auth/me").json()["user_id"]
+
+    assert (
+        client.post(
+            "/auth/signup",
+            json={"email": "upgraded@example.com", "password": "strong-pass-123"},
+        ).status_code
+        == 200
+    )
+    me = client.get("/auth/me").json()
+    assert me["email"] == "upgraded@example.com"
+    assert me["role"] == "user"
+
+    with SessionLocal() as db:
+        assert db.get(UserModel, guest_id) is None

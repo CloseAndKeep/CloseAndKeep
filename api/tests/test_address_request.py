@@ -212,3 +212,156 @@ def test_admin_can_filter_no_address_orders(
     assert listed.status_code == 200
     ids = [row["id"] for row in listed.json()]
     assert order["id"] in ids
+
+
+def test_public_get_address_request(auth_client, prospect_id, stripe_stub, monkeypatch):
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    with SessionLocal() as db:
+        token = db.get(GiftOrderModel, order["id"]).address_request_token
+
+    # Public GET does not require auth.
+    auth_client.post("/auth/logout")
+    resp = auth_client.get(f"/public/address-requests/{token}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["recipient_name"] == "Dana Buyer"
+    assert body["gift_id"] == "cookies-4"
+    assert body["already_submitted"] is False
+
+
+def test_public_address_request_unknown_token_404(client):
+    assert client.get("/public/address-requests/not-a-real-token").status_code == 404
+    assert (
+        client.post(
+            "/public/address-requests/not-a-real-token",
+            json={"shipping_address": "123 Main"},
+        ).status_code
+        == 404
+    )
+
+
+def test_resubmit_address_is_idempotent(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.stripe_payments as sp
+    import app.fulfillment as fulfillment
+    import app.main as main
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    monkeypatch.setattr(main, "send_orderer_address_received", lambda **kw: None)
+    monkeypatch.setattr(fulfillment, "send_new_order_notification", lambda **kw: None)
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+    with SessionLocal() as db:
+        token = db.get(GiftOrderModel, order["id"]).address_request_token
+
+    first = auth_client.post(
+        f"/public/address-requests/{token}",
+        json={"shipping_address": "456 Oak Ave"},
+    )
+    assert first.status_code == 200
+    assert first.json()["already_submitted"] is True
+    assert len(stripe_stub.payment_intent_capture_calls) == 1
+
+    second = auth_client.post(
+        f"/public/address-requests/{token}",
+        json={"shipping_address": "999 Different St"},
+    )
+    assert second.status_code == 200
+    assert second.json()["already_submitted"] is True
+    # No second capture; address stays the first one.
+    assert len(stripe_stub.payment_intent_capture_calls) == 1
+    refreshed = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert refreshed["shipping_address"] == "456 Oak Ave"
+
+
+def test_capture_failure_clears_address_so_link_stays_usable(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.main as main
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+
+    def _boom(order, db):
+        raise HTTPException(status_code=502, detail="Unable to capture payment.")
+
+    # main imports capture_authorized_order by name — patch the binding there.
+    monkeypatch.setattr(main, "capture_authorized_order", _boom)
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+    with SessionLocal() as db:
+        token = db.get(GiftOrderModel, order["id"]).address_request_token
+
+    resp = auth_client.post(
+        f"/public/address-requests/{token}",
+        json={"shipping_address": "456 Oak Ave"},
+    )
+    assert resp.status_code == 502
+
+    with SessionLocal() as db:
+        refreshed = db.get(GiftOrderModel, order["id"])
+        assert refreshed.shipping_address is None
+        assert refreshed.status == "no_address"
+        assert refreshed.payment_status == "authorized"
+
+
+def test_admin_cancel_releases_authorized_payment(
+    auth_client, admin_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        assert row.payment_status == "authorized"
+        assert row.stripe_payment_intent_id == "pi_test_123"
+
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "canceled"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "canceled"
+    assert body["payment_status"] == "canceled"
+    assert len(stripe_stub.payment_intent_cancel_calls) == 1
+    assert stripe_stub.payment_intent_cancel_calls[0]["id"] == "pi_test_123"
+
+
+def test_blank_shipping_address_on_public_submit_rejected(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+    with SessionLocal() as db:
+        token = db.get(GiftOrderModel, order["id"]).address_request_token
+
+    resp = auth_client.post(
+        f"/public/address-requests/{token}",
+        json={"shipping_address": "   "},
+    )
+    assert resp.status_code == 422
+    assert len(stripe_stub.payment_intent_capture_calls) == 0

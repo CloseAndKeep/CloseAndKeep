@@ -99,3 +99,61 @@ def test_unpaid_order_can_be_canceled(admin_client, make_client, stripe_stub):
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "canceled"
+
+
+def test_paid_order_cannot_return_to_prepayment_status(
+    admin_client, make_client, stripe_stub
+):
+    _, order = _paid_order(make_client)
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}", json={"status": "pending_payment"}
+    )
+    assert resp.status_code == 400
+    assert "pre-payment" in resp.json()["detail"].lower() or "paid" in resp.json()["detail"].lower()
+
+
+def test_admin_can_set_ordered_then_delivered(admin_client, make_client, stripe_stub):
+    _, order = _paid_order(make_client)
+
+    ordered = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}", json={"status": "ordered"}
+    )
+    assert ordered.status_code == 200
+    assert ordered.json()["status"] == "ordered"
+
+    delivered = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "delivered", "tracking_number": "  TRACK-123  ", "admin_notes": "  left porch  "},
+    )
+    assert delivered.status_code == 200
+    body = delivered.json()
+    assert body["status"] == "delivered"
+    assert body["tracking_number"] == "TRACK-123"
+    assert body["admin_notes"] == "left porch"
+
+
+def test_admin_detail_includes_owner_and_prospect_context(
+    admin_client, make_client, stripe_stub
+):
+    _, order = _paid_order(make_client)
+    detail = admin_client.get(f"/admin/gift-orders/{order['id']}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["owner_email"] == "owner@example.com"
+    assert body["prospect_email"] == "p@example.com"
+    assert body["prospect_name"]
+    assert body["prospect_company"]
+
+
+def test_clearing_tracking_number_sets_null(admin_client, make_client, stripe_stub):
+    _, order = _paid_order(make_client)
+    admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"tracking_number": "ABC"},
+    )
+    cleared = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"tracking_number": "   "},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["tracking_number"] is None

@@ -200,3 +200,36 @@ def test_import_rejects_non_csv_filename(auth_client):
     )
     assert resp.status_code == 400
     assert "csv" in resp.json()["detail"].lower()
+
+
+def test_import_requires_authentication(client):
+    csv_text = "Name,Email,Cookies,Address\nJane,jane@example.com,4,1 Main\n"
+    resp = _upload(client, csv_text)
+    assert resp.status_code == 401
+
+
+def test_import_rolls_back_when_stripe_unavailable(auth_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "stripe_secret_key", "")
+    csv_text = (
+        "Name,Email,Cookies,Address\n"
+        "Jane Smith,jane@example.com,4,123 Main St\n"
+    )
+    resp = _upload(auth_client, csv_text)
+    assert resp.status_code == 503
+    assert auth_client.get("/gift-orders").json() == []
+
+
+def test_import_only_address_rows_still_batch_checkouts(auth_client, stripe_stub):
+    csv_text = (
+        "Name,Email,Cookies,Address\n"
+        "Jane Smith,jane@example.com,4,123 Main St\n"
+        "Alex Rivera,alex@example.com,12,456 Oak Ave\n"
+    )
+    resp = _upload(auth_client, csv_text)
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["batch_checkout_url"]
+    assert all(o["checkout_url"] == data["batch_checkout_url"] for o in data["created"])
+    assert len(stripe_stub.session_create_calls) == 1
