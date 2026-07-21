@@ -12,7 +12,7 @@ import stripe
 from conftest import make_order_payload
 
 
-def _create_order(auth_client, prospect_id, gift_id="cookies-2"):
+def _create_order(auth_client, prospect_id, gift_id="cookies-4"):
     resp = auth_client.post("/gift-orders", json=make_order_payload(prospect_id, gift_id))
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -24,9 +24,9 @@ def _create_order(auth_client, prospect_id, gift_id="cookies-2"):
 def test_order_create_starts_checkout_with_correct_price(
     auth_client, prospect_id, stripe_stub, monkeypatch
 ):
-    monkeypatch.setenv("STRIPE_PRICE_COOKIES_2", "price_cookies_2")
+    monkeypatch.setenv("STRIPE_PRICE_COOKIES_4", "price_cookies_4")
 
-    body = _create_order(auth_client, prospect_id, gift_id="cookies-2")
+    body = _create_order(auth_client, prospect_id, gift_id="cookies-4")
 
     # The order is created but not yet paid or queued.
     assert body["payment_status"] == "pending"
@@ -37,7 +37,7 @@ def test_order_create_starts_checkout_with_correct_price(
     assert len(stripe_stub.session_create_calls) == 1
     params = stripe_stub.session_create_calls[0]
     assert params["mode"] == "payment"
-    assert params["line_items"] == [{"price": "price_cookies_2", "quantity": 1}]
+    assert params["line_items"] == [{"price": "price_cookies_4", "quantity": 1}]
     assert params["metadata"]["gift_order_id"] == str(body["id"])
     assert f"/orders/{body['id']}?payment=success" in params["success_url"]
     assert f"/orders/{body['id']}?payment=cancel" in params["cancel_url"]

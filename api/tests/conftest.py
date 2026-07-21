@@ -191,7 +191,7 @@ def create_prospect(client, *, name="Dana Buyer", email="dana@example.com", deal
     return resp.json()
 
 
-def create_order(client, prospect_id: int, gift_id: str = "cookies-2"):
+def create_order(client, prospect_id: int, gift_id: str = "cookies-4"):
     resp = client.post("/gift-orders", json=make_order_payload(prospect_id, gift_id))
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -246,7 +246,7 @@ def prospect_id(auth_client):
     return resp.json()["id"]
 
 
-def make_order_payload(prospect_id: int, gift_id: str = "cookies-2") -> dict:
+def make_order_payload(prospect_id: int, gift_id: str = "cookies-4") -> dict:
     return {
         "prospect_id": prospect_id,
         "gift_id": gift_id,

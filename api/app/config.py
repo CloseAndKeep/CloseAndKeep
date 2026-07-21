@@ -46,7 +46,6 @@ class Settings(BaseModel):
 # can reach Stripe.
 GIFT_CATALOG: tuple[dict[str, object], ...] = (
     {"id": "cookies-1", "cookie_count": 1},
-    {"id": "cookies-2", "cookie_count": 2},
     {"id": "cookies-4", "cookie_count": 4},
     {"id": "cookies-12", "cookie_count": 12},
 )
@@ -55,7 +54,6 @@ KNOWN_GIFT_IDS: frozenset[str] = frozenset(str(item["id"]) for item in GIFT_CATA
 
 _GIFT_PRICE_ENV_KEYS: dict[str, str] = {
     "cookies-1": "STRIPE_PRICE_COOKIES_1",
-    "cookies-2": "STRIPE_PRICE_COOKIES_2",
     "cookies-4": "STRIPE_PRICE_COOKIES_4",
     "cookies-12": "STRIPE_PRICE_COOKIES_12",
 }
