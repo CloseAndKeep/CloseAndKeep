@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 /** Live gift/price info from the API (`GET /gifts`), sourced from Stripe. */
 export type GiftPrice = {
@@ -13,11 +13,7 @@ export type GiftPrice = {
 };
 
 export async function fetchGiftPrices(): Promise<GiftPrice[]> {
-  const response = await fetch(`${getApiBaseUrl()}/gifts`, { credentials: "include" });
-  if (!response.ok) {
-    throw new Error("Unable to load gift prices.");
-  }
-  return (await response.json()) as GiftPrice[];
+  return apiFetch<GiftPrice[]>("/gifts", { errorMessage: "Unable to load gift prices." });
 }
 
 /** Format a live price, or return null when the amount is not available. */

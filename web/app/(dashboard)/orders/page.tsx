@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
-import { labelForGiftId } from "@/lib/mock-data";
+import { apiFetch } from "@/lib/api";
+import { labelForGiftId } from "@/lib/gift-catalog";
 
 type GiftOrder = {
   id: number;
@@ -36,20 +36,10 @@ export default function OrdersPage() {
       setLoading(true);
       setError(null);
       try {
-        const [ordersResponse, prospectsResponse] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/gift-orders`, { credentials: "include" }),
-          fetch(`${getApiBaseUrl()}/prospects`, { credentials: "include" }),
+        const [ordersData, prospectsData] = await Promise.all([
+          apiFetch<GiftOrder[]>("/gift-orders", { errorMessage: "Unable to load orders." }),
+          apiFetch<Prospect[]>("/prospects", { errorMessage: "Unable to load prospects." }),
         ]);
-
-        if (!ordersResponse.ok) {
-          throw new Error("Unable to load orders.");
-        }
-        if (!prospectsResponse.ok) {
-          throw new Error("Unable to load prospects.");
-        }
-
-        const ordersData = (await ordersResponse.json()) as GiftOrder[];
-        const prospectsData = (await prospectsResponse.json()) as Prospect[];
         setOrders(ordersData);
         setProspects(prospectsData);
       } catch (loadError) {

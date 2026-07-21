@@ -3,8 +3,8 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { getApiBaseUrl } from "@/lib/api";
-import { labelForGiftId } from "@/lib/mock-data";
+import { apiFetch } from "@/lib/api";
+import { labelForGiftId } from "@/lib/gift-catalog";
 
 type AddressRequest = {
   recipient_name: string;
@@ -31,11 +31,10 @@ export default function ShipAddressPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/public/address-requests/${token}`);
-      if (!response.ok) {
-        throw new Error("This link is invalid or has expired.");
-      }
-      const data = (await response.json()) as AddressRequest;
+      const data = await apiFetch<AddressRequest>(`/public/address-requests/${token}`, {
+        credentials: "omit",
+        errorMessage: "This link is invalid or has expired.",
+      });
       setRequest(data);
       setRecipientName(data.recipient_name);
       setDone(data.already_submitted);
@@ -58,21 +57,16 @@ export default function ShipAddressPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/public/address-requests/${token}`, {
+      const data = await apiFetch<AddressRequest>(`/public/address-requests/${token}`, {
         method: "POST",
+        credentials: "omit",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           shipping_address: address.trim(),
           recipient_name: recipientName.trim() || undefined,
         }),
+        errorMessage: "Unable to save address.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(
-          typeof data?.detail === "string" ? data.detail : "Unable to save address.",
-        );
-      }
-      const data = (await response.json()) as AddressRequest;
       setRequest(data);
       setDone(true);
     } catch (submitError) {

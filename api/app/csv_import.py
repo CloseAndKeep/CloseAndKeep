@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from email_validator import EmailNotValidError, validate_email
 
-from .config import GIFT_CATALOG
+from .config import GIFT_CATALOG, settings
 
 # Headers accepted (case-insensitive). Address is optional per row.
 REQUIRED_HEADERS = ("name", "email", "cookies")
@@ -105,12 +105,17 @@ def _validate_email(raw: str) -> str | None:
         return None
 
 
-def parse_gift_orders_csv(content: str | bytes) -> tuple[list[ParsedOrderRow], list[RowError]]:
+def parse_gift_orders_csv(
+    content: str | bytes,
+    *,
+    max_rows: int | None = None,
+) -> tuple[list[ParsedOrderRow], list[RowError]]:
     """Parse CSV text into order rows.
 
     Returns (rows, errors). When errors is non-empty, rows may be partial and
     callers should reject the upload without creating orders.
     """
+    row_cap = settings.csv_import_max_rows if max_rows is None else max_rows
     if isinstance(content, bytes):
         # Strip UTF-8 BOM if present (Excel often adds it).
         if content.startswith(b"\xef\xbb\xbf"):
@@ -153,10 +158,24 @@ def parse_gift_orders_csv(content: str | bytes) -> tuple[list[ParsedOrderRow], l
         return [], errors
 
     rows: list[ParsedOrderRow] = []
+    data_rows_seen = 0
     for line_index, cells in enumerate(reader, start=2):
         # Skip blank lines.
         if not any(cell.strip() for cell in cells):
             continue
+
+        data_rows_seen += 1
+        if row_cap > 0 and data_rows_seen > row_cap:
+            errors.append(
+                RowError(
+                    row=line_index,
+                    message=(
+                        f"CSV exceeds the maximum of {row_cap} data rows. "
+                        "Split the file and import in smaller batches."
+                    ),
+                )
+            )
+            return [], errors
 
         def cell(field: str) -> str:
             idx = header_map.get(field)

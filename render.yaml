@@ -15,7 +15,7 @@ services:
     # Install deps and run Alembic against the configured DATABASE_URL so the
     # schema is up to date before the new revision starts serving traffic.
     buildCommand: pip install -r requirements.txt && python -m alembic upgrade head
-    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -27,11 +27,16 @@ services:
       - key: SESSION_COOKIE_NAME
         value: closeandkeep_session
       # HTTPS-only cookie required on Vercel (frontend is served over https).
+      # Also the default when APP_ENV=production; set explicitly for clarity.
       - key: SESSION_COOKIE_SECURE
         value: "true"
       # Render terminates TLS and sets X-Forwarded-For; trust it for IP rate limits.
       - key: TRUST_PROXY
         value: "true"
+      # Optional: set REDIS_URL to share rate-limit counters across instances.
+      # With --workers 1 (above), in-process limits are sufficient for a single instance.
+      - key: REDIS_URL
+        sync: false
       - key: SESSION_TTL_HOURS
         value: "24"
       - key: SESSION_REFRESH_THRESHOLD_MINUTES

@@ -95,6 +95,9 @@ class GiftOrderModel(Base):
     address_request_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+    address_request_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     address_request_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

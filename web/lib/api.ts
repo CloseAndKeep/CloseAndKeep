@@ -40,3 +40,86 @@ export function fetchErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly detail: unknown;
+
+  constructor(status: number, detail: unknown, fallback: string) {
+    const message =
+      typeof detail === "string"
+        ? detail
+        : detail &&
+            typeof detail === "object" &&
+            "message" in detail &&
+            typeof (detail as { message: unknown }).message === "string"
+          ? (detail as { message: string }).message
+          : fallback;
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+export type ApiFetchOptions = RequestInit & {
+  /** Default true — session cookies for first-party / proxied API calls. */
+  credentials?: RequestCredentials;
+  /** Used when the response body has no usable `detail` string. */
+  errorMessage?: string;
+  /** Default `json`. Use `blob` or `text` for non-JSON responses. */
+  responseType?: "json" | "text" | "blob";
+};
+
+/**
+ * Shared JSON API client: credentials, base URL, and consistent error messages.
+ */
+export async function apiFetch<T = unknown>(
+  path: string,
+  options: ApiFetchOptions = {},
+): Promise<T> {
+  const {
+    errorMessage = "Request failed.",
+    credentials = "include",
+    responseType = "json",
+    ...init
+  } = options;
+  const url = path.startsWith("http") ? path : `${getApiBaseUrl()}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, credentials });
+  } catch (error) {
+    throw new Error(fetchErrorMessage(error, errorMessage));
+  }
+
+  if (!response.ok) {
+    let detail: unknown = null;
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      detail = body.detail ?? null;
+    } catch {
+      detail = null;
+    }
+    throw new ApiError(response.status, detail, errorMessage);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  if (responseType === "blob") {
+    return (await response.blob()) as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  if (responseType === "text") {
+    return text as T;
+  }
+
+  return JSON.parse(text) as T;
+}

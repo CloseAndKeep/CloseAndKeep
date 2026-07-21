@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState({
@@ -21,13 +21,9 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/dashboard/summary`, {
-          credentials: "include",
+        const data = await apiFetch<typeof summary>("/dashboard/summary", {
+          errorMessage: "Unable to load dashboard summary.",
         });
-        if (!response.ok) {
-          throw new Error("Unable to load dashboard summary.");
-        }
-        const data = (await response.json()) as typeof summary;
         setSummary(data);
       } catch (loadError) {
         const message =

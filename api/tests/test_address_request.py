@@ -32,6 +32,8 @@ def _authorize_order(auth_client, order_id: int, stripe_stub, monkeypatch):
             "status": "complete",
             "payment_status": "unpaid",
             "payment_intent": "pi_test_123",
+            "amount_total": 100,
+            "currency": "usd",
             "metadata": {
                 "gift_order_id": str(order_id),
                 "defer_capture": "true",
@@ -275,9 +277,8 @@ def test_resubmit_address_is_idempotent(
         f"/public/address-requests/{token}",
         json={"shipping_address": "999 Different St"},
     )
-    assert second.status_code == 200
-    assert second.json()["already_submitted"] is True
-    # No second capture; address stays the first one.
+    # Token is cleared after successful capture so the link cannot re-expose PII.
+    assert second.status_code == 404
     assert len(stripe_stub.payment_intent_capture_calls) == 1
     refreshed = auth_client.get(f"/gift-orders/{order['id']}").json()
     assert refreshed["shipping_address"] == "456 Oak Ave"

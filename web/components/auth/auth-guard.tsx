@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch, ApiError } from "@/lib/api";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -14,19 +14,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     async function checkAuth() {
       try {
-        const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
-          credentials: "include",
-        });
-
-        if (!response.ok) {
-          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-          return;
-        }
-
+        await apiFetch("/auth/me", { errorMessage: "Not authenticated." });
         if (active) {
           setReady(true);
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+          return;
+        }
         router.replace(`/login?next=${encodeURIComponent(pathname)}`);
       }
     }

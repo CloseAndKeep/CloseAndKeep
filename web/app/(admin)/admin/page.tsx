@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
-import { labelForGiftId } from "@/lib/mock-data";
+import { apiFetch } from "@/lib/api";
+import { labelForGiftId } from "@/lib/gift-catalog";
 
 type AdminGiftOrder = {
   id: number;
@@ -59,13 +59,9 @@ export default function AdminQueuePage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/admin/gift-orders?status=${filter}`, {
-        credentials: "include",
+      const data = await apiFetch<AdminGiftOrder[]>(`/admin/gift-orders?status=${filter}`, {
+        errorMessage: "Unable to load orders.",
       });
-      if (!response.ok) {
-        throw new Error("Unable to load orders.");
-      }
-      const data = (await response.json()) as AdminGiftOrder[];
       setOrders(data);
     } catch (loadError) {
       const message =

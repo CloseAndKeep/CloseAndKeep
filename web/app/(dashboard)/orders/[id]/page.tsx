@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { getApiBaseUrl } from "@/lib/api";
-import { labelForGiftId } from "@/lib/mock-data";
+import { apiFetch } from "@/lib/api";
+import { labelForGiftId } from "@/lib/gift-catalog";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 
 type GiftOrder = {
@@ -44,21 +44,18 @@ export default function OrderDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const orderResponse = await fetch(`${getApiBaseUrl()}/gift-orders/${params.id}`, {
-        credentials: "include",
+      const orderData = await apiFetch<GiftOrder>(`/gift-orders/${params.id}`, {
+        errorMessage: "Unable to load order.",
       });
-      if (!orderResponse.ok) {
-        throw new Error("Unable to load order.");
-      }
-      const orderData = (await orderResponse.json()) as GiftOrder;
       setOrder(orderData);
 
-      const prospectResponse = await fetch(`${getApiBaseUrl()}/prospects/${orderData.prospect_id}`, {
-        credentials: "include",
-      });
-      if (prospectResponse.ok) {
-        const prospectData = (await prospectResponse.json()) as Prospect;
+      try {
+        const prospectData = await apiFetch<Prospect>(`/prospects/${orderData.prospect_id}`, {
+          errorMessage: "Unable to load prospect.",
+        });
         setProspect(prospectData);
+      } catch {
+        // Prospect details are optional on the order page.
       }
     } catch (loadError) {
       const message =
@@ -80,15 +77,10 @@ export default function OrderDetailPage() {
     setPayLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/gift-orders/${order.id}/checkout`, {
+      const data = await apiFetch<{ checkout_url: string }>(`/gift-orders/${order.id}/checkout`, {
         method: "POST",
-        credentials: "include",
+        errorMessage: "Unable to start checkout.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(data?.detail ?? "Unable to start checkout.");
-      }
-      const data = (await response.json()) as { checkout_url: string };
       window.location.href = data.checkout_url;
     } catch (payError) {
       const message =

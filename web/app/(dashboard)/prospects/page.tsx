@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 type Prospect = {
   id: number;
@@ -30,13 +30,9 @@ export default function ProspectsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/prospects`, {
-        credentials: "include",
+      const data = await apiFetch<Prospect[]>("/prospects", {
+        errorMessage: "Unable to load prospects.",
       });
-      if (!response.ok) {
-        throw new Error("Unable to load prospects.");
-      }
-      const data = (await response.json()) as Prospect[];
       setProspects(data);
     } catch (loadError) {
       const message =
@@ -56,20 +52,12 @@ export default function ProspectsPage() {
     setError(null);
     setCreating(true);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/prospects`, {
+      await apiFetch("/prospects", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, deal_status: "open" }),
+        errorMessage: "Unable to create prospect.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
-          detail?: string;
-        } | null;
-        throw new Error(data?.detail ?? "Unable to create prospect.");
-      }
       setForm({ name: "", title: "", company: "", email: "" });
       await loadProspects();
     } catch (createError) {

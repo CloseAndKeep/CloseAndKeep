@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -13,16 +13,9 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 
     async function checkAdmin() {
       try {
-        const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
-          credentials: "include",
+        const data = await apiFetch<{ role?: string }>("/auth/me", {
+          errorMessage: "Not authenticated.",
         });
-
-        if (!response.ok) {
-          router.replace("/login?next=/admin");
-          return;
-        }
-
-        const data = (await response.json()) as { role?: string };
         if (!active) return;
 
         if (data.role === "admin") {

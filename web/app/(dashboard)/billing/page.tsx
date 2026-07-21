@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
-import { labelForGiftId } from "@/lib/mock-data";
+import { apiFetch } from "@/lib/api";
+import { labelForGiftId } from "@/lib/gift-catalog";
 
 type GiftOrder = {
   id: number;
@@ -24,13 +24,9 @@ export default function BillingPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/gift-orders`, {
-          credentials: "include",
+        const data = await apiFetch<GiftOrder[]>("/gift-orders", {
+          errorMessage: "Unable to load payment history.",
         });
-        if (!response.ok) {
-          throw new Error("Unable to load payment history.");
-        }
-        const data = (await response.json()) as GiftOrder[];
         setOrders(data);
       } catch (loadError) {
         const message =

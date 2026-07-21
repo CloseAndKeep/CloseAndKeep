@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { cookiePacks, labelForGiftId } from "@/lib/mock-data";
+import { cookiePacks, labelForGiftId } from "@/lib/gift-catalog";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 const steps = ["Prospect & cookies", "Shipping & note", "Review"];
 
@@ -45,20 +45,17 @@ export function GiftOrderWizard() {
       setLoadingProspects(true);
       setError(null);
       try {
-        const [prospectsResponse, meResponse] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/prospects`, { credentials: "include" }),
-          fetch(`${getApiBaseUrl()}/auth/me`, { credentials: "include" }),
+        const [data, me] = await Promise.all([
+          apiFetch<Prospect[]>("/prospects", { errorMessage: "Unable to load prospects." }),
+          apiFetch<{ role?: string; is_guest?: boolean }>("/auth/me", {
+            errorMessage: "Unable to load session.",
+          }).catch(() => null),
         ]);
-        if (!prospectsResponse.ok) {
-          throw new Error("Unable to load prospects.");
-        }
-        const data = (await prospectsResponse.json()) as Prospect[];
         setProspects(data);
         if (data.length > 0) {
           setProspectId(String(data[0].id));
         }
-        if (meResponse.ok) {
-          const me = (await meResponse.json()) as { role?: string; is_guest?: boolean };
+        if (me) {
           const guest = me.role === "guest" || me.is_guest === true;
           setIsGuest(guest);
           if (guest) {
@@ -127,21 +124,14 @@ export function GiftOrderWizard() {
         body.shipping_address = address.trim();
       }
 
-      const response = await fetch(`${getApiBaseUrl()}/gift-orders`, {
+      const data = await apiFetch<{ id: number; checkout_url?: string | null }>("/gift-orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include",
         body: JSON.stringify(body),
+        errorMessage: "Unable to submit order.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(
-          typeof data?.detail === "string" ? data.detail : "Unable to submit order.",
-        );
-      }
-      const data = (await response.json()) as { id: number; checkout_url?: string | null };
       if (data.checkout_url) {
         window.location.href = data.checkout_url;
         return;

@@ -6,6 +6,16 @@ import os
 load_dotenv()
 
 
+def _env_bool(name: str, default: str) -> bool:
+    return os.getenv(name, default).lower() == "true"
+
+
+def _default_session_cookie_secure() -> str:
+    # Fail closed in production: HTTPS-only cookies unless explicitly overridden.
+    env = os.getenv("APP_ENV", "development").lower()
+    return "true" if env == "production" else "false"
+
+
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "CloseAndKeep API")
     app_env: str = os.getenv("APP_ENV", "development")
@@ -13,7 +23,9 @@ class Settings(BaseModel):
     web_base_url: str = os.getenv("WEB_BASE_URL", "http://localhost:3000")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./closeandkeep.db")
     session_cookie_name: str = os.getenv("SESSION_COOKIE_NAME", "closeandkeep_session")
-    session_cookie_secure: bool = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    session_cookie_secure: bool = _env_bool(
+        "SESSION_COOKIE_SECURE", _default_session_cookie_secure()
+    )
     session_ttl_hours: int = int(os.getenv("SESSION_TTL_HOURS", "24"))
     session_refresh_threshold_minutes: int = int(os.getenv("SESSION_REFRESH_THRESHOLD_MINUTES", "60"))
     admin_emails: set[str] = {
@@ -61,9 +73,19 @@ class Settings(BaseModel):
     rate_limit_auth_email_window_seconds: int = int(
         os.getenv("RATE_LIMIT_AUTH_EMAIL_WINDOW_SECONDS", "60")
     )
+    # Shared rate-limit store for multi-worker / multi-instance deploys.
+    # When unset, counters stay in-process (fine for a single uvicorn worker).
+    redis_url: str = os.getenv("REDIS_URL", "").strip()
     # When true, trust the first X-Forwarded-For hop (only behind a proxy that
     # overwrites that header). Leave false for direct exposure.
-    trust_proxy: bool = os.getenv("TRUST_PROXY", "false").lower() == "true"
+    trust_proxy: bool = _env_bool("TRUST_PROXY", "false")
+    # CSV import caps (bytes of upload body, and max data rows after parse).
+    csv_import_max_bytes: int = int(os.getenv("CSV_IMPORT_MAX_BYTES", str(256 * 1024)))
+    csv_import_max_rows: int = int(os.getenv("CSV_IMPORT_MAX_ROWS", "100"))
+    # Address-request links expire with the Stripe authorize hold (~7 days).
+    address_request_ttl_days: int = int(os.getenv("ADDRESS_REQUEST_TTL_DAYS", "7"))
+    # Signup password policy (min length; must include a letter and a digit).
+    password_min_length: int = int(os.getenv("PASSWORD_MIN_LENGTH", "12"))
 
 
 # Canonical cookie-pack catalog. This is the single source of truth for which

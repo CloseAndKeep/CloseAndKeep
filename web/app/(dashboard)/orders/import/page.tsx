@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
-import { labelForGiftId } from "@/lib/mock-data";
+import { ApiError, apiFetch } from "@/lib/api";
+import { labelForGiftId } from "@/lib/gift-catalog";
 
 type CreatedOrder = {
   id: number;
@@ -43,13 +43,10 @@ export default function ImportOrdersPage() {
   async function downloadCsv(kind: "template" | "example") {
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/gift-orders/import/${kind}`, {
-        credentials: "include",
+      const blob = await apiFetch<Blob>(`/gift-orders/import/${kind}`, {
+        responseType: "blob",
+        errorMessage: `Unable to download ${kind}.`,
       });
-      if (!response.ok) {
-        throw new Error(`Unable to download ${kind}.`);
-      }
-      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -79,29 +76,14 @@ export default function ImportOrdersPage() {
     try {
       const body = new FormData();
       body.append("file", file);
-      const response = await fetch(`${getApiBaseUrl()}/gift-orders/import`, {
-        method: "POST",
-        credentials: "include",
-        body,
-      });
-      const data = (await response.json()) as {
-        detail?: string | { message?: string; errors?: ImportError[] };
+      const data = await apiFetch<{
         created?: CreatedOrder[];
         batch_checkout_url?: string | null;
-        errors?: ImportError[];
-      };
-
-      if (!response.ok) {
-        if (typeof data.detail === "object" && data.detail?.errors) {
-          setRowErrors(data.detail.errors);
-          setError(data.detail.message ?? "CSV validation failed.");
-        } else {
-          setError(
-            typeof data.detail === "string" ? data.detail : "Unable to import CSV.",
-          );
-        }
-        return;
-      }
+      }>("/gift-orders/import", {
+        method: "POST",
+        body,
+        errorMessage: "Unable to import CSV.",
+      });
 
       setCreated(data.created ?? []);
       setBatchCheckoutUrl(data.batch_checkout_url ?? null);
@@ -110,6 +92,15 @@ export default function ImportOrdersPage() {
         inputRef.current.value = "";
       }
     } catch (uploadError) {
+      if (uploadError instanceof ApiError) {
+        const detail = uploadError.detail;
+        if (typeof detail === "object" && detail !== null && "errors" in detail) {
+          const validation = detail as { message?: string; errors?: ImportError[] };
+          setRowErrors(validation.errors ?? []);
+          setError(validation.message ?? uploadError.message);
+          return;
+        }
+      }
       setError(uploadError instanceof Error ? uploadError.message : "Unable to import CSV.");
     } finally {
       setUploading(false);

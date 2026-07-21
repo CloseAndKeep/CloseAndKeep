@@ -7,7 +7,7 @@ from conftest import create_prospect, make_order_payload, signup
 
 def test_admin_api_key_cannot_list_admin_orders(make_client, stripe_stub):
     admin = make_client()
-    signup(admin, "admin@example.com", "admin-strong-pass")
+    signup(admin, "admin@example.com", "admin-strong-pass-1")
     created = admin.post("/api-keys", json={"name": "Ops agent"}).json()
     raw_key = created["api_key"]
 

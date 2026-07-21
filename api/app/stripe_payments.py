@@ -226,6 +226,14 @@ def capture_authorized_order(order: GiftOrderModel, db: Session) -> GiftOrderMod
     try:
         intent = stripe.PaymentIntent.retrieve(pi_id)
         status = _field(intent, "status")
+        if status == "canceled":
+            expire_authorization_for_payment_intent(intent, db)
+            db.refresh(order)
+            raise HTTPException(
+                status_code=400,
+                detail="The card authorization has expired. Ask the sender to place a new order.",
+            )
+        assert_payment_intent_amount_matches(order, intent)
         if status == "requires_capture":
             stripe.PaymentIntent.capture(pi_id)
         elif status == "succeeded":
@@ -245,19 +253,179 @@ def capture_authorized_order(order: GiftOrderModel, db: Session) -> GiftOrderMod
 
 
 def cancel_payment_authorization(order: GiftOrderModel) -> None:
-    """Release an uncaptured authorization when an order is canceled."""
+    """Release an uncaptured authorization when an order is canceled.
+
+    Raises HTTPException if Stripe cannot cancel a still-open hold so local
+    state never diverges from an active card authorization.
+    """
     if order.payment_status != "authorized" or not order.stripe_payment_intent_id:
         return
     try:
         ensure_stripe_configured()
         intent = stripe.PaymentIntent.retrieve(order.stripe_payment_intent_id)
-        if _field(intent, "status") == "requires_capture":
+        status = _field(intent, "status")
+        if status == "requires_capture":
             stripe.PaymentIntent.cancel(order.stripe_payment_intent_id)
-    except Exception:
+        elif status in {"canceled", "succeeded"}:
+            # Already terminal on Stripe — safe to mirror locally.
+            return
+        else:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Unable to cancel payment authorization "
+                    f"(Stripe status: {status}). Try again shortly."
+                ),
+            )
+    except HTTPException:
+        raise
+    except stripe.error.StripeError as exc:
         logger.exception(
             "Failed to cancel authorization for order_id=%s pi=%s",
             order.id,
             order.stripe_payment_intent_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to cancel payment authorization with Stripe.",
+        ) from exc
+
+
+def expire_authorization_for_payment_intent(
+    payment_intent: dict | object,
+    db: Session,
+) -> None:
+    """Reconcile local orders when Stripe cancels/expires an auth hold."""
+    pi_id = _field(payment_intent, "id")
+    if not isinstance(pi_id, str) or not pi_id:
+        return
+    status = _field(payment_intent, "status")
+    if status != "canceled":
+        return
+
+    orders = list(
+        db.scalars(
+            select(GiftOrderModel).where(GiftOrderModel.stripe_payment_intent_id == pi_id)
+        ).all()
+    )
+    if not orders:
+        return
+
+    for order in orders:
+        if order.payment_status not in {"authorized", "pending"}:
+            continue
+        order.payment_status = "canceled"
+        if order.status == "no_address":
+            order.status = "canceled"
+        # Invalidate the ship link so PII is no longer fetchable.
+        order.address_request_token = None
+        order.address_request_expires_at = None
+        db.add(order)
+    db.commit()
+
+
+def _expected_amount_for_orders(orders: list[GiftOrderModel]) -> tuple[int, str]:
+    """Sum catalog Stripe prices for the given orders.
+
+    Raises HTTPException if any price cannot be resolved (fail closed).
+    """
+    ensure_stripe_configured()
+    total = 0
+    currency: str | None = None
+    for order in orders:
+        price_id = order.stripe_price_id or resolve_stripe_price_id(order.gift_id)
+        try:
+            unit_amount, price_currency = _price_amount(price_id)
+        except Exception as exc:
+            logger.exception("Price lookup failed for price_id=%s", price_id)
+            raise HTTPException(
+                status_code=502,
+                detail="Unable to verify payment amount against catalog prices.",
+            ) from exc
+        if unit_amount is None or not price_currency:
+            raise HTTPException(
+                status_code=502,
+                detail="Unable to verify payment amount against catalog prices.",
+            )
+        if currency is None:
+            currency = str(price_currency).lower()
+        elif str(price_currency).lower() != currency:
+            raise HTTPException(
+                status_code=400,
+                detail="Checkout currency mismatch across gift catalog prices.",
+            )
+        total += int(unit_amount)
+    if currency is None:
+        raise HTTPException(status_code=400, detail="No orders to verify payment for.")
+    return total, currency
+
+
+def assert_checkout_amount_matches_catalog(session: object, orders: list[GiftOrderModel]) -> None:
+    """Reject fulfillment when charged/authorized amount exceeds catalog prices.
+
+    Promotion codes may reduce ``amount_total`` below the catalog sum; amounts
+    above the catalog sum are treated as tampering and block fulfillment.
+    """
+    if not orders:
+        return
+    amount_total = _field(session, "amount_total")
+    session_currency = _field(session, "currency")
+    if amount_total is None:
+        logger.warning(
+            "Checkout session missing amount_total; refusing to fulfill session_id=%s",
+            _field(session, "id"),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Checkout session is missing amount_total; cannot verify payment.",
+        )
+
+    expected_total, expected_currency = _expected_amount_for_orders(orders)
+    if session_currency and str(session_currency).lower() != expected_currency:
+        logger.warning(
+            "Checkout currency mismatch session=%s expected=%s got=%s",
+            _field(session, "id"),
+            expected_currency,
+            session_currency,
+        )
+        raise HTTPException(status_code=400, detail="Checkout currency does not match catalog.")
+
+    try:
+        charged = int(amount_total)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid checkout amount_total.") from exc
+
+    if charged < 0 or charged > expected_total:
+        logger.warning(
+            "Checkout amount mismatch session=%s charged=%s expected_max=%s orders=%s",
+            _field(session, "id"),
+            charged,
+            expected_total,
+            [o.id for o in orders],
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Checkout amount does not match gift catalog prices.",
+        )
+
+
+def assert_payment_intent_amount_matches(order: GiftOrderModel, intent: object) -> None:
+    """Verify a PaymentIntent amount does not exceed the order's catalog price."""
+    amount = _field(intent, "amount")
+    currency = _field(intent, "currency")
+    if amount is None:
+        raise HTTPException(status_code=400, detail="PaymentIntent is missing amount.")
+    expected_total, expected_currency = _expected_amount_for_orders([order])
+    if currency and str(currency).lower() != expected_currency:
+        raise HTTPException(status_code=400, detail="Payment currency does not match catalog.")
+    try:
+        charged = int(amount)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid PaymentIntent amount.") from exc
+    if charged < 0 or charged > expected_total:
+        raise HTTPException(
+            status_code=400,
+            detail="Payment amount does not match gift catalog prices.",
         )
 
 
@@ -314,6 +482,14 @@ def sync_order_payment_from_stripe(order: GiftOrderModel, db: Session) -> GiftOr
         # Batch checkouts share one session — mark every linked order paid.
         siblings = _orders_sharing_checkout_session(order.stripe_checkout_session_id, db)
         targets = siblings or [order]
+        try:
+            assert_checkout_amount_matches_catalog(session, targets)
+        except HTTPException:
+            logger.exception(
+                "Refusing to sync paid status for session_id=%s due to amount mismatch",
+                order.stripe_checkout_session_id,
+            )
+            return order
         for sibling in targets:
             mark_order_paid(sibling, db)
         db.refresh(order)
@@ -323,6 +499,14 @@ def sync_order_payment_from_stripe(order: GiftOrderModel, db: Session) -> GiftOr
         return order
 
     if _session_defers_capture(session, order):
+        try:
+            assert_checkout_amount_matches_catalog(session, [order])
+        except HTTPException:
+            logger.exception(
+                "Refusing to authorize order_id=%s due to amount mismatch",
+                order.id,
+            )
+            return order
         pi = _field(session, "payment_intent")
         pi_status = _field(pi, "status") if pi is not None and not isinstance(pi, str) else None
         if isinstance(pi, str):
@@ -552,6 +736,15 @@ def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
         db.commit()
         for order in orders:
             db.refresh(order)
+
+    try:
+        assert_checkout_amount_matches_catalog(session, orders)
+    except HTTPException:
+        logger.exception(
+            "Refusing to fulfill checkout session_id=%s due to amount mismatch",
+            session_id,
+        )
+        return
 
     metadata = _field(session, "metadata", {}) or {}
     pi_id = _payment_intent_id_from_session(session)

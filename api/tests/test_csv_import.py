@@ -120,6 +120,8 @@ def test_batch_checkout_webhook_marks_all_known_address_orders_paid(
                     "defer_capture": "false",
                 },
                 "payment_status": "paid",
+                "amount_total": 200,
+                "currency": "usd",
             }
         },
     }

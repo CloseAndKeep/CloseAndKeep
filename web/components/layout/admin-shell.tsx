@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PackageCheck, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
 
 const nav = [
@@ -18,10 +18,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   async function handleLogout() {
     try {
-      await fetch(`${getApiBaseUrl()}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await apiFetch("/auth/logout", { method: "POST" });
     } finally {
       router.replace("/login");
     }

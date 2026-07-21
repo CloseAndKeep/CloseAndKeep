@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { cookieCountLabel, cookiePacks } from "@/lib/mock-data";
+import { cookieCountLabel, cookiePacks } from "@/lib/gift-catalog";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 
 export default function PricingPage() {

@@ -162,7 +162,7 @@ def test_checkout_foreign_order_returns_404(client, prospect_id, stripe_stub):
     client.post("/auth/logout")
     resp = client.post(
         "/auth/signup",
-        json={"email": "other@example.com", "password": "another-strong-pass"},
+        json={"email": "other@example.com", "password": "another-strong-pass-1"},
     )
     assert resp.status_code == 200, resp.text
 
@@ -187,6 +187,8 @@ def _completed_event(order_id: int, session_id: str = "cs_test_created") -> dict
                 "mode": "payment",
                 "metadata": {"gift_order_id": str(order_id)},
                 "payment_status": "paid",
+                "amount_total": 100,
+                "currency": "usd",
             }
         },
     }
@@ -318,6 +320,8 @@ def test_get_order_syncs_paid_status_from_stripe(
         "id": "cs_test_created",
         "status": "complete",
         "payment_status": "paid",
+        "amount_total": 100,
+        "currency": "usd",
     }
 
     fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
@@ -412,6 +416,8 @@ def test_list_gift_orders_sync_not_required_for_listing(
         "id": "cs_test_created",
         "status": "complete",
         "payment_status": "paid",
+        "amount_total": 100,
+        "currency": "usd",
     }
 
     listed = auth_client.get("/gift-orders").json()
@@ -435,6 +441,8 @@ def test_webhook_unpaid_non_defer_does_not_mark_paid(
                 "mode": "payment",
                 "metadata": {"gift_order_id": str(order["id"])},
                 "payment_status": "unpaid",
+                "amount_total": 100,
+                "currency": "usd",
             }
         },
     }

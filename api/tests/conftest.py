@@ -112,6 +112,14 @@ class StripeStub:
         self.retrieved_payment_intent = {
             "id": "pi_test_123",
             "status": "requires_capture",
+            "amount": 100,
+            "currency": "usd",
+        }
+        # Catalog price lookups used by amount verification on fulfill/capture.
+        self.retrieved_price = {
+            "id": "price_default_test",
+            "unit_amount": 100,
+            "currency": "usd",
         }
 
     # --- fake Stripe SDK surface --------------------------------------------
@@ -145,6 +153,11 @@ class StripeStub:
         self.retrieved_payment_intent = result
         return result
 
+    def _price_retrieve(self, price_id, **_kwargs):
+        result = dict(self.retrieved_price)
+        result["id"] = price_id
+        return result
+
     def _customer_create(self, **params):
         self.customer_create_calls.append(params)
         return {"id": "cus_test_123"}
@@ -172,6 +185,7 @@ def stripe_stub(monkeypatch):
     monkeypatch.setattr(stripe.checkout.Session, "retrieve", staticmethod(stub._session_retrieve))
     monkeypatch.setattr(stripe.Customer, "create", staticmethod(stub._customer_create))
     monkeypatch.setattr(stripe.Customer, "retrieve", staticmethod(stub._customer_retrieve))
+    monkeypatch.setattr(stripe.Price, "retrieve", staticmethod(stub._price_retrieve))
     monkeypatch.setattr(
         stripe.PaymentIntent, "retrieve", staticmethod(stub._payment_intent_retrieve)
     )
@@ -252,7 +266,7 @@ def mark_order_paid_db(order_id: int) -> None:
 def admin_client(make_client):
     """A TestClient authenticated as an admin (email is in ADMIN_EMAILS)."""
     c = make_client()
-    signup(c, "admin@example.com", "admin-strong-pass")
+    signup(c, "admin@example.com", "admin-strong-pass-1")
     return c
 
 

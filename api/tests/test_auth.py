@@ -40,14 +40,23 @@ def test_signup_enforces_min_password_length(client):
     assert resp.status_code == 422
 
 
-def test_signup_duplicate_email_returns_409(client):
+def test_signup_rejects_password_without_letter_and_digit(client):
+    resp = client.post(
+        "/auth/signup",
+        json={"email": "weakpw@example.com", "password": "alllettersonly"},
+    )
+    assert resp.status_code == 422
+
+
+def test_signup_duplicate_email_does_not_enumerate(client):
     payload = {"email": "dupe@example.com", "password": "strong-pass-123"}
     assert client.post("/auth/signup", json=payload).status_code == 200
 
     resp = client.post("/auth/signup", json=payload)
-    assert resp.status_code == 409
-    # Message must not reveal which field failed beyond "already in use".
-    assert "already in use" in resp.json()["detail"].lower()
+    assert resp.status_code == 400
+    detail = resp.json()["detail"].lower()
+    assert "already in use" not in detail
+    assert "unable to create account" in detail
 
 
 def test_signup_normalizes_email_case(client):
@@ -64,7 +73,8 @@ def test_signup_normalizes_email_case(client):
         "/auth/signup",
         json={"email": "mixed@example.com", "password": "strong-pass-123"},
     )
-    assert resp.status_code == 409
+    assert resp.status_code == 400
+    assert "unable to create account" in resp.json()["detail"].lower()
 
 
 # --- §1.2 Login --------------------------------------------------------------
@@ -264,7 +274,7 @@ def test_login_rotates_session_cookie(client):
 def test_signup_promotes_admin_email(client):
     resp = client.post(
         "/auth/signup",
-        json={"email": "admin@example.com", "password": "admin-strong-pass"},
+        json={"email": "admin@example.com", "password": "admin-strong-pass-1"},
     )
     assert resp.status_code == 200
     me = client.get("/auth/me").json()

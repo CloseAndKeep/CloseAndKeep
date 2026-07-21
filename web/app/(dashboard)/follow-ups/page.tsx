@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 /**
  * Follow-up reminders are not backed by the API yet. This page is an honest
@@ -17,14 +17,9 @@ export default function FollowUpsPage() {
     let active = true;
     async function gateGuests() {
       try {
-        const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
-          credentials: "include",
+        const data = await apiFetch<{ role?: string; is_guest?: boolean }>("/auth/me", {
+          errorMessage: "Not authenticated.",
         });
-        if (!response.ok) {
-          router.replace("/login?next=/follow-ups");
-          return;
-        }
-        const data = (await response.json()) as { role?: string; is_guest?: boolean };
         if (data.role === "guest" || data.is_guest) {
           router.replace("/dashboard");
           return;

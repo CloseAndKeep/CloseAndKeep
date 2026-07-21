@@ -110,6 +110,8 @@ def test_payment_triggers_notification_with_order_details(
         "id": "cs_test_created",
         "status": "complete",
         "payment_status": "paid",
+        "amount_total": 100,
+        "currency": "usd",
     }
     auth_client.get(f"/gift-orders/{order['id']}")
 

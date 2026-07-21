@@ -1,6 +1,6 @@
 # CloseAndKeep frontend
 
-Next.js 14 (App Router) + TypeScript + Tailwind. Dashboard routes now call the backend session endpoints, while domain screens still use placeholder data from `lib/mock-data.ts`. This app lives in the `web/` workspace of the main **CloseAndKeep** repo.
+Next.js 14 (App Router) + TypeScript + Tailwind. Dashboard and domain screens call the backend API via `lib/api.ts`. Gift pack labels live in `lib/gift-catalog.ts`; live prices come from `GET /gifts`. This app lives in the `web/` workspace of the main **CloseAndKeep** repo.
 
 ## Run locally
 
@@ -18,6 +18,7 @@ Open [http://localhost:3000](http://localhost:3000). Use `/login` to create a se
 - `app/(marketing)/` — landing (`/`) and pricing (`/pricing`)
 - `app/(dashboard)/` — app shell routes: `/dashboard`, `/prospects`, `/gifts`, `/orders/new`, `/follow-ups`, `/billing`
 - `components/layout/` — marketing shell + sidebar app shell
-- `lib/mock-data.ts` — placeholder prospects, pitches, gifts, etc.
+- `lib/gift-catalog.ts` — cookie pack ids/labels (prices from the API)
+- `lib/api.ts` — shared `apiFetch` client (credentials + error handling)
 
 Typography uses **DM Sans** + **Fraunces** (Google Fonts) with a warm cream / wood palette aligned to product docs.

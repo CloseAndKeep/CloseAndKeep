@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 type Prospect = {
   id: number;
@@ -33,13 +33,9 @@ export default function ProspectDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/prospects/${params.id}`, {
-          credentials: "include",
+        const data = await apiFetch<Prospect>(`/prospects/${params.id}`, {
+          errorMessage: "Prospect not found.",
         });
-        if (!response.ok) {
-          throw new Error("Prospect not found.");
-        }
-        const data = (await response.json()) as Prospect;
         setProspect(data);
       } catch (loadError) {
         const message =
@@ -61,17 +57,12 @@ export default function ProspectDetailPage() {
     setSavingStatus(next);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/prospects/${prospect.id}`, {
+      const data = await apiFetch<Prospect>(`/prospects/${prospect.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ deal_status: next }),
+        errorMessage: "Unable to update deal status.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(data?.detail ?? "Unable to update deal status.");
-      }
-      const data = (await response.json()) as Prospect;
       setProspect(data);
     } catch (updateError) {
       const message =

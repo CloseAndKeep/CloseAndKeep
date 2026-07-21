@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from secrets import token_urlsafe
+import re
 
 import bcrypt
 from fastapi import Depends, FastAPI, File, HTTPException, Response, Request, UploadFile
@@ -43,6 +44,7 @@ from .stripe_payments import (
     create_checkout_session_for_order,
     create_checkout_session_for_orders,
     ensure_stripe_webhook_configured,
+    expire_authorization_for_payment_intent,
     fulfill_order_from_checkout_session,
     list_gift_prices,
     sync_order_payment_from_stripe,
@@ -95,7 +97,18 @@ class LoginRequest(BaseModel):
 
 class SignupRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: str = Field(min_length=1)
+
+    @field_validator("password")
+    @classmethod
+    def _password_policy(cls, value: str) -> str:
+        if len(value) < settings.password_min_length:
+            raise ValueError(
+                f"Password must be at least {settings.password_min_length} characters."
+            )
+        if not re.search(r"[A-Za-z]", value) or not re.search(r"\d", value):
+            raise ValueError("Password must include at least one letter and one number.")
+        return value
 
 
 class ProspectCreateRequest(BaseModel):
@@ -313,6 +326,52 @@ def _set_session_cookie(response: Response, session_id: str, *, persistent: bool
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def _address_request_expiry() -> datetime:
+    return datetime.now(UTC) + timedelta(days=settings.address_request_ttl_days)
+
+
+def _mint_address_request_token() -> tuple[str, datetime]:
+    return token_urlsafe(32), _address_request_expiry()
+
+
+def _clear_address_request_token(order: GiftOrderModel) -> None:
+    order.address_request_token = None
+    order.address_request_expires_at = None
+
+
+def _address_request_is_expired(order: GiftOrderModel) -> bool:
+    expires = order.address_request_expires_at
+    if expires is None:
+        # Legacy rows without an expiry still work until a hold expires via webhook.
+        return False
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    return expires <= datetime.now(UTC)
+
+
+def _get_order_by_address_token(token: str, db: Session) -> GiftOrderModel:
+    order = db.scalar(
+        select(GiftOrderModel).where(GiftOrderModel.address_request_token == token)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
+    if _address_request_is_expired(order):
+        _clear_address_request_token(order)
+        if order.payment_status == "authorized":
+            # Best-effort release; ignore Stripe failures so the link still dies.
+            try:
+                cancel_payment_authorization(order)
+            except HTTPException:
+                pass
+            order.payment_status = "canceled"
+            if order.status == "no_address":
+                order.status = "canceled"
+        db.add(order)
+        db.commit()
+        raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
+    return order
 
 
 def _sync_admin_role(user: UserModel, db: Session) -> UserModel:
@@ -533,7 +592,11 @@ def signup(payload: SignupRequest, request: Request, response: Response, db: Ses
     _enforce_auth_rate_limit(request, email=email)
     existing = db.scalar(select(UserModel).where(UserModel.email == email))
     if existing:
-        raise HTTPException(status_code=409, detail="Email already in use.")
+        # Same status/message shape as a generic failure — avoid email enumeration.
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to create account with these credentials.",
+        )
 
     role = "admin" if email in settings.admin_emails else "user"
     user = UserModel(
@@ -664,6 +727,9 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dic
 
     if event["type"] == "checkout.session.completed":
         fulfill_order_from_checkout_session(event["data"]["object"], db)
+    elif event["type"] == "payment_intent.canceled":
+        # Stripe drops uncaptured authorizations (~7 days); keep local state in sync.
+        expire_authorization_for_payment_intent(event["data"]["object"], db)
 
     return {"received": True}
 
@@ -805,7 +871,7 @@ def create_gift_order(
                 status_code=403,
                 detail="Guest accounts cannot request a shipping address from the recipient.",
             )
-        token = token_urlsafe(32)
+        token, expires_at = _mint_address_request_token()
         order = GiftOrderModel(
             owner_user_id=current_user.id,
             prospect_id=payload.prospect_id,
@@ -817,6 +883,7 @@ def create_gift_order(
             status="no_address",
             payment_status="pending",
             address_request_token=token,
+            address_request_expires_at=expires_at,
             # Email is sent after Stripe authorization succeeds — not yet.
             address_request_sent_at=None,
         )
@@ -949,6 +1016,14 @@ async def import_gift_orders_csv(
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="CSV file is empty.")
+    if len(raw) > settings.csv_import_max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"CSV file is too large "
+                f"(max {settings.csv_import_max_bytes // 1024} KB)."
+            ),
+        )
 
     parsed_rows, parse_errors = parse_gift_orders_csv(raw)
     if parse_errors:
@@ -973,6 +1048,7 @@ async def import_gift_orders_csv(
                 db=db,
             )
             if row.request_recipient_address:
+                token, expires_at = _mint_address_request_token()
                 order = GiftOrderModel(
                     owner_user_id=current_user.id,
                     prospect_id=prospect.id,
@@ -983,7 +1059,8 @@ async def import_gift_orders_csv(
                     note=DEFAULT_IMPORT_NOTE,
                     status="no_address",
                     payment_status="pending",
-                    address_request_token=token_urlsafe(32),
+                    address_request_token=token,
+                    address_request_expires_at=expires_at,
                     address_request_sent_at=None,
                 )
             else:
@@ -1048,11 +1125,7 @@ async def import_gift_orders_csv(
 
 @app.get("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
 def get_address_request(token: str, db: Session = Depends(get_db)) -> AddressRequestPublicResponse:
-    order = db.scalar(
-        select(GiftOrderModel).where(GiftOrderModel.address_request_token == token)
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
+    order = _get_order_by_address_token(token, db)
     return AddressRequestPublicResponse(
         recipient_name=order.recipient_name,
         gift_id=order.gift_id,
@@ -1067,11 +1140,7 @@ def submit_address_request(
     payload: AddressSubmitRequest,
     db: Session = Depends(get_db),
 ) -> AddressRequestPublicResponse:
-    order = db.scalar(
-        select(GiftOrderModel).where(GiftOrderModel.address_request_token == token)
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
+    order = _get_order_by_address_token(token, db)
     if order.status != "no_address" or order.shipping_address:
         return AddressRequestPublicResponse(
             recipient_name=order.recipient_name,
@@ -1125,6 +1194,12 @@ def submit_address_request(
         db.add(order)
         db.commit()
         raise
+
+    # One-time link: clear token after successful capture so PII is not re-fetchable.
+    _clear_address_request_token(order)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
 
     owner = db.get(UserModel, order.owner_user_id)
     if owner:
@@ -1247,6 +1322,7 @@ def admin_update_gift_order(
         if payload.status == "canceled" and order.payment_status == "authorized":
             cancel_payment_authorization(order)
             order.payment_status = "canceled"
+            _clear_address_request_token(order)
         order.status = payload.status
     if payload.tracking_number is not None:
         order.tracking_number = payload.tracking_number.strip() or None

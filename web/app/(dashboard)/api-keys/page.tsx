@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 type ApiKeyRow = {
   id: number;
@@ -38,16 +38,11 @@ export default function ApiKeysPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api-keys`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(
-          typeof data?.detail === "string" ? data.detail : "Unable to load API keys.",
-        );
-      }
-      setKeys((await response.json()) as ApiKeyRow[]);
+      setKeys(
+        await apiFetch<ApiKeyRow[]>("/api-keys", {
+          errorMessage: "Unable to load API keys.",
+        }),
+      );
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load API keys.");
     } finally {
@@ -66,19 +61,12 @@ export default function ApiKeysPage() {
     setError(null);
     setCopied(false);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api-keys`, {
+      const created = await apiFetch<CreatedKey>("/api-keys", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim() }),
+        errorMessage: "Unable to create API key.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(
-          typeof data?.detail === "string" ? data.detail : "Unable to create API key.",
-        );
-      }
-      const created = (await response.json()) as CreatedKey;
       setFreshKey(created);
       setName("");
       await loadKeys();
@@ -92,13 +80,10 @@ export default function ApiKeysPage() {
   async function handleRevoke(id: number) {
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api-keys/${id}`, {
+      await apiFetch(`/api-keys/${id}`, {
         method: "DELETE",
-        credentials: "include",
+        errorMessage: "Unable to revoke API key.",
       });
-      if (!response.ok) {
-        throw new Error("Unable to revoke API key.");
-      }
       if (freshKey?.id === id) setFreshKey(null);
       await loadKeys();
     } catch (revokeError) {

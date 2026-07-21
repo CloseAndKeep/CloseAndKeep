@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchErrorMessage, getApiBaseUrl } from "@/lib/api";
+import { apiFetch, fetchErrorMessage } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
 import { safeInternalPath } from "@/lib/utils";
 
@@ -32,22 +32,12 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
+      await apiFetch("/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        errorMessage: "Login failed. Check your credentials.",
       });
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
-          detail?: string;
-        } | null;
-        throw new Error(data?.detail ?? "Login failed. Check your credentials.");
-      }
-
       router.replace(nextPath);
     } catch (submitError) {
       setError(fetchErrorMessage(submitError, "Login failed."));
@@ -60,16 +50,10 @@ function LoginForm() {
     setError(null);
     setGuestLoading(true);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/guest`, {
+      await apiFetch("/auth/guest", {
         method: "POST",
-        credentials: "include",
+        errorMessage: "Could not start a guest session.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
-          detail?: string;
-        } | null;
-        throw new Error(data?.detail ?? "Could not start a guest session.");
-      }
       // Guests cannot use follow-ups; send them to the dashboard instead.
       const guestNext = nextPath === "/follow-ups" || nextPath.startsWith("/follow-ups/")
         ? "/dashboard"

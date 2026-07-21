@@ -13,7 +13,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
 
 const baseNav = [
@@ -42,11 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     let active = true;
     async function loadRole() {
       try {
-        const response = await fetch(`${getApiBaseUrl()}/auth/me`, {
-          credentials: "include",
-        });
-        if (!response.ok) return;
-        const data = (await response.json()) as MeResponse;
+        const data = await apiFetch<MeResponse>("/auth/me");
         if (!active) return;
         setIsAdmin(data.role === "admin");
         setIsGuest(data.role === "guest" || data.is_guest === true);
@@ -70,10 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   async function handleLogout() {
     try {
-      await fetch(`${getApiBaseUrl()}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await apiFetch("/auth/logout", { method: "POST" });
     } finally {
       router.replace("/login");
     }

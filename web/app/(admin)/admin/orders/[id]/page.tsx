@@ -5,8 +5,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { getApiBaseUrl } from "@/lib/api";
-import { labelForGiftId } from "@/lib/mock-data";
+import { apiFetch } from "@/lib/api";
+import { labelForGiftId } from "@/lib/gift-catalog";
 
 type AdminGiftOrder = {
   id: number;
@@ -53,13 +53,9 @@ export default function AdminOrderDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/admin/gift-orders/${params.id}`, {
-        credentials: "include",
+      const data = await apiFetch<AdminGiftOrder>(`/admin/gift-orders/${params.id}`, {
+        errorMessage: "Unable to load order.",
       });
-      if (!response.ok) {
-        throw new Error("Unable to load order.");
-      }
-      const data = (await response.json()) as AdminGiftOrder;
       setOrder(data);
       setStatus(data.status);
       setTrackingNumber(data.tracking_number ?? "");
@@ -86,21 +82,16 @@ export default function AdminOrderDetailPage() {
     setError(null);
     setSavedNotice(false);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/admin/gift-orders/${order.id}`, {
+      const data = await apiFetch<AdminGiftOrder>(`/admin/gift-orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           status,
           tracking_number: trackingNumber,
           admin_notes: adminNotes,
         }),
+        errorMessage: "Unable to update order.",
       });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { detail?: string } | null;
-        throw new Error(data?.detail ?? "Unable to update order.");
-      }
-      const data = (await response.json()) as AdminGiftOrder;
       setOrder(data);
       setStatus(data.status);
       setTrackingNumber(data.tracking_number ?? "");

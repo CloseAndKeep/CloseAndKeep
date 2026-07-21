@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fetchErrorMessage, getApiBaseUrl } from "@/lib/api";
+import { apiFetch, fetchErrorMessage } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
 
 export default function SignupPage() {
@@ -18,8 +18,12 @@ export default function SignupPage() {
     event.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters.");
+      return;
+    }
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setError("Password must include at least one letter and one number.");
       return;
     }
     if (password !== confirmPassword) {
@@ -29,22 +33,12 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/signup`, {
+      await apiFetch("/auth/signup", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        errorMessage: "Sign up failed.",
       });
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
-          detail?: string;
-        } | null;
-        throw new Error(data?.detail ?? "Sign up failed.");
-      }
-
       router.replace("/dashboard");
     } catch (submitError) {
       setError(fetchErrorMessage(submitError, "Sign up failed."));
@@ -92,7 +86,7 @@ export default function SignupPage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
-              minLength={8}
+              minLength={12}
             />
           </div>
 
@@ -108,7 +102,7 @@ export default function SignupPage() {
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
               required
-              minLength={8}
+              minLength={12}
             />
           </div>
 
