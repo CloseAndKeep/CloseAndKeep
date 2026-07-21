@@ -33,6 +33,10 @@ const jsonLd = {
   operatingSystem: "Web",
   description: siteDescription,
   url: getSiteUrl(),
+  sameAs: [
+    "https://www.facebook.com/profile.php?id=61592292207936",
+    "https://www.linkedin.com/company/closeandkeep/about/",
+  ],
   offers: {
     "@type": "Offer",
     priceCurrency: "USD",
