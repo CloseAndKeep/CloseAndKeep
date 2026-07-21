@@ -86,6 +86,19 @@ class Settings(BaseModel):
     address_request_ttl_days: int = int(os.getenv("ADDRESS_REQUEST_TTL_DAYS", "7"))
     # Signup password policy (min length; must include a letter and a digit).
     password_min_length: int = int(os.getenv("PASSWORD_MIN_LENGTH", "12"))
+    # Salesforce Connected App + cookie-reminder webhooks.
+    salesforce_client_id: str = os.getenv("SALESFORCE_CLIENT_ID", "").strip()
+    salesforce_client_secret: str = os.getenv("SALESFORCE_CLIENT_SECRET", "").strip()
+    salesforce_redirect_uri: str = os.getenv(
+        "SALESFORCE_REDIRECT_URI",
+        "",
+    ).strip()
+    salesforce_login_url: str = os.getenv(
+        "SALESFORCE_LOGIN_URL", "https://login.salesforce.com"
+    ).strip().rstrip("/")
+    salesforce_webhook_secret: str = os.getenv("SALESFORCE_WEBHOOK_SECRET", "").strip()
+    # Fernet key for encrypting CRM OAuth tokens at rest.
+    integration_token_fernet_key: str = os.getenv("INTEGRATION_TOKEN_FERNET_KEY", "").strip()
 
 
 # Canonical cookie-pack catalog. This is the single source of truth for which

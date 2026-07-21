@@ -44,6 +44,8 @@ export const config = {
     "/billing/:path*",
     "/api-keys",
     "/api-keys/:path*",
+    "/integrations",
+    "/integrations/:path*",
     "/gifts",
     "/gifts/:path*",
     "/admin",

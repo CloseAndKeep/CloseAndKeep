@@ -79,7 +79,16 @@ See `.env.example` for the full list. Important knobs:
 
 **API keys**
 
-- `GET|POST /api-keys`, `DELETE /api-keys/{key_id}`
+- `GET|POST /api-keys`, `DELETE /api-keys/{id}`
+
+**Integrations (Salesforce)**
+
+- `GET /integrations` — list CRM connections
+- `GET /integrations/salesforce/connect` — OAuth authorize URL
+- `GET /integrations/salesforce/callback` — OAuth callback (redirects to web)
+- `PATCH|DELETE /integrations/{id}` — update trigger stage / disconnect
+- `POST /integrations/salesforce/events` — immediate Demo Completed webhook intake
+- `POST /integrations/salesforce/sync` — poll Opportunities in trigger stage
 
 **Admin**
 
@@ -97,5 +106,5 @@ See `.env.example` for the full list. Important knobs:
 
 - Session storage is database-backed (`sessions` table).
 - Gift ids accepted by the API are defined in `app/config.py` (`GIFT_CATALOG`).
-- Alembic migrations live in `alembic/versions/` (through `0011_address_request_expiry`).
+- Alembic migrations live in `alembic/versions/` (through `0012_salesforce_integrations`).
 - Rate limits: in-process by default; set `REDIS_URL` when running multiple workers/instances.

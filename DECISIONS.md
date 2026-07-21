@@ -77,5 +77,14 @@ Locked behaviors after medium-severity review:
 
 ## Schema notes
 
-- Alembic revisions through `0011_address_request_expiry` (`gift_orders.address_request_expires_at`).
+- Alembic revisions through `0012_salesforce_integrations` (CRM connections, prospect CRM ids, reminder events).
 - API keys: `0010_api_keys` — user-scoped keys for programmatic create paths.
+
+## CRM integrations (2026-07)
+
+- **First CRM:** Salesforce (HubSpot deferred until asked).
+- **Trigger:** Opportunity stage matches configured name (default **Demo Completed**).
+- **Timing:** Reminder email to the connected salesperson is sent **immediately**.
+- **CTA:** Deep link to `/orders/new?prospect_id=…&from=sf_reminder` with note prompt.
+- **Intake:** `POST /integrations/salesforce/events` (webhook secret) preferred; `POST /integrations/salesforce/sync` polls SOQL as fallback.
+- OAuth tokens encrypted at rest with `INTEGRATION_TOKEN_FERNET_KEY`.

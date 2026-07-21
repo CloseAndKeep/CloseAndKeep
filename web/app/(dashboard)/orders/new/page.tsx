@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { GiftOrderWizard } from "@/components/orders/gift-order-wizard";
 import Link from "next/link";
+import { Suspense } from "react";
 
 export default function NewOrderPage() {
   return (
@@ -17,7 +18,9 @@ export default function NewOrderPage() {
           </Link>
         }
       />
-      <GiftOrderWizard />
+      <Suspense fallback={<p className="text-sm text-stone-500">Loading order form…</p>}>
+        <GiftOrderWizard />
+      </Suspense>
     </>
   );
 }

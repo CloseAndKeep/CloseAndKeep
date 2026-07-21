@@ -11,6 +11,7 @@ import {
   CreditCard,
   ShieldCheck,
   KeyRound,
+  Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -22,6 +23,7 @@ const baseNav = [
   { href: "/prospects", label: "Prospects", icon: Users },
   { href: "/orders", label: "Orders", icon: Package },
   { href: "/follow-ups", label: "Follow-ups", icon: CalendarClock },
+  { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/billing", label: "Payments", icon: CreditCard },
   { href: "/api-keys", label: "API keys", icon: KeyRound },
 ];
@@ -60,7 +62,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const nav = [
     ...baseNav.filter(
       (item) =>
-        !(isGuest && item.href === "/follow-ups") && !(isGuest && item.href === "/api-keys"),
+        !(isGuest && item.href === "/follow-ups") &&
+        !(isGuest && item.href === "/api-keys") &&
+        !(isGuest && item.href === "/integrations"),
     ),
     ...(isAdmin ? [adminNavItem] : []),
   ];

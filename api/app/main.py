@@ -6,7 +6,7 @@ import re
 import bcrypt
 from fastapi import Depends, FastAPI, File, HTTPException, Response, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 import stripe
 from sqlalchemy import or_, select, update
@@ -26,7 +26,15 @@ from .csv_import import (
     template_csv,
 )
 from .db import SessionLocal
-from .models import ApiKeyModel, GiftOrderModel, ProspectModel, UserModel
+from .integrations import salesforce as sf
+from .integrations.reminders import PROVIDER_SALESFORCE, process_stage_completed_reminder
+from .models import (
+    ApiKeyModel,
+    GiftOrderModel,
+    IntegrationConnectionModel,
+    ProspectModel,
+    UserModel,
+)
 from .order_email import send_orderer_address_received
 from .rate_limit import client_ip, limiter
 from .session_store import (
@@ -299,6 +307,50 @@ class ApiKeyCreateResponse(ApiKeyResponse):
     """Includes the raw secret once — it cannot be retrieved again."""
 
     api_key: str
+
+
+class IntegrationConnectionResponse(BaseModel):
+    id: int
+    provider: str
+    enabled: bool
+    trigger_stage_name: str
+    external_org_id: str | None = None
+    instance_url: str | None = None
+    last_polled_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class IntegrationUpdateRequest(BaseModel):
+    trigger_stage_name: str | None = Field(default=None, min_length=1, max_length=255)
+    enabled: bool | None = None
+
+    @field_validator("trigger_stage_name")
+    @classmethod
+    def _strip_stage(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("trigger_stage_name must not be blank")
+        return stripped
+
+
+class SalesforceConnectResponse(BaseModel):
+    authorize_url: str
+
+
+class SalesforceEventRequest(BaseModel):
+    """Inbound Demo Completed (or configured stage) event from Salesforce Flow / webhook."""
+
+    opportunity_id: str = Field(min_length=1, max_length=64)
+    stage_name: str = Field(default="Demo Completed", min_length=1, max_length=255)
+    contact_name: str = Field(min_length=1, max_length=255)
+    contact_email: EmailStr
+    contact_title: str = Field(default="", max_length=255)
+    company: str = Field(default="", max_length=255)
+    connection_id: int | None = None
+    org_id: str | None = Field(default=None, max_length=64)
 
 
 def get_db() -> Session:
@@ -1336,3 +1388,190 @@ def admin_update_gift_order(
     owner = db.get(UserModel, order.owner_user_id)
     prospect = db.get(ProspectModel, order.prospect_id)
     return _admin_gift_order_response(order, owner, prospect)
+
+
+def _integration_response(row: IntegrationConnectionModel) -> IntegrationConnectionResponse:
+    return IntegrationConnectionResponse(
+        id=row.id,
+        provider=row.provider,
+        enabled=row.enabled,
+        trigger_stage_name=row.trigger_stage_name,
+        external_org_id=row.external_org_id,
+        instance_url=row.instance_url,
+        last_polled_at=row.last_polled_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _require_registered_user(user: UserModel) -> None:
+    if user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Integrations are not available for guest accounts.",
+        )
+
+
+@app.get("/integrations", response_model=list[IntegrationConnectionResponse])
+def list_integrations(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[IntegrationConnectionResponse]:
+    _require_registered_user(current_user)
+    rows = db.scalars(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.owner_user_id == current_user.id
+        )
+    ).all()
+    return [_integration_response(row) for row in rows]
+
+
+@app.get("/integrations/salesforce/connect", response_model=SalesforceConnectResponse)
+def salesforce_connect(
+    current_user: UserModel = Depends(get_current_user),
+) -> SalesforceConnectResponse:
+    _require_registered_user(current_user)
+    if not sf.salesforce_configured():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Salesforce is not configured. "
+                "Set SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET."
+            ),
+        )
+    return SalesforceConnectResponse(authorize_url=sf.build_authorize_url(current_user.id))
+
+
+@app.get("/integrations/salesforce/callback")
+def salesforce_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+    db: Session = Depends(get_db),
+):
+    from urllib.parse import quote
+
+    web = settings.web_base_url.rstrip("/")
+    if error:
+        detail = quote(error_description or error, safe="")
+        return RedirectResponse(f"{web}/integrations?error={detail}")
+    if not code or not state:
+        return RedirectResponse(f"{web}/integrations?error=missing_oauth_params")
+    user_id = sf.verify_oauth_state(state)
+    if user_id is None:
+        return RedirectResponse(f"{web}/integrations?error=invalid_oauth_state")
+    try:
+        tokens = sf.exchange_code_for_tokens(code)
+        sf.upsert_connection_from_oauth(db, user_id=user_id, token_payload=tokens)
+    except Exception:
+        return RedirectResponse(f"{web}/integrations?error=oauth_exchange_failed")
+    return RedirectResponse(f"{web}/integrations?connected=salesforce")
+
+
+@app.patch("/integrations/{connection_id}", response_model=IntegrationConnectionResponse)
+def update_integration(
+    connection_id: int,
+    payload: IntegrationUpdateRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> IntegrationConnectionResponse:
+    _require_registered_user(current_user)
+    row = db.get(IntegrationConnectionModel, connection_id)
+    if not row or row.owner_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+    if payload.trigger_stage_name is not None:
+        row.trigger_stage_name = payload.trigger_stage_name
+    if payload.enabled is not None:
+        row.enabled = payload.enabled
+    row.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(row)
+    return _integration_response(row)
+
+
+@app.delete("/integrations/{connection_id}", response_model=IntegrationConnectionResponse)
+def disconnect_integration(
+    connection_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> IntegrationConnectionResponse:
+    _require_registered_user(current_user)
+    row = db.get(IntegrationConnectionModel, connection_id)
+    if not row or row.owner_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+    response = _integration_response(row)
+    db.delete(row)
+    db.commit()
+    return response
+
+
+@app.post("/integrations/salesforce/events")
+def salesforce_stage_event(
+    payload: SalesforceEventRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Immediate intake for Demo Completed (or configured stage) from Salesforce Flow."""
+    auth = request.headers.get("Authorization", "")
+    bearer = auth.removeprefix("Bearer ").strip() if auth.lower().startswith("bearer ") else ""
+    secret = request.headers.get("X-Webhook-Secret") or bearer
+    if not sf.verify_webhook_secret(secret or None):
+        raise HTTPException(status_code=401, detail="Invalid webhook secret.")
+
+    connection: IntegrationConnectionModel | None = None
+    if payload.connection_id is not None:
+        connection = db.get(IntegrationConnectionModel, payload.connection_id)
+    elif payload.org_id:
+        connection = db.scalar(
+            select(IntegrationConnectionModel).where(
+                IntegrationConnectionModel.provider == PROVIDER_SALESFORCE,
+                IntegrationConnectionModel.external_org_id == payload.org_id,
+                IntegrationConnectionModel.enabled.is_(True),
+            )
+        )
+    else:
+        connection = db.scalar(
+            select(IntegrationConnectionModel).where(
+                IntegrationConnectionModel.provider == PROVIDER_SALESFORCE,
+                IntegrationConnectionModel.enabled.is_(True),
+            )
+        )
+
+    if not connection or connection.provider != PROVIDER_SALESFORCE:
+        raise HTTPException(status_code=404, detail="Salesforce connection not found.")
+
+    return process_stage_completed_reminder(
+        db,
+        connection=connection,
+        opportunity_id=payload.opportunity_id,
+        stage_name=payload.stage_name,
+        contact_name=payload.contact_name,
+        contact_email=str(payload.contact_email),
+        contact_title=payload.contact_title,
+        company=payload.company,
+    )
+
+
+@app.post("/integrations/salesforce/sync")
+def salesforce_sync(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Poll Salesforce for recent Demo Completed opportunities (near-immediate fallback)."""
+    _require_registered_user(current_user)
+    connection = db.scalar(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.owner_user_id == current_user.id,
+            IntegrationConnectionModel.provider == PROVIDER_SALESFORCE,
+        )
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="Salesforce is not connected.")
+    if not connection.enabled:
+        raise HTTPException(status_code=400, detail="Salesforce connection is disabled.")
+    try:
+        results = sf.poll_demo_completed(connection, db)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Salesforce sync failed: {exc}") from exc
+    return {"results": results, "count": len(results)}

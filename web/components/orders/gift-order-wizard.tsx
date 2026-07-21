@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cookiePacks, labelForGiftId } from "@/lib/gift-catalog";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
@@ -24,6 +24,9 @@ type AddressMode = "known" | "request";
 
 export function GiftOrderWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefillProspectId = searchParams.get("prospect_id");
+  const fromSfReminder = searchParams.get("from") === "sf_reminder";
   const [step, setStep] = useState(0);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [prospectId, setProspectId] = useState("");
@@ -52,7 +55,13 @@ export function GiftOrderWizard() {
           }).catch(() => null),
         ]);
         setProspects(data);
-        if (data.length > 0) {
+        const fromQuery =
+          prefillProspectId && data.some((p) => String(p.id) === prefillProspectId)
+            ? prefillProspectId
+            : null;
+        if (fromQuery) {
+          setProspectId(fromQuery);
+        } else if (data.length > 0) {
           setProspectId(String(data[0].id));
         }
         if (me) {
@@ -71,12 +80,19 @@ export function GiftOrderWizard() {
       }
     }
     void loadProspects();
-  }, []);
+  }, [prefillProspectId]);
 
   const selectedProspect = useMemo(
     () => prospects.find((p) => String(p.id) === prospectId),
     [prospectId, prospects],
   );
+
+  useEffect(() => {
+    if (!selectedProspect) return;
+    setRecipientName(selectedProspect.name);
+    setRecipientEmail(selectedProspect.email);
+  }, [selectedProspect]);
+
   const selectedPack = useMemo(() => cookiePacks.find((p) => p.id === giftId), [giftId]);
   const selectedPriceLabel = formatGiftPrice(priceById.get(giftId));
   const requestAddress = !isGuest && addressMode === "request";
@@ -347,6 +363,11 @@ export function GiftOrderWizard() {
               <label className="block text-sm font-medium text-espresso">
                 Note on the gift (card or enclosure)
               </label>
+              {fromSfReminder ? (
+                <p className="mt-1 text-xs text-wood-dark">
+                  Salesforce demo completed — add a short note they&apos;ll remember.
+                </p>
+              ) : null}
               <textarea
                 className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm min-h-[88px]"
                 value={note}

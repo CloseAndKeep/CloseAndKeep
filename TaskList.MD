@@ -367,14 +367,16 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 
 ## Future (do not start until MVP is paid-for / validated)
 
-- [ ] Pick first CRM (HubSpot, Salesforce, etc.)
-- [ ] OAuth and CRM connection settings page
-- [ ] Import contacts / deals from CRM
+- [x] Pick first CRM — **Salesforce** (HubSpot next only if requested)
+- [x] OAuth and CRM connection settings page — `/integrations` + Salesforce OAuth
+- [x] Demo Completed → immediate cookie reminder email + prospect upsert (deduped)
+- [ ] Import contacts / deals from CRM (beyond reminder upsert)
 - [ ] Push gift activity to CRM
 - [x] API keys (user-scoped create/list/revoke) — expand with public developer docs later
 - [ ] Public API design docs / versioning
 - [ ] Webhooks outbound to customer systems
 - [ ] Automated vendor API for gifts
+- [ ] HubSpot adapter (same trigger pattern as Salesforce)
 
 ---
 

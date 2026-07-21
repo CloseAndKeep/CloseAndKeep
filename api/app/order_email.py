@@ -222,3 +222,54 @@ def send_orderer_address_received(
         html_body=html_body,
         context=f"orderer-address-received order_id={order_id}",
     )
+
+
+def send_cookie_reminder(
+    *,
+    to_email: str,
+    prospect_name: str,
+    prospect_company: str,
+    prospect_title: str,
+    stage_name: str,
+    order_url: str,
+) -> None:
+    """Remind the salesperson to order cookies after a CRM demo stage change."""
+    to = to_email.strip().lower()
+    if not to:
+        logger.warning("Salesperson email empty; skipping cookie reminder.")
+        return
+
+    subject = f"Demo done — send cookies to {prospect_name}?"
+    text_body = (
+        f"Your Salesforce opportunity for {prospect_name} at {prospect_company} "
+        f"moved to “{stage_name}”.\n\n"
+        "Order cookies while the pitch is fresh — and add a personal note on the gift "
+        "so they remember you.\n\n"
+        f"Order cookies: {order_url}\n"
+    )
+    esc = html.escape
+    title_bit = (
+        f" ({esc(prospect_title)})"
+        if prospect_title and prospect_title != "—"
+        else ""
+    )
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>Your Salesforce opportunity for <strong>{esc(prospect_name)}</strong>"
+        f"{title_bit}"
+        f" at <strong>{esc(prospect_company)}</strong> moved to "
+        f"<strong>{esc(stage_name)}</strong>.</p>"
+        "<p>Order cookies while the pitch is fresh — and "
+        "<strong>add a personal note</strong> on the gift so they remember you.</p>"
+        f"<p><a href='{esc(order_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "Order cookies</a></p>"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context="cookie-reminder-salesforce",
+    )
