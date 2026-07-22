@@ -1480,11 +1480,12 @@ def salesforce_oauth_callback(
         return RedirectResponse(f"{web}/integrations?error={detail}")
     if not code or not state:
         return RedirectResponse(f"{web}/integrations?error=missing_oauth_params")
-    user_id = sf.verify_oauth_state(state)
-    if user_id is None:
+    verified = sf.verify_oauth_state(state)
+    if verified is None:
         return RedirectResponse(f"{web}/integrations?error=invalid_oauth_state")
+    user_id, code_verifier = verified
     try:
-        tokens = sf.exchange_code_for_tokens(code)
+        tokens = sf.exchange_code_for_tokens(code, code_verifier=code_verifier)
         sf.upsert_connection_from_oauth(db, user_id=user_id, token_payload=tokens)
     except Exception:
         return RedirectResponse(f"{web}/integrations?error=oauth_exchange_failed")

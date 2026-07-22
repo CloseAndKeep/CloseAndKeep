@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import logging
@@ -37,46 +38,60 @@ def _state_secret() -> bytes:
     return hashlib.sha256(raw.encode("utf-8")).digest()
 
 
-def sign_oauth_state(user_id: int) -> str:
+def make_pkce_pair() -> tuple[str, str]:
+    """Return (code_verifier, code_challenge) for S256 PKCE."""
+    # token_urlsafe(64) is ~86 chars; PKCE allows 43–128.
+    code_verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return code_verifier, code_challenge
+
+
+def sign_oauth_state(user_id: int, code_verifier: str) -> str:
     nonce = secrets.token_urlsafe(16)
-    payload = f"{user_id}:{nonce}"
+    payload = f"{user_id}:{nonce}:{code_verifier}"
     sig = hmac.new(_state_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{payload}:{sig}"
 
 
-def verify_oauth_state(state: str) -> int | None:
+def verify_oauth_state(state: str) -> tuple[int, str] | None:
+    """Return (user_id, code_verifier) when state is valid."""
     parts = (state or "").split(":")
-    if len(parts) != 3:
+    if len(parts) != 4:
         return None
-    user_id_s, nonce, sig = parts
-    payload = f"{user_id_s}:{nonce}"
+    user_id_s, nonce, code_verifier, sig = parts
+    payload = f"{user_id_s}:{nonce}:{code_verifier}"
     expected = hmac.new(_state_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, sig):
         return None
     try:
-        return int(user_id_s)
+        return int(user_id_s), code_verifier
     except ValueError:
         return None
 
 
 def build_authorize_url(user_id: int) -> str:
+    code_verifier, code_challenge = make_pkce_pair()
     params = {
         "response_type": "code",
         "client_id": settings.salesforce_client_id,
         "redirect_uri": redirect_uri(),
         "scope": "api refresh_token",
-        "state": sign_oauth_state(user_id),
+        "state": sign_oauth_state(user_id, code_verifier),
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
     return f"{settings.salesforce_login_url}/services/oauth2/authorize?{urlencode(params)}"
 
 
-def exchange_code_for_tokens(code: str) -> dict[str, Any]:
+def exchange_code_for_tokens(code: str, *, code_verifier: str) -> dict[str, Any]:
     data = {
         "grant_type": "authorization_code",
         "code": code,
         "client_id": settings.salesforce_client_id,
         "client_secret": settings.salesforce_client_secret,
         "redirect_uri": redirect_uri(),
+        "code_verifier": code_verifier,
     }
     with httpx.Client(timeout=30.0) as client:
         resp = client.post(

@@ -184,11 +184,30 @@ def test_connect_requires_salesforce_config(auth_client, monkeypatch):
 
 
 def test_oauth_state_roundtrip():
-    from app.integrations.salesforce import sign_oauth_state, verify_oauth_state
+    from app.integrations.salesforce import (
+        build_authorize_url,
+        make_pkce_pair,
+        sign_oauth_state,
+        verify_oauth_state,
+    )
 
-    state = sign_oauth_state(42)
-    assert verify_oauth_state(state) == 42
+    verifier, challenge = make_pkce_pair()
+    assert len(verifier) >= 43
+    assert challenge
+    state = sign_oauth_state(42, verifier)
+    assert verify_oauth_state(state) == (42, verifier)
     assert verify_oauth_state("tampered") is None
+
+
+def test_authorize_url_includes_pkce(monkeypatch):
+    from app.integrations import salesforce as sf
+
+    monkeypatch.setattr(sf.settings, "salesforce_client_id", "client-id")
+    monkeypatch.setattr(sf.settings, "salesforce_client_secret", "client-secret")
+    monkeypatch.setattr(sf.settings, "api_base_url", "https://api.example.com")
+    url = sf.build_authorize_url(7)
+    assert "code_challenge=" in url
+    assert "code_challenge_method=S256" in url
 
 
 def test_disconnect_removes_connection(auth_client):
