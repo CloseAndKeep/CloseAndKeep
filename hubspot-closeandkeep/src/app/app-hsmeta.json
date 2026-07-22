@@ -1,0 +1,36 @@
+{
+  "uid": "CloseAndKeep_app",
+  "type": "app",
+  "config": {
+    "description": "CloseAndKeep Demo Completed cookie reminders for HubSpot deals.",
+    "name": "CloseAndKeep-App",
+    "distribution": "private",
+    "auth": {
+      "type": "oauth",
+      "redirectUrls": [
+        "https://closeandkeep-api.onrender.com/integrations/hubspot/callback"
+      ],
+      "requiredScopes": [
+        "oauth",
+        "crm.objects.deals.read",
+        "crm.objects.contacts.read",
+        "crm.objects.companies.read"
+      ],
+      "optionalScopes": [],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": [
+        "https://api.hubapi.com"
+      ],
+      "iframe": [],
+      "img": []
+    },
+    "support": {
+      "supportEmail": "closeandkeep@gmail.com",
+      "documentationUrl": "https://www.closeandkeep.com",
+      "supportUrl": "https://www.closeandkeep.com/support",
+      "supportPhone": ""
+    }
+  }
+}
