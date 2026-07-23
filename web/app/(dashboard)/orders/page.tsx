@@ -21,7 +21,7 @@ type GiftOrder = {
 type Prospect = {
   id: number;
   name: string;
-  company: string;
+  email: string;
 };
 
 export default function OrdersPage() {
@@ -174,7 +174,7 @@ export default function OrdersPage() {
                         {prospect?.name ?? "Unknown prospect"}
                       </Link>
                     </div>
-                    <div className="text-xs text-stone-500">{prospect?.company ?? "—"}</div>
+                    <div className="text-xs text-stone-500">{prospect?.email ?? "—"}</div>
                   </td>
                   <td className="px-4 py-3 text-stone-600 hidden sm:table-cell">
                     {labelForGiftId(order.gift_id)}

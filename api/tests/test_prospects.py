@@ -22,8 +22,6 @@ def test_create_requires_authentication(client):
         "/prospects",
         json={
             "name": "X",
-            "title": "Y",
-            "company": "Z",
             "email": "x@example.com",
             "deal_status": "open",
         },
@@ -36,8 +34,6 @@ def test_create_rejects_invalid_email(auth_client):
         "/prospects",
         json={
             "name": "Bad Email",
-            "title": "VP",
-            "company": "Acme",
             "email": "nope",
             "deal_status": "open",
         },
@@ -55,8 +51,6 @@ def test_create_rejects_invalid_deal_status(auth_client):
         "/prospects",
         json={
             "name": "Bad Status",
-            "title": "VP",
-            "company": "Acme",
             "email": "bad@example.com",
             "deal_status": "maybe",
         },
@@ -84,12 +78,12 @@ def test_update_own_prospect(auth_client):
     body = create_prospect(auth_client)
     resp = auth_client.patch(
         f"/prospects/{body['id']}",
-        json={"deal_status": "won", "company": "Acme Global"},
+        json={"deal_status": "won", "name": "Dana Global"},
     )
     assert resp.status_code == 200
     updated = resp.json()
     assert updated["deal_status"] == "won"
-    assert updated["company"] == "Acme Global"
+    assert updated["name"] == "Dana Global"
 
 
 def test_dashboard_summary_matches_prospect_outcomes(auth_client):

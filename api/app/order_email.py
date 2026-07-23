@@ -61,8 +61,6 @@ def send_new_order_notification(
     note: str,
     status: str,
     prospect_name: str,
-    prospect_company: str,
-    prospect_title: str,
     prospect_email: str,
     prospect_deal_status: str,
     placed_by_email: str,
@@ -82,8 +80,6 @@ def send_new_order_notification(
         Placed_by_account=placed_by_email,
         Gift_or_pack_id=gift_id,
         Prospect_name=prospect_name,
-        Prospect_company=prospect_company,
-        Prospect_title=prospect_title,
         Prospect_email=prospect_email,
         Prospect_deal_status=prospect_deal_status,
         Recipient_name=recipient_name,
@@ -111,8 +107,6 @@ def send_new_order_notification(
     row("Placed by (account)", placed_by_email)
     row("Gift / pack ID", gift_id)
     row("Prospect name", prospect_name)
-    row("Prospect company", prospect_company)
-    row("Prospect title", prospect_title)
     row("Prospect email", prospect_email)
     row("Prospect deal status", prospect_deal_status)
     row("Recipient name", recipient_name)
@@ -228,8 +222,6 @@ def send_cookie_reminder(
     *,
     to_email: str,
     prospect_name: str,
-    prospect_company: str,
-    prospect_title: str,
     stage_name: str,
     order_url: str,
     crm_name: str = "Salesforce",
@@ -244,23 +236,17 @@ def send_cookie_reminder(
     deal_word = "deal" if crm.casefold() == "hubspot" else "opportunity"
     subject = f"Demo done — send cookies to {prospect_name}?"
     text_body = (
-        f"Your {crm} {deal_word} for {prospect_name} at {prospect_company} "
+        f"Your {crm} {deal_word} for {prospect_name} "
         f"moved to “{stage_name}”.\n\n"
         "Order cookies while the pitch is fresh — and add a personal note on the gift "
         "so they remember you.\n\n"
         f"Order cookies: {order_url}\n"
     )
     esc = html.escape
-    title_bit = (
-        f" ({esc(prospect_title)})"
-        if prospect_title and prospect_title != "—"
-        else ""
-    )
     html_body = (
         "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
         f"<p>Your {esc(crm)} {esc(deal_word)} for <strong>{esc(prospect_name)}</strong>"
-        f"{title_bit}"
-        f" at <strong>{esc(prospect_company)}</strong> moved to "
+        f" moved to "
         f"<strong>{esc(stage_name)}</strong>.</p>"
         "<p>Order cookies while the pitch is fresh — and "
         "<strong>add a personal note</strong> on the gift so they remember you.</p>"

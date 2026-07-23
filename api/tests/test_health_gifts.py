@@ -33,9 +33,9 @@ def test_gifts_catalog_lists_known_packs(client, monkeypatch):
     resp = client.get("/gifts")
     assert resp.status_code == 200
     body = resp.json()
-    assert {row["gift_id"] for row in body} == {"cookies-1", "cookies-4", "cookies-12"}
+    assert {row["gift_id"] for row in body} == {"cookies-4", "cookies-12"}
     for row in body:
-        assert row["cookie_count"] in {1, 4, 12}
+        assert row["cookie_count"] in {4, 12}
         assert "unit_amount" in row
         assert "currency" in row
 

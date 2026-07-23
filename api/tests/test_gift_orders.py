@@ -153,7 +153,7 @@ def test_fulfillment_skips_notify_without_shipping_address(monkeypatch):
     provider.submit_queued_order(
         order,
         prospect=SimpleNamespace(
-            name="P", company="C", title="T", email="e@x.com", deal_status="open"
+            name="P", email="e@x.com", deal_status="open"
         ),
         owner=SimpleNamespace(email="o@x.com"),
         db=None,

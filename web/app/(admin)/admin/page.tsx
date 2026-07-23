@@ -16,7 +16,6 @@ type AdminGiftOrder = {
   requested_at: string;
   owner_email: string;
   prospect_name: string;
-  prospect_company: string;
 };
 
 const FILTERS = [

@@ -41,8 +41,6 @@ def upsert_prospect_from_crm(
     external_id: str,
     name: str,
     email: str,
-    title: str = "",
-    company: str = "",
 ) -> ProspectModel:
     """Create or update a prospect keyed by CRM opportunity/deal id."""
     existing = db.scalar(
@@ -57,14 +55,10 @@ def upsert_prospect_from_crm(
     clean_email = (
         (email or "").strip().lower() or f"{external_id.lower()}@unknown.{provider}"
     )
-    clean_title = (title or "").strip() or "—"
-    clean_company = (company or "").strip() or "—"
 
     if existing:
         existing.name = clean_name
         existing.email = clean_email
-        existing.title = clean_title
-        existing.company = clean_company
         db.flush()
         return existing
 
@@ -72,8 +66,6 @@ def upsert_prospect_from_crm(
         owner_user_id=owner_user_id,
         name=clean_name,
         email=clean_email,
-        title=clean_title,
-        company=clean_company,
         deal_status="open",
         crm_provider=provider,
         crm_external_id=external_id,
@@ -91,8 +83,6 @@ def process_stage_completed_reminder(
     stage_name: str,
     contact_name: str,
     contact_email: str,
-    contact_title: str = "",
-    company: str = "",
 ) -> dict:
     """Upsert prospect, dedupe by opportunity, and email the salesperson immediately.
 
@@ -136,8 +126,6 @@ def process_stage_completed_reminder(
         external_id=opportunity_id,
         name=contact_name,
         email=contact_email,
-        title=contact_title,
-        company=company,
     )
 
     owner = db.get(UserModel, connection.owner_user_id)
@@ -183,8 +171,6 @@ def process_stage_completed_reminder(
     send_cookie_reminder(
         to_email=owner.email,
         prospect_name=prospect.name,
-        prospect_company=prospect.company,
-        prospect_title=prospect.title,
         stage_name=incoming,
         order_url=order_url,
         crm_name=_CRM_LABELS.get(connection.provider, connection.provider.title()),

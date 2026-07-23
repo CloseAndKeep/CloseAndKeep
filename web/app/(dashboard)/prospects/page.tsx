@@ -8,8 +8,6 @@ import { apiFetch } from "@/lib/api";
 type Prospect = {
   id: number;
   name: string;
-  title: string;
-  company: string;
   email: string;
   deal_status: "open" | "won" | "lost";
 };
@@ -21,8 +19,6 @@ export default function ProspectsPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     name: "",
-    title: "",
-    company: "",
     email: "",
   });
 
@@ -58,7 +54,7 @@ export default function ProspectsPage() {
         body: JSON.stringify({ ...form, deal_status: "open" }),
         errorMessage: "Unable to create prospect.",
       });
-      setForm({ name: "", title: "", company: "", email: "" });
+      setForm({ name: "", email: "" });
       await loadProspects();
     } catch (createError) {
       const message =
@@ -77,7 +73,7 @@ export default function ProspectsPage() {
       />
 
       <form
-        className="mb-6 grid gap-3 rounded-2xl border border-stone-200/90 bg-white/90 p-4 md:grid-cols-5"
+        className="mb-6 grid gap-3 rounded-2xl border border-stone-200/90 bg-white/90 p-4 md:grid-cols-3"
         onSubmit={onCreate}
       >
         <input
@@ -85,20 +81,6 @@ export default function ProspectsPage() {
           placeholder="Name"
           value={form.name}
           onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-          required
-        />
-        <input
-          className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
-          placeholder="Title"
-          value={form.title}
-          onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-          required
-        />
-        <input
-          className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
-          placeholder="Company"
-          value={form.company}
-          onChange={(event) => setForm((prev) => ({ ...prev, company: event.target.value }))}
           required
         />
         <input
@@ -129,15 +111,13 @@ export default function ProspectsPage() {
           <thead className="border-b border-stone-200 bg-stone-50/80 text-xs font-semibold uppercase tracking-wide text-stone-500">
             <tr>
               <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3 hidden sm:table-cell">Title</th>
-              <th className="px-4 py-3">Company</th>
-              <th className="px-4 py-3 hidden md:table-cell">Email</th>
+              <th className="px-4 py-3">Email</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
             {!loading && prospects.length === 0 ? (
               <tr>
-                <td className="px-4 py-3 text-stone-500" colSpan={4}>
+                <td className="px-4 py-3 text-stone-500" colSpan={2}>
                   No prospects yet.
                 </td>
               </tr>
@@ -152,9 +132,7 @@ export default function ProspectsPage() {
                     {p.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-stone-600 hidden sm:table-cell">{p.title}</td>
-                <td className="px-4 py-3 text-stone-700">{p.company}</td>
-                <td className="px-4 py-3 text-stone-500 hidden md:table-cell">{p.email}</td>
+                <td className="px-4 py-3 text-stone-500">{p.email}</td>
               </tr>
             ))}
           </tbody>

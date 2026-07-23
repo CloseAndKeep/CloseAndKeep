@@ -215,11 +215,11 @@ def _contact_for_deal(
     )
     results = assoc.get("results") or []
     if not results:
-        return {"name": "", "email": "", "title": "", "company": ""}
+        return {"name": "", "email": ""}
 
     contact_id = str(results[0].get("toObjectId") or results[0].get("id") or "")
     if not contact_id:
-        return {"name": "", "email": "", "title": "", "company": ""}
+        return {"name": "", "email": ""}
 
     contact = hubspot_request(
         connection,
@@ -227,7 +227,7 @@ def _contact_for_deal(
         "GET",
         f"/crm/v3/objects/contacts/{contact_id}",
         params={
-            "properties": "firstname,lastname,email,jobtitle,company",
+            "properties": "firstname,lastname,email",
         },
     )
     props = contact.get("properties") or {}
@@ -237,8 +237,6 @@ def _contact_for_deal(
     return {
         "name": name,
         "email": (props.get("email") or "").strip(),
-        "title": (props.get("jobtitle") or "").strip(),
-        "company": (props.get("company") or "").strip(),
     }
 
 
@@ -302,8 +300,6 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 stage_name=stage_label,
                 contact_name=contact["name"] or deal_name,
                 contact_email=contact["email"],
-                contact_title=contact["title"],
-                company=contact["company"],
             )
         )
     connection.last_polled_at = datetime.now(UTC)

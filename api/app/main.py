@@ -126,8 +126,6 @@ class SignupRequest(BaseModel):
 
 class ProspectCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    title: str = Field(min_length=1, max_length=255)
-    company: str = Field(min_length=1, max_length=255)
     email: EmailStr
     deal_status: str = Field(default="open", pattern="^(open|won|lost)$")
 
@@ -135,8 +133,6 @@ class ProspectCreateRequest(BaseModel):
 class ProspectResponse(BaseModel):
     id: int
     name: str
-    title: str
-    company: str
     email: str
     deal_status: str
 
@@ -260,8 +256,6 @@ class GiftCatalogItem(BaseModel):
 
 class ProspectUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    title: str | None = Field(default=None, min_length=1, max_length=255)
-    company: str | None = Field(default=None, min_length=1, max_length=255)
     email: EmailStr | None = None
     deal_status: str | None = Field(default=None, pattern="^(open|won|lost)$")
 
@@ -284,7 +278,6 @@ class AdminGiftOrderResponse(GiftOrderResponse):
     owner_user_id: int
     owner_email: str
     prospect_name: str
-    prospect_company: str
     prospect_email: str
 
 
@@ -356,8 +349,6 @@ class SalesforceEventRequest(BaseModel):
     stage_name: str = Field(default="Demo Completed", min_length=1, max_length=255)
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
-    contact_title: str = Field(default="", max_length=255)
-    company: str = Field(default="", max_length=255)
     connection_id: int | None = None
     org_id: str | None = Field(default=None, max_length=64)
 
@@ -369,8 +360,6 @@ class HubSpotEventRequest(BaseModel):
     stage_name: str = Field(default="Demo Completed", min_length=1, max_length=255)
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
-    contact_title: str = Field(default="", max_length=255)
-    company: str = Field(default="", max_length=255)
     connection_id: int | None = None
     portal_id: str | None = Field(default=None, max_length=64)
 
@@ -514,7 +503,6 @@ def _admin_gift_order_response(
         owner_user_id=order.owner_user_id,
         owner_email=owner.email if owner else "",
         prospect_name=prospect.name if prospect else "",
-        prospect_company=prospect.company if prospect else "",
         prospect_email=prospect.email if prospect else "",
     )
 
@@ -817,8 +805,6 @@ def list_prospects(current_user: UserModel = Depends(get_current_user), db: Sess
         ProspectResponse(
             id=record.id,
             name=record.name,
-            title=record.title,
-            company=record.company,
             email=record.email,
             deal_status=record.deal_status,
         )
@@ -835,8 +821,6 @@ def create_prospect(
     prospect = ProspectModel(
         owner_user_id=current_user.id,
         name=payload.name.strip(),
-        title=payload.title.strip(),
-        company=payload.company.strip(),
         email=_normalize_email(str(payload.email)),
         deal_status=payload.deal_status,
     )
@@ -846,8 +830,6 @@ def create_prospect(
     return ProspectResponse(
         id=prospect.id,
         name=prospect.name,
-        title=prospect.title,
-        company=prospect.company,
         email=prospect.email,
         deal_status=prospect.deal_status,
     )
@@ -865,8 +847,6 @@ def get_prospect(
     return ProspectResponse(
         id=prospect.id,
         name=prospect.name,
-        title=prospect.title,
-        company=prospect.company,
         email=prospect.email,
         deal_status=prospect.deal_status,
     )
@@ -885,10 +865,6 @@ def update_prospect(
 
     if payload.name is not None:
         prospect.name = payload.name.strip()
-    if payload.title is not None:
-        prospect.title = payload.title.strip()
-    if payload.company is not None:
-        prospect.company = payload.company.strip()
     if payload.email is not None:
         prospect.email = _normalize_email(str(payload.email))
     if payload.deal_status is not None:
@@ -900,8 +876,6 @@ def update_prospect(
     return ProspectResponse(
         id=prospect.id,
         name=prospect.name,
-        title=prospect.title,
-        company=prospect.company,
         email=prospect.email,
         deal_status=prospect.deal_status,
     )
@@ -1023,8 +997,6 @@ def _find_or_create_prospect_for_import(
     prospect = ProspectModel(
         owner_user_id=owner.id,
         name=name,
-        title="Contact",
-        company="CSV import",
         email=email,
         deal_status="open",
     )
@@ -1571,8 +1543,6 @@ def salesforce_stage_event(
         stage_name=payload.stage_name,
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
-        contact_title=payload.contact_title,
-        company=payload.company,
     )
 
 
@@ -1685,8 +1655,6 @@ def hubspot_stage_event(
         stage_name=payload.stage_name,
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
-        contact_title=payload.contact_title,
-        company=payload.company,
     )
 
 

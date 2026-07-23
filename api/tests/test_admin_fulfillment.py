@@ -142,7 +142,6 @@ def test_admin_detail_includes_owner_and_prospect_context(
     assert body["owner_email"] == "owner@example.com"
     assert body["prospect_email"] == "p@example.com"
     assert body["prospect_name"]
-    assert body["prospect_company"]
 
 
 def test_clearing_tracking_number_sets_null(admin_client, make_client, stripe_stub):

@@ -9,8 +9,6 @@ import { apiFetch } from "@/lib/api";
 type Prospect = {
   id: number;
   name: string;
-  title: string;
-  company: string;
   email: string;
   deal_status: "open" | "won" | "lost";
 };
@@ -89,7 +87,7 @@ export default function ProspectDetailPage() {
     <>
       <PageHeader
         title={prospect.name}
-        description={`${prospect.title} · ${prospect.company}`}
+        description={prospect.email}
         action={
           <Link
             href="/orders/new"

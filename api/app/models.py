@@ -68,8 +68,6 @@ class ProspectModel(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    company: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     deal_status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     crm_provider: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)

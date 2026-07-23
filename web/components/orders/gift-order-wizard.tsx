@@ -14,8 +14,6 @@ const steps = ["Prospect & cookies", "Shipping & note", "Review"];
 type Prospect = {
   id: number;
   name: string;
-  title: string;
-  company: string;
   email: string;
   deal_status: "open" | "won" | "lost";
 };
@@ -217,7 +215,7 @@ export function GiftOrderWizard() {
                 ) : null}
                 {prospects.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} — {p.company}
+                    {p.name} — {p.email}
                   </option>
                 ))}
               </select>
@@ -387,7 +385,7 @@ export function GiftOrderWizard() {
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Prospect</p>
               <p className="mt-1 font-medium text-espresso">{selectedProspect?.name}</p>
-              <p className="text-stone-600">{selectedProspect?.company}</p>
+              <p className="text-stone-600">{selectedProspect?.email}</p>
             </div>
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Cookies</p>

@@ -233,8 +233,6 @@ def create_prospect(client, *, name="Dana Buyer", email="dana@example.com", deal
         "/prospects",
         json={
             "name": name,
-            "title": "VP Ops",
-            "company": "Acme Co",
             "email": email,
             "deal_status": deal_status,
         },
@@ -288,8 +286,6 @@ def prospect_id(auth_client):
         "/prospects",
         json={
             "name": "Dana Buyer",
-            "title": "VP Ops",
-            "company": "Acme Co",
             "email": "dana@example.com",
             "deal_status": "open",
         },

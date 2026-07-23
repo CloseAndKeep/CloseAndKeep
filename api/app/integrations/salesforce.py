@@ -218,8 +218,8 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     since_s = since.strftime("%Y-%m-%dT%H:%M:%SZ")
     query = (
-        "SELECT Id, Name, StageName, Account.Name, "
-        "ContactId, Contact.Name, Contact.Email, Contact.Title "
+        "SELECT Id, Name, StageName, "
+        "ContactId, Contact.Name, Contact.Email "
         "FROM Opportunity "
         f"WHERE StageName = '{stage}' "
         f"AND SystemModstamp > {since_s} "
@@ -230,7 +230,6 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
     results: list[dict] = []
     for record in raw.get("records") or []:
         contact = record.get("Contact") or {}
-        account = record.get("Account") or {}
         results.append(
             process_stage_completed_reminder(
                 db,
@@ -239,8 +238,6 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 stage_name=str(record.get("StageName") or stage),
                 contact_name=str(contact.get("Name") or record.get("Name") or ""),
                 contact_email=str(contact.get("Email") or ""),
-                contact_title=str(contact.get("Title") or ""),
-                company=str(account.get("Name") or ""),
             )
         )
     connection.last_polled_at = datetime.now(UTC)

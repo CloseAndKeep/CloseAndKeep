@@ -26,7 +26,7 @@ type GiftOrder = {
 type Prospect = {
   id: number;
   name: string;
-  company: string;
+  email: string;
 };
 
 export default function OrderDetailPage() {
@@ -215,7 +215,7 @@ export default function OrderDetailPage() {
             Prospect
           </h2>
           <p className="mt-2 font-medium text-espresso">{prospect?.name ?? "Unknown prospect"}</p>
-          <p className="text-stone-600">{prospect?.company ?? "—"}</p>
+          <p className="text-stone-600">{prospect?.email ?? "—"}</p>
         </section>
 
         <section className="rounded-2xl border border-stone-200/90 bg-white/90 p-6 shadow-sm">

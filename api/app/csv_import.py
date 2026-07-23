@@ -26,7 +26,7 @@ CSV_TEMPLATE_HEADERS = "Name,Email,Cookies,Address\n"
 # Filled example rows so users can see both known-address and request-address cases.
 CSV_EXAMPLE_BODY = (
     'Jane Smith,jane@example.com,4,"123 Main St, Springfield, IL 62704"\n'
-    "Bob Jones,bob@example.com,1,\n"
+    "Bob Jones,bob@example.com,4,\n"
     'Alex Rivera,alex@example.com,12,"456 Oak Ave Apt 2, Austin, TX 78701"\n'
 )
 

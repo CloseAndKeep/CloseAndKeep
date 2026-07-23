@@ -51,8 +51,6 @@ def test_demo_completed_event_sends_reminder_and_creates_prospect(auth_client, m
                 "stage_name": "Demo Completed",
                 "contact_name": "Jordan Buyer",
                 "contact_email": "jordan@acme.com",
-                "contact_title": "VP Sales",
-                "company": "Acme Co",
             },
             headers={"X-Webhook-Secret": "test-secret"},
         )
@@ -86,7 +84,6 @@ def test_demo_completed_event_dedupes(auth_client):
                 "stage_name": "Demo Completed",
                 "contact_name": "Sam",
                 "contact_email": "sam@example.com",
-                "company": "Example",
             },
         )
         second = auth_client.post(
@@ -97,7 +94,6 @@ def test_demo_completed_event_dedupes(auth_client):
                 "stage_name": "Demo Completed",
                 "contact_name": "Sam",
                 "contact_email": "sam@example.com",
-                "company": "Example",
             },
         )
 

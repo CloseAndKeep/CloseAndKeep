@@ -63,8 +63,6 @@ class ManualEmailFulfillment:
             note=order.note,
             status=order.status,
             prospect_name=prospect.name,
-            prospect_company=prospect.company,
-            prospect_title=prospect.title,
             prospect_email=prospect.email,
             prospect_deal_status=prospect.deal_status,
             placed_by_email=owner.email,

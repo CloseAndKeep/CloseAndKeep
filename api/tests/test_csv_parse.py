@@ -27,12 +27,12 @@ def test_parse_accepts_header_aliases():
 
 
 def test_parse_empty_address_marks_request_flow():
-    csv_text = "Name,Email,Cookies,Address\nBob,bob@example.com,1,\n"
+    csv_text = "Name,Email,Cookies,Address\nBob,bob@example.com,4,\n"
     rows, errors = parse_gift_orders_csv(csv_text)
     assert errors == []
     assert rows[0].request_recipient_address is True
     assert rows[0].shipping_address is None
-    assert rows[0].gift_id == "cookies-1"
+    assert rows[0].gift_id == "cookies-4"
 
 
 def test_parse_strips_utf8_bom():

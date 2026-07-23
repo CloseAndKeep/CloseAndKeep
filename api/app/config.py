@@ -110,7 +110,6 @@ class Settings(BaseModel):
 # gift ids the API will accept; anything not listed here is rejected before it
 # can reach Stripe.
 GIFT_CATALOG: tuple[dict[str, object], ...] = (
-    {"id": "cookies-1", "cookie_count": 1},
     {"id": "cookies-4", "cookie_count": 4},
     {"id": "cookies-12", "cookie_count": 12},
 )
@@ -118,7 +117,6 @@ GIFT_CATALOG: tuple[dict[str, object], ...] = (
 KNOWN_GIFT_IDS: frozenset[str] = frozenset(str(item["id"]) for item in GIFT_CATALOG)
 
 _GIFT_PRICE_ENV_KEYS: dict[str, str] = {
-    "cookies-1": "STRIPE_PRICE_COOKIES_1",
     "cookies-4": "STRIPE_PRICE_COOKIES_4",
     "cookies-12": "STRIPE_PRICE_COOKIES_12",
 }

@@ -23,7 +23,6 @@ type AdminGiftOrder = {
   requested_at: string;
   owner_email: string;
   prospect_name: string;
-  prospect_company: string;
   prospect_email: string;
 };
 
@@ -176,7 +175,6 @@ export default function AdminOrderDetailPage() {
             Prospect
           </h2>
           <p className="mt-2 font-medium text-espresso">{order.prospect_name}</p>
-          <p className="text-stone-600">{order.prospect_company}</p>
           <p className="text-sm text-stone-500">{order.prospect_email}</p>
 
           <h3 className="mt-5 text-sm font-semibold uppercase tracking-wide text-stone-500">

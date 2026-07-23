@@ -6,7 +6,6 @@ export type CookiePack = {
 };
 
 export const cookiePacks: CookiePack[] = [
-  { id: "cookies-1", cookieCount: 1 },
   { id: "cookies-4", cookieCount: 4 },
   { id: "cookies-12", cookieCount: 12 },
 ];

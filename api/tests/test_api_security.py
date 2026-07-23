@@ -84,8 +84,6 @@ def test_sql_injection_strings_do_not_alter_other_rows(make_client, stripe_stub)
         "/prospects",
         json={
             "name": "Robert'); DROP TABLE prospects;--",
-            "title": "1 OR 1=1",
-            "company": "Acme",
             "email": "evil@example.com",
             "deal_status": "open",
         },

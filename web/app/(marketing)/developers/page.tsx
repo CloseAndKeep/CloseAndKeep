@@ -59,7 +59,7 @@ export default function DevelopersDocsPage() {
           <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs">{apiBase}</code>
         </p>
         <p className="text-stone-500">
-          Public site: {siteUrl}. Gift ids: <code className="text-xs">cookies-1</code>,{" "}
+          Public site: {siteUrl}. Gift ids:{" "}
           <code className="text-xs">cookies-4</code>, <code className="text-xs">cookies-12</code>{" "}
           (confirm live prices with <code className="text-xs">GET /gifts</code>).
         </p>
@@ -73,8 +73,6 @@ export default function DevelopersDocsPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "name": "Dana Buyer",
-    "title": "VP Ops",
-    "company": "Acme Co",
     "email": "dana@acme.example",
     "deal_status": "open"
   }'`}

@@ -40,7 +40,7 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     csv_text = (
         "Name,Email,Cookies,Address\n"
         'Jane Smith,jane@example.com,4,"123 Main St, Springfield, IL 62704"\n'
-        "Bob Jones,bob@example.com,1,\n"
+        "Bob Jones,bob@example.com,4,\n"
         "Alex Rivera,alex@example.com,12,456 Oak Ave\n"
     )
     resp = _upload(auth_client, csv_text)
@@ -58,7 +58,7 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     assert jane["checkout_url"] == data["batch_checkout_url"]
 
     bob = by_email["bob@example.com"]
-    assert bob["gift_id"] == "cookies-1"
+    assert bob["gift_id"] == "cookies-4"
     assert bob["status"] == "no_address"
     assert bob["shipping_address"] is None
     assert bob["checkout_url"]
@@ -151,7 +151,7 @@ def test_import_rejects_invalid_cookie_count(auth_client, stripe_stub):
     assert resp.status_code == 400
     detail = resp.json()["detail"]
     assert detail["message"].startswith("CSV validation failed")
-    assert any("1" in e["message"] and "4" in e["message"] for e in detail["errors"])
+    assert any("4" in e["message"] and "12" in e["message"] for e in detail["errors"])
     assert stripe_stub.session_create_calls == []
 
     listed = auth_client.get("/gift-orders")

@@ -177,8 +177,6 @@ def test_guest_logout_discards_empty_guest(client):
         "/prospects",
         json={
             "name": "Temp Prospect",
-            "title": "AE",
-            "company": "Acme",
             "email": "temp@acme.example",
         },
     )
@@ -205,8 +203,6 @@ def test_guest_order_survives_logout_but_next_guest_cannot_see_it(client, stripe
         "/prospects",
         json={
             "name": "Ship Me",
-            "title": "AE",
-            "company": "Acme",
             "email": "ship@acme.example",
         },
     )

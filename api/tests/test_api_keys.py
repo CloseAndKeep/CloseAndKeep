@@ -45,8 +45,6 @@ def test_bearer_key_can_create_prospect_and_order(make_client, stripe_stub):
         headers=headers,
         json={
             "name": "Alex Prospect",
-            "title": "CEO",
-            "company": "Northwind",
             "email": "alex@northwind.example",
             "deal_status": "open",
         },
