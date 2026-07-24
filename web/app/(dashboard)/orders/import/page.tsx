@@ -196,7 +196,7 @@ Bob Jones,bob@example.com,1,`}</pre>
             {batchCheckoutUrl && withAddress.length > 0 ? (
               <div className="mt-4 rounded-xl border border-emerald-200/80 bg-white px-4 py-4">
                 <p className="text-sm text-stone-600">
-                  {withAddress.length} order{withAddress.length === 1 ? "" : "s"} with an address —
+                  {withAddress.length} order{withAddress.length === 1 ? "" : "s"} with an address 
                   pay once for all of them.
                 </p>
                 <a
@@ -234,7 +234,7 @@ Bob Jones,bob@example.com,1,`}</pre>
               <div className="mt-4">
                 <p className="text-sm text-stone-600">
                   {needsAddress.length} order{needsAddress.length === 1 ? "" : "s"} need an address
-                  from the recipient — authorize each separately, then we email them for shipping.
+                  from the recipient authorize each separately, then we email them for shipping.
                 </p>
                 <ul className="mt-3 divide-y divide-emerald-100/80 overflow-hidden rounded-xl border border-emerald-200/70 bg-white">
                   {needsAddress.map((order) => (

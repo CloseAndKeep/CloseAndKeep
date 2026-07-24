@@ -72,7 +72,7 @@ export default function PrivacyPage() {
           </ul>
           <p className="mt-2">
             Recipients do not create accounts and typically do not provide this information to us
-            directly — it comes from our customers. We use it solely to fulfill and ship the gift and
+            directly it comes from our customers. We use it solely to fulfill and ship the gift and
             to support the customer relationship, as described below.
           </p>
 
@@ -119,7 +119,7 @@ export default function PrivacyPage() {
             <li>
               <span className="font-medium text-espresso">Service providers:</span> Stripe (payment
               processing), our fulfillment partners and bakeries (to prepare and pack gifts), and
-              shipping carriers (to deliver gifts) receive the minimum information necessary — for
+              shipping carriers (to deliver gifts) receive the minimum information necessary for
               example, a carrier receives the recipient&rsquo;s name and address, not payment
               details.
             </li>

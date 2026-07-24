@@ -20,8 +20,8 @@ const siteUrl = getSiteUrl();
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: `${siteName} — Simple gifting follow-up for customer teams`,
-    template: `%s — ${siteName}`,
+    default: `${siteName} Simple gifting follow-up for customer teams`,
+    template: `%s ${siteName}`,
   },
   description: siteDescription,
   applicationName: siteName,
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: siteUrl,
     siteName,
-    title: `${siteName} — Simple gifting follow-up for customer teams`,
+    title: `${siteName} Simple gifting follow-up for customer teams`,
     description: siteDescription,
     images: [
       {
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: `${siteName} — Simple gifting follow-up for customer teams`,
+    title: `${siteName} Simple gifting follow-up for customer teams`,
     description: siteDescription,
     images: ["/brand/mark-512.png"],
   },

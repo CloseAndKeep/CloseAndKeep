@@ -51,7 +51,7 @@ export default function SupportPage() {
         <section>
           <h2 className="font-display text-xl text-espresso">Payments</h2>
           <p className="mt-2">
-            Payments are processed securely by Stripe. You pay once per gift order—there is
+            Payments are processed securely by Stripe. You pay once per gift order there is
             no subscription. For billing questions or refunds on orders that have not
             shipped, contact us at the address above.
           </p>

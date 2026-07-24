@@ -133,7 +133,7 @@ export default function OrderDetailPage() {
       ) : null}
       {paymentNotice === "success" && paymentAuthorized ? (
         <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Payment authorized. We emailed the recipient for their shipping address — you are charged when they submit it.
+          Payment authorized. We emailed the recipient for their shipping address you are charged when they submit it.
         </p>
       ) : null}
       {paymentNotice === "success" && needsAuthorization ? (
@@ -162,7 +162,7 @@ export default function OrderDetailPage() {
           <h2 className="font-medium text-espresso">Authorization required</h2>
           <p className="mt-2 text-sm text-stone-600">
             Complete Stripe checkout to authorize payment. We will email the recipient for their
-            address afterward — you are charged only when they submit it.
+            address afterward you are charged only when they submit it.
           </p>
           <Button
             type="button"
@@ -184,7 +184,7 @@ export default function OrderDetailPage() {
             {order.recipient_email
               ? "We emailed the recipient to enter where to send the cookies."
               : "Share the redeem code below so they can enter where to send the cookies."}{" "}
-            You will get a confirmation when they submit — then we capture payment and queue
+            You will get a confirmation when they submit then we capture payment and queue
             fulfillment.
           </p>
           {order.recipient_email ? (
@@ -236,7 +236,7 @@ export default function OrderDetailPage() {
             Prospect
           </h2>
           <p className="mt-2 font-medium text-espresso">{prospect?.name ?? "Unknown prospect"}</p>
-          <p className="text-stone-600">{prospect?.email ?? "—"}</p>
+          <p className="text-stone-600">{prospect?.email ?? ""}</p>
         </section>
 
         <section className="rounded-2xl border border-stone-200/90 bg-white/90 p-6 shadow-sm">

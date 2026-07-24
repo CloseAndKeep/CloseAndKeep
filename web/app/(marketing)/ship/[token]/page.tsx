@@ -133,7 +133,7 @@ export default function ShipAddressPage() {
 
       {request && done && !declined ? (
         <div className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-6">
-          <p className="font-medium text-emerald-900">Thank you — address received.</p>
+          <p className="font-medium text-emerald-900">Thank you address received.</p>
           <p className="mt-2 text-sm text-emerald-800">
             The sender has been notified and payment is complete so we can ship your gift.
           </p>

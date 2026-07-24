@@ -5,7 +5,7 @@ import { getSiteUrl, siteDescription, siteName } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: {
-    absolute: `${siteName} — Simple gifting follow-up for customer teams`,
+    absolute: `${siteName} Simple gifting follow-up for customer teams`,
   },
   description: siteDescription,
   alternates: {
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     url: "/",
-    title: `${siteName} — Simple gifting follow-up for customer teams`,
+    title: `${siteName} Simple gifting follow-up for customer teams`,
     description: siteDescription,
   },
 };
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 const steps = [
   "Log who you’re following up with",
   "Start with a cookie gift that fits the moment",
-  "We ship with your note on the gift — you stay human, not generic",
+  "We ship with your note on the gift you stay human, not generic",
   "Remind yourself to follow up; track won, lost, or open",
 ];
 

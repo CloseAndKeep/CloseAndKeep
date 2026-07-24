@@ -85,7 +85,7 @@ export default function BillingPage() {
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200/80 bg-amber-50/50 px-4 py-3 text-sm"
               >
                 <span>
-                  Order #{order.id} — {labelForGiftId(order.gift_id)}
+                  Order #{order.id} {labelForGiftId(order.gift_id)}
                 </span>
                 <Link
                   href={`/orders/${order.id}`}
@@ -115,7 +115,7 @@ export default function BillingPage() {
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200/90 bg-white px-4 py-3 text-sm"
               >
                 <span>
-                  Order #{order.id} — {labelForGiftId(order.gift_id)}
+                  Order #{order.id} {labelForGiftId(order.gift_id)}
                 </span>
                 <Link href={`/orders/${order.id}`} className="text-wood-dark hover:underline">
                   View

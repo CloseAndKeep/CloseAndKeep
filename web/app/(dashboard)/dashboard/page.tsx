@@ -67,7 +67,7 @@ export default function DashboardPage() {
         <StatCard label="Won deals" value={summary.won} hint="Closed won prospects" />
         <StatCard
           label="Win rate (closed)"
-          value={rate !== null ? `${rate}%` : "—"}
+          value={rate !== null ? `${rate}%` : ""}
           hint={summary.won + summary.lost > 0 ? `${summary.won} won / ${summary.lost} lost` : "No closed deals yet"}
         />
       </div>

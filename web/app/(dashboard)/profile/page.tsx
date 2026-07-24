@@ -270,7 +270,7 @@ export default function ProfilePage() {
                   Name
                 </p>
                 <p className="mt-1 font-display text-2xl text-espresso">
-                  {me.name?.trim() || "—"}
+                  {me.name?.trim() || ""}
                 </p>
               </div>
               <div>

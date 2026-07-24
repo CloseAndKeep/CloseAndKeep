@@ -17,7 +17,7 @@ type ApiKeyRow = {
 type CreatedKey = ApiKeyRow & { api_key: string };
 
 function formatWhen(value: string | null) {
-  if (!value) return "—";
+  if (!value) return "";
   try {
     return new Date(value).toLocaleString();
   } catch {
@@ -108,7 +108,7 @@ export default function ApiKeysPage() {
     <>
       <PageHeader
         title="API keys"
-        description="Create keys so agents or scripts can open gift orders. Payment still happens on Stripe Checkout — card data never hits CloseAndKeep."
+        description="Create keys so agents or scripts can open gift orders. Payment still happens on Stripe Checkout card data never hits CloseAndKeep."
       />
 
       <p className="mb-8 text-sm text-stone-600">

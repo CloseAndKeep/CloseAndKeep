@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Pay once per gift order at checkout. No subscription — choose a cookie pack and send when you need to.",
+    "Pay once per gift order at checkout. No subscription choose a cookie pack and send when you need to.",
   alternates: {
     canonical: "/pricing",
   },
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     url: "/pricing",
     title: "Pricing",
     description:
-      "Pay once per gift order at checkout. No subscription — choose a cookie pack and send when you need to.",
+      "Pay once per gift order at checkout. No subscription choose a cookie pack and send when you need to.",
   },
 };
 

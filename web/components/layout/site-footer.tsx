@@ -52,7 +52,7 @@ const socialLinks = [
 export function SiteFooter() {
   return (
     <footer className="border-t border-stone-200/80 bg-cream py-8 text-center text-sm text-stone-500">
-      <p>CloseAndKeep — gifting follow-up for customer teams.</p>
+      <p>CloseAndKeep gifting follow-up for customer teams.</p>
       <nav className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
         {footerLinks.map(({ href, label }) => (
           <Link

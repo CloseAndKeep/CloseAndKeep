@@ -215,7 +215,7 @@ export function GiftOrderWizard() {
                 ) : null}
                 {prospects.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} — {p.email}
+                    {p.name} {p.email}
                   </option>
                 ))}
               </select>
@@ -325,7 +325,7 @@ export function GiftOrderWizard() {
                     <span>
                       <span className="font-medium text-espresso">Ask recipient for address</span>
                       <span className="mt-0.5 block text-xs text-stone-500">
-                        Authorize payment now. Email them a link, or share a redeem code — we charge
+                        Authorize payment now. Email them a link, or share a redeem code we charge
                         only after they submit an address.
                       </span>
                     </span>
@@ -371,14 +371,14 @@ export function GiftOrderWizard() {
               </label>
               {fromCrmReminder ? (
                 <p className="mt-1 text-xs text-wood-dark">
-                  {reminderCrmLabel} demo completed — add a short note they&apos;ll remember.
+                  {reminderCrmLabel} demo completed add a short note they&apos;ll remember.
                 </p>
               ) : null}
               <textarea
                 className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm min-h-[88px]"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Short personal message — required before fulfillment."
+                placeholder="Short personal message required before fulfillment."
               />
             </div>
           </div>
@@ -420,7 +420,7 @@ export function GiftOrderWizard() {
             </div>
             <p className="text-stone-500">
               {requestAddress
-                ? "Submitting opens Stripe to authorize payment. After that, we email the recipient for their address — you are charged only when they submit it."
+                ? "Submitting opens Stripe to authorize payment. After that, we email the recipient for their address you are charged only when they submit it."
                 : "Submitting saves your order and opens Stripe to pay once. Fulfillment starts after payment."}
             </p>
           </div>

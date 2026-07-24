@@ -43,7 +43,7 @@ const PROVIDERS: {
 ];
 
 function formatWhen(value: string | null) {
-  if (!value) return "—";
+  if (!value) return "";
   try {
     return new Date(value).toLocaleString();
   } catch {
@@ -220,7 +220,7 @@ export function IntegrationsClient() {
               <p className="mt-1 text-sm text-stone-600">
                 When a {provider.objectLabel} moves to your trigger stage (default{" "}
                 <strong>Demo Completed</strong>), Close&nbsp;&amp;&nbsp;Keep emails you a link to
-                order cookies with the prospect prefilled — and reminds you to write a personal gift
+                order cookies with the prospect prefilled and reminds you to write a personal gift
                 note.
               </p>
 
@@ -244,7 +244,7 @@ export function IntegrationsClient() {
                         {provider.key === "hubspot" ? "Portal" : "Org"}
                       </dt>
                       <dd className="truncate">
-                        {row.external_org_id || row.instance_url || "—"}
+                        {row.external_org_id || row.instance_url || ""}
                       </dd>
                     </div>
                   </dl>

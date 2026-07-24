@@ -21,7 +21,7 @@ export default function PricingPage() {
     <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
       <h1 className="font-display text-4xl tracking-tight text-espresso">Pricing</h1>
       <p className="mt-4 max-w-2xl text-lg text-stone-600">
-        Pay once per gift order at checkout. No subscription required to get started—send
+        Pay once per gift order at checkout. No subscription required to get started send
         cookies when you need them.
       </p>
 

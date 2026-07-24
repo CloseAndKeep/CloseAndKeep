@@ -5,7 +5,7 @@ import { getSiteUrl } from "@/lib/site";
 export const metadata: Metadata = {
   title: "API",
   description:
-    "Create CloseAndKeep gift orders from agents or scripts. API keys open Checkout links — card data stays with Stripe.",
+    "Create CloseAndKeep gift orders from agents or scripts. API keys open Checkout links card data stays with Stripe.",
   alternates: {
     canonical: "/developers",
   },
@@ -26,7 +26,7 @@ export default function DevelopersDocsPage() {
       <h1 className="font-display text-4xl tracking-tight text-espresso">API</h1>
       <p className="mt-4 max-w-2xl text-lg text-stone-600">
         Create prospects and gift orders from an agent or script. CloseAndKeep returns a Stripe
-        Checkout URL — a human completes payment. Card numbers never touch your key or our API.
+        Checkout URL a human completes payment. Card numbers never touch your key or our API.
       </p>
 
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
@@ -106,7 +106,7 @@ export default function DevelopersDocsPage() {
           <li>It does not accept or store credit card numbers.</li>
           <li>It does not charge a saved card without Checkout (that would be a later option).</li>
           <li>
-            It does not call the bakery yet — paid orders queue for fulfillment so a vendor API can
+            It does not call the bakery yet paid orders queue for fulfillment so a vendor API can
             be added without changing how partners create orders.
           </li>
         </ul>

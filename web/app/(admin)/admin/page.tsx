@@ -79,7 +79,7 @@ export default function AdminQueuePage() {
     <>
       <PageHeader
         title="Order queue"
-        description="Gift orders awaiting fulfillment. Filter by status — including orders still waiting on a shipping address."
+        description="Gift orders awaiting fulfillment. Filter by status including orders still waiting on a shipping address."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
