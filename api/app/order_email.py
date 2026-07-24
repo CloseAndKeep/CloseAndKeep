@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import base64
 import html
 import logging
 from datetime import datetime
+from typing import Any
 
 import resend
 
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+_SENDER_PHOTO_CID = "sender-photo"
+_AVATAR_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
+_AVATAR_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 
 def _resend_ready() -> tuple[str, str] | None:
@@ -30,6 +36,35 @@ def _lines(**fields: str) -> str:
     return "\n".join(f"{k}: {v}" for k, v in fields.items())
 
 
+def _sender_avatar_attachment(
+    *,
+    data: bytes | None,
+    content_type: str | None,
+) -> dict[str, Any] | None:
+    """Build a Resend inline CID attachment for the buyer's profile photo."""
+    if not data:
+        return None
+    ct = (content_type or "").strip().lower()
+    if ct not in _AVATAR_CONTENT_TYPES:
+        return None
+    return {
+        "filename": f"sender.{_AVATAR_EXT[ct]}",
+        "content": base64.b64encode(data).decode("ascii"),
+        "content_type": ct,
+        "content_id": _SENDER_PHOTO_CID,
+    }
+
+
+def _sender_photo_html(*, alt: str) -> str:
+    return (
+        f"<p style='margin:0 0 16px'>"
+        f"<img src='cid:{_SENDER_PHOTO_CID}' alt='{html.escape(alt)}' width='72' height='72' "
+        f"style='border-radius:50%;width:72px;height:72px;object-fit:cover;"
+        f"display:block;border:1px solid #e7e5e4'/>"
+        f"</p>"
+    )
+
+
 def _send(
     *,
     to: str | list[str],
@@ -37,6 +72,7 @@ def _send(
     text_body: str,
     html_body: str,
     context: str,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> None:
     ready = _resend_ready()
     if not ready:
@@ -53,16 +89,17 @@ def _send(
         return
     key, from_addr = ready
     resend.api_key = key
+    payload: dict[str, Any] = {
+        "from": from_addr,
+        "to": recipients,
+        "subject": subject,
+        "text": text_body,
+        "html": html_body,
+    }
+    if attachments:
+        payload["attachments"] = attachments
     try:
-        resend.Emails.send(
-            {
-                "from": from_addr,
-                "to": recipients,
-                "subject": subject,
-                "text": text_body,
-                "html": html_body,
-            }
-        )
+        resend.Emails.send(payload)
         logger.info("Email accepted by Resend (%s) to=%s", context, recipients)
     except Exception:
         logger.exception("Failed to send email (%s) to=%s", context, recipients)
@@ -159,6 +196,8 @@ def send_recipient_address_request(
     note: str,
     sender_name: str | None,
     sender_company: str | None,
+    sender_avatar_data: bytes | None = None,
+    sender_avatar_content_type: str | None = None,
     support_email: str = "Agent@closeandkeep.com",
 ) -> None:
     """Ask the gift recipient to view the gift and share a shipping address."""
@@ -183,6 +222,12 @@ def send_recipient_address_request(
         subject = "Someone sent you cookies"
         who = "Someone"
 
+    avatar = _sender_avatar_attachment(
+        data=sender_avatar_data,
+        content_type=sender_avatar_content_type,
+    )
+    photo_alt = sender or who
+
     text_body = (
         f"Hi {first_name},\n\n"
         f"{who} purchased a cookie gift for you through Close & Keep.\n\n"
@@ -198,9 +243,11 @@ def send_recipient_address_request(
     )
     esc = html.escape
     note_html = esc(note)
+    photo_html = _sender_photo_html(alt=photo_alt) if avatar else ""
     html_body = (
         "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;"
         "line-height:1.5;color:#1c1917'>"
+        f"{photo_html}"
         f"<p>Hi {esc(first_name)},</p>"
         f"<p>{esc(who)} purchased a cookie gift for you through Close &amp; Keep.</p>"
         f"<p>{esc(sender) if sender else 'They'} included this message:</p>"
@@ -228,6 +275,7 @@ def send_recipient_address_request(
         text_body=text_body,
         html_body=html_body,
         context="recipient-address-request",
+        attachments=[avatar] if avatar else None,
     )
 
 
@@ -242,6 +290,8 @@ def send_recipient_address_followup(
     note: str,
     sender_name: str | None,
     sender_company: str | None,
+    sender_avatar_data: bytes | None = None,
+    sender_avatar_content_type: str | None = None,
     support_email: str = "Agent@closeandkeep.com",
 ) -> None:
     """Remind the gift recipient to share a shipping address (after ~72 hours)."""
@@ -266,6 +316,12 @@ def send_recipient_address_followup(
         subject = "Reminder: Someone sent you cookies"
         who = "Someone"
 
+    avatar = _sender_avatar_attachment(
+        data=sender_avatar_data,
+        content_type=sender_avatar_content_type,
+    )
+    photo_alt = sender or who
+
     text_body = (
         f"Hi {first_name},\n\n"
         f"Just a quick reminder — {who} purchased a cookie gift for you through "
@@ -280,9 +336,11 @@ def send_recipient_address_followup(
     )
     esc = html.escape
     note_html = esc(note)
+    photo_html = _sender_photo_html(alt=photo_alt) if avatar else ""
     html_body = (
         "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;"
         "line-height:1.5;color:#1c1917'>"
+        f"{photo_html}"
         f"<p>Hi {esc(first_name)},</p>"
         f"<p>Just a quick reminder — {esc(who)} purchased a cookie gift for you through "
         "Close &amp; Keep, and we still need a delivery address to ship it.</p>"
@@ -309,6 +367,7 @@ def send_recipient_address_followup(
         text_body=text_body,
         html_body=html_body,
         context="recipient-address-followup",
+        attachments=[avatar] if avatar else None,
     )
 
 

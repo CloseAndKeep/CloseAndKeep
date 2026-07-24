@@ -90,6 +90,8 @@ def send_due_address_request_followups(db: Session) -> dict[str, int]:
                 note=order.note,
                 sender_name=owner.name if owner else None,
                 sender_company=owner.company if owner else None,
+                sender_avatar_data=owner.avatar_data if owner else None,
+                sender_avatar_content_type=owner.avatar_content_type if owner else None,
             )
             sent += 1
         except Exception:

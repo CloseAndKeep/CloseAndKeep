@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   KeyRound,
   Plug,
+  UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -26,6 +27,7 @@ const baseNav = [
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/billing", label: "Payments", icon: CreditCard },
   { href: "/api-keys", label: "API keys", icon: KeyRound },
+  { href: "/profile", label: "Profile", icon: UserCircle },
 ];
 
 const adminNavItem = { href: "/admin", label: "Admin", icon: ShieldCheck };

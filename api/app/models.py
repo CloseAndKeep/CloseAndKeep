@@ -1,6 +1,6 @@
 from datetime import datetime, UTC
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -16,6 +16,9 @@ class UserModel(Base):
     company: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # Small profile photo stored in-DB (MVP; can move to object storage later).
+    avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    avatar_content_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

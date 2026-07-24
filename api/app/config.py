@@ -87,6 +87,8 @@ class Settings(BaseModel):
     # CSV import caps (bytes of upload body, and max data rows after parse).
     csv_import_max_bytes: int = int(os.getenv("CSV_IMPORT_MAX_BYTES", str(256 * 1024)))
     csv_import_max_rows: int = int(os.getenv("CSV_IMPORT_MAX_ROWS", "100"))
+    # Profile photo upload cap (stored in the users table for MVP).
+    avatar_max_bytes: int = int(os.getenv("AVATAR_MAX_BYTES", str(2 * 1024 * 1024)))
     # Address-request links expire with the Stripe authorize hold (~7 days).
     address_request_ttl_days: int = int(os.getenv("ADDRESS_REQUEST_TTL_DAYS", "7"))
     # Hours after the first address-request email before a follow-up is sent.

@@ -804,16 +804,77 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
     return {"message": "Logged out."}
 
 
+_AVATAR_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
+
+
+def _me_response(user: UserModel) -> dict[str, str | int | bool | None]:
+    return {
+        "user_id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "company": user.company,
+        "role": user.role,
+        "is_guest": user.role == "guest",
+        "has_avatar": bool(user.avatar_data),
+    }
+
+
 @app.get("/auth/me")
 def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | int | bool | None]:
-    return {
-        "user_id": current_user.id,
-        "email": current_user.email,
-        "name": current_user.name,
-        "company": current_user.company,
-        "role": current_user.role,
-        "is_guest": current_user.role == "guest",
-    }
+    return _me_response(current_user)
+
+
+@app.get("/auth/me/avatar")
+def get_my_avatar(current_user: UserModel = Depends(get_current_user)) -> Response:
+    if not current_user.avatar_data:
+        raise HTTPException(status_code=404, detail="No profile photo.")
+    return Response(
+        content=current_user.avatar_data,
+        media_type=current_user.avatar_content_type or "image/jpeg",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.post("/auth/me/avatar")
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str | int | bool | None]:
+    content_type = (file.content_type or "").strip().lower()
+    if content_type not in _AVATAR_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile photo must be a JPEG, PNG, or WebP image.",
+        )
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Profile photo file is empty.")
+    if len(data) > settings.avatar_max_bytes:
+        max_mb = settings.avatar_max_bytes / (1024 * 1024)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Profile photo must be {max_mb:g} MB or smaller.",
+        )
+    current_user.avatar_data = data
+    current_user.avatar_content_type = content_type
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return _me_response(current_user)
+
+
+@app.delete("/auth/me/avatar")
+def delete_my_avatar(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str | int | bool | None]:
+    current_user.avatar_data = None
+    current_user.avatar_content_type = None
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return _me_response(current_user)
 
 
 @app.get("/api-keys", response_model=list[ApiKeyResponse])

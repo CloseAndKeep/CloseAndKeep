@@ -101,6 +101,40 @@ def test_authorization_sends_recipient_email(
     assert recipient_mail["sender_name"] == "Test Seller"
     assert recipient_mail["sender_company"] == "CloseAndKeep Test"
     assert recipient_mail["gift_label"]
+    assert recipient_mail.get("sender_avatar_data") in (None, b"")
+
+
+def test_authorization_includes_buyer_avatar_in_address_email(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from app.db import SessionLocal
+    from app.models import UserModel
+
+    tiny_png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00"
+        b"\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    me = auth_client.get("/auth/me").json()
+    with SessionLocal() as db:
+        user = db.get(UserModel, me["user_id"])
+        user.avatar_data = tiny_png
+        user.avatar_content_type = "image/png"
+        db.add(user)
+        db.commit()
+
+    recipient_mail: dict = {}
+    import app.stripe_payments as sp
+
+    monkeypatch.setattr(
+        sp, "send_recipient_address_request", lambda **kw: recipient_mail.update(kw)
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    assert recipient_mail["sender_avatar_data"] == tiny_png
+    assert recipient_mail["sender_avatar_content_type"] == "image/png"
 
 
 def test_request_address_without_email_skips_send_but_mints_redeem_code(

@@ -161,6 +161,64 @@ def test_me_requires_authentication(client):
     assert client.get("/auth/me").status_code == 401
 
 
+def test_me_includes_has_avatar_false_by_default(auth_client):
+    me = auth_client.get("/auth/me").json()
+    assert me["has_avatar"] is False
+    assert me["name"] == "Test Seller"
+    assert me["email"]
+
+
+# Minimal 1x1 PNG
+_TINY_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00"
+    b"\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def test_avatar_upload_get_and_delete(auth_client):
+    upload = auth_client.post(
+        "/auth/me/avatar",
+        files={"file": ("photo.png", _TINY_PNG, "image/png")},
+    )
+    assert upload.status_code == 200, upload.text
+    assert upload.json()["has_avatar"] is True
+
+    me = auth_client.get("/auth/me").json()
+    assert me["has_avatar"] is True
+
+    avatar = auth_client.get("/auth/me/avatar")
+    assert avatar.status_code == 200
+    assert avatar.headers["content-type"].startswith("image/png")
+    assert avatar.content == _TINY_PNG
+
+    removed = auth_client.delete("/auth/me/avatar")
+    assert removed.status_code == 200
+    assert removed.json()["has_avatar"] is False
+    assert auth_client.get("/auth/me/avatar").status_code == 404
+
+
+def test_avatar_rejects_non_image(auth_client):
+    resp = auth_client.post(
+        "/auth/me/avatar",
+        files={"file": ("notes.txt", b"not-an-image", "text/plain")},
+    )
+    assert resp.status_code == 400
+    assert "jpeg" in resp.json()["detail"].lower() or "png" in resp.json()["detail"].lower()
+
+
+def test_avatar_rejects_oversized(auth_client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "avatar_max_bytes", 16)
+    resp = auth_client.post(
+        "/auth/me/avatar",
+        files={"file": ("photo.png", _TINY_PNG, "image/png")},
+    )
+    assert resp.status_code == 400
+    assert "mb" in resp.json()["detail"].lower() or "smaller" in resp.json()["detail"].lower()
+
+
 # --- Guest sessions ----------------------------------------------------------
 
 
@@ -173,6 +231,7 @@ def test_guest_login_creates_ephemeral_session(client):
     body = me.json()
     assert body["role"] == "guest"
     assert body["is_guest"] is True
+    assert body["has_avatar"] is False
     assert body["name"] is None
     assert body["company"] is None
     assert body["email"].startswith("guest-")

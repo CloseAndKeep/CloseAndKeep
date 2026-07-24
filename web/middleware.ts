@@ -46,6 +46,8 @@ export const config = {
     "/api-keys/:path*",
     "/integrations",
     "/integrations/:path*",
+    "/profile",
+    "/profile/:path*",
     "/gifts",
     "/gifts/:path*",
     "/admin",
