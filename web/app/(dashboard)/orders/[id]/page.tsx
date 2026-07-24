@@ -16,6 +16,7 @@ type GiftOrder = {
   recipient_name: string;
   shipping_address: string | null;
   recipient_email?: string | null;
+  redeem_code?: string | null;
   note: string;
   status: string;
   payment_status: string;
@@ -179,14 +180,34 @@ export default function OrderDetailPage() {
         <div className="mb-6 rounded-2xl border border-orange-200/90 bg-orange-50/60 p-6">
           <h2 className="font-medium text-espresso">Waiting for shipping address</h2>
           <p className="mt-2 text-sm text-stone-600">
-            Payment is authorized (not charged yet). We emailed the recipient to enter where to
-            send the cookies. You will get a confirmation when they submit — then we capture
-            payment and queue fulfillment.
+            Payment is authorized (not charged yet).{" "}
+            {order.recipient_email
+              ? "We emailed the recipient to enter where to send the cookies."
+              : "Share the redeem code below so they can enter where to send the cookies."}{" "}
+            You will get a confirmation when they submit — then we capture payment and queue
+            fulfillment.
           </p>
           {order.recipient_email ? (
             <p className="mt-2 text-sm text-stone-600">
               Sent to: <span className="font-medium text-espresso">{order.recipient_email}</span>
             </p>
+          ) : null}
+          {order.redeem_code ? (
+            <div className="mt-4 rounded-xl border border-orange-200 bg-white/80 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                Redeem code
+              </p>
+              <p className="mt-1 font-mono text-lg font-semibold tracking-wide text-espresso">
+                {order.redeem_code}
+              </p>
+              <p className="mt-1 text-xs text-stone-500">
+                They can visit{" "}
+                <Link href="/redeem" className="font-medium text-wood-dark hover:underline">
+                  CloseAndKeep.com/redeem
+                </Link>{" "}
+                and enter this code.
+              </p>
+            </div>
           ) : null}
         </div>
       ) : null}

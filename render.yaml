@@ -59,7 +59,7 @@ services:
       - key: RESEND_FROM
         sync: false
       - key: ORDER_NOTIFICATION_TO
-        value: "closeandkeep@gmail.com"
+        value: "agent@closeandkeep.com,thamilton@closeandkeep.com,cstewart@closeandkeep.com"
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
@@ -83,3 +83,34 @@ services:
       # Encrypts CRM OAuth tokens at rest. Generate once and keep stable.
       - key: INTEGRATION_TOKEN_FERNET_KEY
         sync: false
+      # Optional: hours before address-request follow-up (default 72).
+      - key: ADDRESS_REQUEST_FOLLOWUP_HOURS
+        value: "72"
+      # Optional: also used by POST /internal/jobs/* if you trigger via HTTP.
+      - key: CRON_SECRET
+        sync: false
+
+  # Hourly: remind recipients who never submitted a shipping address (~72h).
+  - type: cron
+    name: closeandkeep-address-followups
+    runtime: python
+    region: oregon
+    rootDir: api
+    schedule: "0 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.jobs.address_request_followups
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: WEB_BASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: ADDRESS_REQUEST_FOLLOWUP_HOURS
+        value: "72"

@@ -62,13 +62,19 @@ export default function HomePage() {
         <p className="mt-6 max-w-xl text-lg text-stone-600">
           For people who want to send gifts to potential or current customers.
         </p>
-        <div className="mt-10 flex justify-center">
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/login"
             className="inline-flex items-center gap-2 rounded-full bg-wood px-6 py-3 text-sm font-medium text-white shadow-md transition hover:bg-wood-dark"
           >
             Log in
             <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            href="/redeem"
+            className="inline-flex items-center gap-2 rounded-full border border-wood/40 bg-white/80 px-6 py-3 text-sm font-medium text-wood-dark shadow-sm transition hover:border-wood hover:bg-wood/5"
+          >
+            Redeem a gift
           </Link>
         </div>
       </section>

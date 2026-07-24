@@ -38,11 +38,16 @@ class Settings(BaseModel):
     # Default one-time price when a per-pack price env var is not set.
     stripe_price_id: str = os.getenv("STRIPE_PRICE_ID", "")
     resend_api_key: str = os.getenv("RESEND_API_KEY", "")
-    resend_from: str = os.getenv("RESEND_FROM", "onboarding@resend.dev")
-    order_notification_to: str = (
-        os.getenv("ORDER_NOTIFICATION_TO", "CloseAndKeep@gmail.com").strip()
-        or "CloseAndKeep@gmail.com"
-    )
+    resend_from: str = os.getenv("RESEND_FROM", "Agent@closeandkeep.com")
+    # Comma-separated inboxes for new-order ops alerts.
+    order_notification_to: list[str] = [
+        email.strip().lower()
+        for email in os.getenv(
+            "ORDER_NOTIFICATION_TO",
+            "agent@closeandkeep.com,thamilton@closeandkeep.com,cstewart@closeandkeep.com",
+        ).split(",")
+        if email.strip()
+    ]
     cors_origins: list[str] = [
         origin.strip()
         for origin in os.getenv(
@@ -84,6 +89,12 @@ class Settings(BaseModel):
     csv_import_max_rows: int = int(os.getenv("CSV_IMPORT_MAX_ROWS", "100"))
     # Address-request links expire with the Stripe authorize hold (~7 days).
     address_request_ttl_days: int = int(os.getenv("ADDRESS_REQUEST_TTL_DAYS", "7"))
+    # Hours after the first address-request email before a follow-up is sent.
+    address_request_followup_hours: int = int(
+        os.getenv("ADDRESS_REQUEST_FOLLOWUP_HOURS", "72")
+    )
+    # Shared secret for POST /internal/jobs/* (Render cron or manual trigger).
+    cron_secret: str = os.getenv("CRON_SECRET", "").strip()
     # Signup password policy (min length; must include a letter and a digit).
     password_min_length: int = int(os.getenv("PASSWORD_MIN_LENGTH", "12"))
     # Salesforce Connected App + cookie-reminder webhooks.

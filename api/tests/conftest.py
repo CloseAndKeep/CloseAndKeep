@@ -222,10 +222,30 @@ def make_client():
         c.__exit__(None, None, None)
 
 
-def signup(client, email: str, password: str = "strong-pass-123"):
-    resp = client.post("/auth/signup", json={"email": email, "password": password})
+def signup(
+    client,
+    email: str,
+    password: str = "strong-pass-123",
+    *,
+    name: str = "Test User",
+    company: str = "Acme Corp",
+):
+    resp = client.post(
+        "/auth/signup",
+        json={"email": email, "password": password, "name": name, "company": company},
+    )
     assert resp.status_code == 200, resp.text
     return client
+
+
+def signup_payload(
+    email: str,
+    password: str = "strong-pass-123",
+    *,
+    name: str = "Test User",
+    company: str = "Acme Corp",
+) -> dict:
+    return {"email": email, "password": password, "name": name, "company": company}
 
 
 def create_prospect(client, *, name="Dana Buyer", email="dana@example.com", deal_status="open"):
@@ -273,7 +293,12 @@ def auth_client(client):
     """A TestClient authenticated as a freshly signed-up regular user."""
     resp = client.post(
         "/auth/signup",
-        json={"email": "seller@example.com", "password": "hunter2-correct-horse"},
+        json={
+            "email": "seller@example.com",
+            "password": "hunter2-correct-horse",
+            "name": "Test Seller",
+            "company": "CloseAndKeep Test",
+        },
     )
     assert resp.status_code == 200, resp.text
     return client

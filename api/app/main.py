@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from secrets import token_urlsafe
+from secrets import compare_digest, randbelow, token_urlsafe
 import re
 
 import bcrypt
@@ -40,7 +40,8 @@ from .models import (
     ProspectModel,
     UserModel,
 )
-from .order_email import send_orderer_address_received
+from .jobs.address_request_followups import send_due_address_request_followups
+from .order_email import send_orderer_address_received, send_orderer_gift_declined
 from .rate_limit import client_ip, limiter
 from .session_store import (
     create_session,
@@ -111,6 +112,8 @@ class LoginRequest(BaseModel):
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=255)
+    company: str = Field(min_length=1, max_length=255)
 
     @field_validator("password")
     @classmethod
@@ -122,6 +125,14 @@ class SignupRequest(BaseModel):
         if not re.search(r"[A-Za-z]", value) or not re.search(r"\d", value):
             raise ValueError("Password must include at least one letter and one number.")
         return value
+
+    @field_validator("name", "company")
+    @classmethod
+    def _required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
 
 
 class ProspectCreateRequest(BaseModel):
@@ -151,8 +162,8 @@ class GiftOrderCreateRequest(BaseModel):
     # Required unless request_recipient_address is true (recipient fills it in later).
     shipping_address: str | None = Field(default=None, max_length=1000)
     note: str = Field(min_length=1, max_length=1000)
-    # When true, authorize payment at checkout, email the recipient a link to
-    # enter shipping, then capture only after they submit. Guests cannot use this.
+    # When true, authorize payment at checkout, then collect shipping via email
+    # link and/or redeem code. Guests cannot use this.
     request_recipient_address: bool = False
     recipient_email: EmailStr | None = None
 
@@ -176,8 +187,6 @@ class GiftOrderCreateRequest(BaseModel):
     @model_validator(mode="after")
     def _address_or_request(self) -> "GiftOrderCreateRequest":
         if self.request_recipient_address:
-            if not self.recipient_email:
-                raise ValueError("recipient_email is required when requesting an address from the recipient")
             return self
         if not self.shipping_address:
             raise ValueError("shipping_address is required unless requesting an address from the recipient")
@@ -191,6 +200,7 @@ class GiftOrderResponse(BaseModel):
     recipient_name: str
     shipping_address: str | None = None
     recipient_email: str | None = None
+    redeem_code: str | None = None
     note: str
     status: str
     payment_status: str
@@ -399,9 +409,26 @@ def _mint_address_request_token() -> tuple[str, datetime]:
     return token_urlsafe(32), _address_request_expiry()
 
 
+def _mint_redeem_code(db: Session) -> str:
+    """Allocate a short human redeem code like CK-48291."""
+    for _ in range(40):
+        code = f"CK-{randbelow(100_000):05d}"
+        exists = db.scalar(
+            select(GiftOrderModel.id).where(GiftOrderModel.redeem_code == code).limit(1)
+        )
+        if exists is None:
+            return code
+    raise HTTPException(status_code=500, detail="Unable to allocate a redeem code.")
+
+
+def _normalize_redeem_code(raw: str) -> str:
+    return re.sub(r"\s+", "", (raw or "").strip()).upper()
+
+
 def _clear_address_request_token(order: GiftOrderModel) -> None:
     order.address_request_token = None
     order.address_request_expires_at = None
+    order.redeem_code = None
 
 
 def _address_request_is_expired(order: GiftOrderModel) -> bool:
@@ -414,6 +441,21 @@ def _address_request_is_expired(order: GiftOrderModel) -> bool:
     return expires <= datetime.now(UTC)
 
 
+def _expire_address_request_order(order: GiftOrderModel, db: Session) -> None:
+    _clear_address_request_token(order)
+    if order.payment_status == "authorized":
+        # Best-effort release; ignore Stripe failures so the link still dies.
+        try:
+            cancel_payment_authorization(order)
+        except HTTPException:
+            pass
+        order.payment_status = "canceled"
+        if order.status == "no_address":
+            order.status = "canceled"
+    db.add(order)
+    db.commit()
+
+
 def _get_order_by_address_token(token: str, db: Session) -> GiftOrderModel:
     order = db.scalar(
         select(GiftOrderModel).where(GiftOrderModel.address_request_token == token)
@@ -421,20 +463,33 @@ def _get_order_by_address_token(token: str, db: Session) -> GiftOrderModel:
     if not order:
         raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
     if _address_request_is_expired(order):
-        _clear_address_request_token(order)
-        if order.payment_status == "authorized":
-            # Best-effort release; ignore Stripe failures so the link still dies.
-            try:
-                cancel_payment_authorization(order)
-            except HTTPException:
-                pass
-            order.payment_status = "canceled"
-            if order.status == "no_address":
-                order.status = "canceled"
-        db.add(order)
-        db.commit()
+        _expire_address_request_order(order, db)
         raise HTTPException(status_code=404, detail="This address link is invalid or has expired.")
     return order
+
+
+def _get_order_by_redeem_code(code: str, db: Session) -> GiftOrderModel:
+    normalized = _normalize_redeem_code(code)
+    if not normalized:
+        raise HTTPException(status_code=404, detail="This redeem code is invalid or has expired.")
+    order = db.scalar(
+        select(GiftOrderModel).where(GiftOrderModel.redeem_code == normalized)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="This redeem code is invalid or has expired.")
+    if _address_request_is_expired(order):
+        _expire_address_request_order(order, db)
+        raise HTTPException(status_code=404, detail="This redeem code is invalid or has expired.")
+    return order
+
+
+def _public_address_response(order: GiftOrderModel) -> AddressRequestPublicResponse:
+    return AddressRequestPublicResponse(
+        recipient_name=order.recipient_name,
+        gift_id=order.gift_id,
+        note=order.note,
+        already_submitted=order.status != "no_address" or bool(order.shipping_address),
+    )
 
 
 def _sync_admin_role(user: UserModel, db: Session) -> UserModel:
@@ -476,6 +531,7 @@ def _gift_order_response(order: GiftOrderModel) -> GiftOrderResponse:
         recipient_name=order.recipient_name,
         shipping_address=order.shipping_address,
         recipient_email=order.recipient_email,
+        redeem_code=order.redeem_code,
         note=order.note,
         status=order.status,
         payment_status=order.payment_status,
@@ -494,6 +550,7 @@ def _admin_gift_order_response(
         recipient_name=order.recipient_name,
         shipping_address=order.shipping_address,
         recipient_email=order.recipient_email,
+        redeem_code=order.redeem_code,
         note=order.note,
         status=order.status,
         payment_status=order.payment_status,
@@ -623,6 +680,30 @@ def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.app_env}
 
 
+def _require_cron_secret(request: Request) -> None:
+    """Authorize internal job endpoints via CRON_SECRET (Bearer or X-Cron-Secret)."""
+    expected = settings.cron_secret
+    if not expected:
+        if settings.app_env.lower() == "production":
+            raise HTTPException(status_code=503, detail="Cron jobs are not configured.")
+        return
+    auth = request.headers.get("Authorization", "")
+    bearer = auth.removeprefix("Bearer ").strip() if auth.lower().startswith("bearer ") else ""
+    provided = (request.headers.get("X-Cron-Secret") or bearer or "").strip()
+    if not provided or not compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Invalid cron secret.")
+
+
+@app.post("/internal/jobs/address-request-followups")
+def run_address_request_followups(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    """Send 72h follow-ups for address-request orders still missing a ship-to."""
+    _require_cron_secret(request)
+    return send_due_address_request_followups(db)
+
+
 @app.get("/gifts", response_model=list[GiftCatalogItem])
 def list_gifts() -> list[GiftCatalogItem]:
     return [GiftCatalogItem(**item) for item in list_gift_prices()]
@@ -664,6 +745,8 @@ def signup(payload: SignupRequest, request: Request, response: Response, db: Ses
     user = UserModel(
         email=email,
         password_hash=hash_password(payload.password),
+        name=payload.name,
+        company=payload.company,
         role=role,
     )
     db.add(user)
@@ -722,10 +805,12 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
 
 
 @app.get("/auth/me")
-def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | int | bool]:
+def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | int | bool | None]:
     return {
         "user_id": current_user.id,
         "email": current_user.email,
+        "name": current_user.name,
+        "company": current_user.company,
         "role": current_user.role,
         "is_guest": current_user.role == "guest",
     }
@@ -920,17 +1005,23 @@ def create_gift_order(
                 detail="Guest accounts cannot request a shipping address from the recipient.",
             )
         token, expires_at = _mint_address_request_token()
+        redeem_code = _mint_redeem_code(db)
         order = GiftOrderModel(
             owner_user_id=current_user.id,
             prospect_id=payload.prospect_id,
             gift_id=payload.gift_id.strip(),
             recipient_name=payload.recipient_name.strip(),
             shipping_address=None,
-            recipient_email=str(payload.recipient_email).strip().lower(),
+            recipient_email=(
+                str(payload.recipient_email).strip().lower()
+                if payload.recipient_email
+                else None
+            ),
             note=payload.note.strip(),
             status="no_address",
             payment_status="pending",
             address_request_token=token,
+            redeem_code=redeem_code,
             address_request_expires_at=expires_at,
             # Email is sent after Stripe authorization succeeds — not yet.
             address_request_sent_at=None,
@@ -1090,7 +1181,8 @@ async def import_gift_orders_csv(
             prospect = _find_or_create_prospect_for_import(
                 owner=current_user,
                 name=row.recipient_name,
-                email=row.recipient_email,
+                email=row.recipient_email
+                or f"import-{token_urlsafe(8).lower()}@no-email.closeandkeep.local",
                 db=db,
             )
             if row.request_recipient_address:
@@ -1106,6 +1198,7 @@ async def import_gift_orders_csv(
                     status="no_address",
                     payment_status="pending",
                     address_request_token=token,
+                    redeem_code=_mint_redeem_code(db),
                     address_request_expires_at=expires_at,
                     address_request_sent_at=None,
                 )
@@ -1169,24 +1262,11 @@ async def import_gift_orders_csv(
     return GiftOrderImportResponse(created=created, batch_checkout_url=batch_checkout_url)
 
 
-@app.get("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
-def get_address_request(token: str, db: Session = Depends(get_db)) -> AddressRequestPublicResponse:
-    order = _get_order_by_address_token(token, db)
-    return AddressRequestPublicResponse(
-        recipient_name=order.recipient_name,
-        gift_id=order.gift_id,
-        note=order.note,
-        already_submitted=order.status != "no_address" or bool(order.shipping_address),
-    )
-
-
-@app.post("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
-def submit_address_request(
-    token: str,
+def _submit_shipping_for_order(
+    order: GiftOrderModel,
     payload: AddressSubmitRequest,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> AddressRequestPublicResponse:
-    order = _get_order_by_address_token(token, db)
     if order.status != "no_address" or order.shipping_address:
         return AddressRequestPublicResponse(
             recipient_name=order.recipient_name,
@@ -1241,7 +1321,7 @@ def submit_address_request(
         db.commit()
         raise
 
-    # One-time link: clear token after successful capture so PII is not re-fetchable.
+    # One-time link: clear token/code after successful capture so PII is not re-fetchable.
     _clear_address_request_token(order)
     db.add(order)
     db.commit()
@@ -1263,6 +1343,85 @@ def submit_address_request(
         note=order.note,
         already_submitted=True,
     )
+
+
+def _decline_gift_order(order: GiftOrderModel, db: Session) -> AddressRequestPublicResponse:
+    if order.status != "no_address" or order.shipping_address:
+        return AddressRequestPublicResponse(
+            recipient_name=order.recipient_name,
+            gift_id=order.gift_id,
+            note=order.note,
+            already_submitted=True,
+        )
+    if order.payment_status == "authorized":
+        cancel_payment_authorization(order)
+
+    order.payment_status = "canceled"
+    order.status = "canceled"
+    _clear_address_request_token(order)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    owner = db.get(UserModel, order.owner_user_id)
+    if owner:
+        send_orderer_gift_declined(
+            order_id=order.id,
+            orderer_email=owner.email,
+            recipient_name=order.recipient_name,
+            order_url=_order_detail_url(order.id),
+        )
+
+    return AddressRequestPublicResponse(
+        recipient_name=order.recipient_name,
+        gift_id=order.gift_id,
+        note=order.note,
+        already_submitted=True,
+    )
+
+
+@app.get("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
+def get_address_request(token: str, db: Session = Depends(get_db)) -> AddressRequestPublicResponse:
+    order = _get_order_by_address_token(token, db)
+    return _public_address_response(order)
+
+
+@app.post("/public/address-requests/{token}", response_model=AddressRequestPublicResponse)
+def submit_address_request(
+    token: str,
+    payload: AddressSubmitRequest,
+    db: Session = Depends(get_db),
+) -> AddressRequestPublicResponse:
+    order = _get_order_by_address_token(token, db)
+    return _submit_shipping_for_order(order, payload, db)
+
+
+@app.post("/public/address-requests/{token}/decline", response_model=AddressRequestPublicResponse)
+def decline_address_request(token: str, db: Session = Depends(get_db)) -> AddressRequestPublicResponse:
+    order = _get_order_by_address_token(token, db)
+    return _decline_gift_order(order, db)
+
+
+@app.get("/public/redeem/{code}", response_model=AddressRequestPublicResponse)
+def get_redeem_request(code: str, db: Session = Depends(get_db)) -> AddressRequestPublicResponse:
+    order = _get_order_by_redeem_code(code, db)
+    return _public_address_response(order)
+
+
+@app.post("/public/redeem/{code}", response_model=AddressRequestPublicResponse)
+def submit_redeem_request(
+    code: str,
+    payload: AddressSubmitRequest,
+    db: Session = Depends(get_db),
+) -> AddressRequestPublicResponse:
+    order = _get_order_by_redeem_code(code, db)
+    return _submit_shipping_for_order(order, payload, db)
+
+
+@app.post("/public/redeem/{code}/decline", response_model=AddressRequestPublicResponse)
+def decline_redeem_request(code: str, db: Session = Depends(get_db)) -> AddressRequestPublicResponse:
+    order = _get_order_by_redeem_code(code, db)
+    return _decline_gift_order(order, db)
 
 
 @app.post("/gift-orders/{order_id}/checkout", response_model=StripeCheckoutResponse)

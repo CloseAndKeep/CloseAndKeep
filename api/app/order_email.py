@@ -30,9 +30,26 @@ def _lines(**fields: str) -> str:
     return "\n".join(f"{k}: {v}" for k, v in fields.items())
 
 
-def _send(*, to: str, subject: str, text_body: str, html_body: str, context: str) -> None:
+def _send(
+    *,
+    to: str | list[str],
+    subject: str,
+    text_body: str,
+    html_body: str,
+    context: str,
+) -> None:
     ready = _resend_ready()
     if not ready:
+        return
+    recipients = (
+        [addr.strip().lower() for addr in to if addr and addr.strip()]
+        if isinstance(to, list)
+        else [to.strip().lower()]
+        if to and to.strip()
+        else []
+    )
+    if not recipients:
+        logger.warning("No recipients; skipping email (%s).", context)
         return
     key, from_addr = ready
     resend.api_key = key
@@ -40,15 +57,15 @@ def _send(*, to: str, subject: str, text_body: str, html_body: str, context: str
         resend.Emails.send(
             {
                 "from": from_addr,
-                "to": [to],
+                "to": recipients,
                 "subject": subject,
                 "text": text_body,
                 "html": html_body,
             }
         )
-        logger.info("Email accepted by Resend (%s) to=%s", context, to)
+        logger.info("Email accepted by Resend (%s) to=%s", context, recipients)
     except Exception:
-        logger.exception("Failed to send email (%s) to=%s", context, to)
+        logger.exception("Failed to send email (%s) to=%s", context, recipients)
 
 
 def send_new_order_notification(
@@ -65,7 +82,7 @@ def send_new_order_notification(
     prospect_deal_status: str,
     placed_by_email: str,
 ) -> None:
-    to = (settings.order_notification_to or "").strip().lower()
+    to = list(settings.order_notification_to or [])
     if not to:
         logger.warning("ORDER_NOTIFICATION_TO is empty; skipping new-order notification email.")
         return
@@ -136,35 +153,73 @@ def send_recipient_address_request(
     recipient_name: str,
     recipient_email: str,
     address_form_url: str,
-    gift_id: str,
+    redeem_url: str,
+    redeem_code: str,
+    gift_label: str,
     note: str,
+    sender_name: str | None,
+    sender_company: str | None,
+    support_email: str = "Agent@closeandkeep.com",
 ) -> None:
-    """Ask the gift recipient to enter the shipping address via a magic link."""
+    """Ask the gift recipient to view the gift and share a shipping address."""
     to = recipient_email.strip().lower()
     if not to:
         logger.warning("Recipient email empty; skipping address-request email.")
         return
 
-    subject = "Please share your shipping address for a gift"
+    first_name = (recipient_name or "").strip().split()[0] if (recipient_name or "").strip() else "there"
+    sender = (sender_name or "").strip()
+    company = (sender_company or "").strip()
+    if sender and company:
+        subject = f"{sender} from {company} sent you cookies"
+        who = f"{sender} from {company}"
+    elif sender:
+        subject = f"{sender} sent you cookies"
+        who = sender
+    elif company:
+        subject = f"Someone from {company} sent you cookies"
+        who = f"Someone from {company}"
+    else:
+        subject = "Someone sent you cookies"
+        who = "Someone"
+
     text_body = (
-        f"Hi {recipient_name},\n\n"
-        "Someone ordered cookies for you through Close & Keep.\n"
-        "Use this link to enter the address where we should send them:\n\n"
-        f"{address_form_url}\n\n"
-        f"Gift: {gift_id}\n"
-        f"Note from the sender:\n{note}\n"
+        f"Hi {first_name},\n\n"
+        f"{who} purchased a cookie gift for you through Close & Keep.\n\n"
+        f"{sender or 'They'} included this message:\n"
+        f"“{note}”\n\n"
+        "Close & Keep does not yet have your delivery address. You can view the gift "
+        "and provide a delivery location on our website. No payment is required, and "
+        "you will not be added to a mailing list.\n\n"
+        f"View your gift: {address_form_url}\n\n"
+        f"Prefer not to click the button? Visit CloseAndKeep.com/redeem and enter code "
+        f"{redeem_code}.\n\n"
+        f"Not expecting this gift? You can decline it or contact {support_email}.\n"
     )
     esc = html.escape
+    note_html = esc(note)
     html_body = (
-        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
-        f"<p>Hi {esc(recipient_name)},</p>"
-        "<p>Someone ordered cookies for you through Close &amp; Keep.</p>"
-        "<p>Use the button below to enter the address where we should send them.</p>"
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;"
+        "line-height:1.5;color:#1c1917'>"
+        f"<p>Hi {esc(first_name)},</p>"
+        f"<p>{esc(who)} purchased a cookie gift for you through Close &amp; Keep.</p>"
+        f"<p>{esc(sender) if sender else 'They'} included this message:</p>"
+        f"<p style='margin:0 0 1em;padding:12px 16px;border-left:3px solid #8B5E3C;"
+        f"background:#faf7f2;font-style:italic'>“{note_html}”</p>"
+        "<p>Close &amp; Keep does not yet have your delivery address. You can view the gift "
+        "and provide a delivery location on our website. No payment is required, and you "
+        "will not be added to a mailing list.</p>"
         f"<p><a href='{esc(address_form_url)}' style='display:inline-block;padding:10px 16px;"
         "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
-        "Enter shipping address</a></p>"
-        f"<p style='color:#666;font-size:13px'>Gift: {esc(gift_id)}</p>"
-        f"<p style='white-space:pre-wrap'><strong>Note from the sender:</strong><br/>{esc(note)}</p>"
+        "View your gift</a></p>"
+        f"<p style='color:#57534e;font-size:13px'>Prefer not to click the button? Visit "
+        f"<a href='{esc(redeem_url)}' style='color:#8B5E3C'>CloseAndKeep.com/redeem</a> "
+        f"and enter code <strong>{esc(redeem_code)}</strong>.</p>"
+        f"<p style='color:#57534e;font-size:13px'>Gift: {esc(gift_label)}</p>"
+        f"<p style='color:#57534e;font-size:13px'>Not expecting this gift? You can decline it "
+        f"on the redeem page or contact "
+        f"<a href='mailto:{esc(support_email)}' style='color:#8B5E3C'>{esc(support_email)}</a>."
+        "</p>"
         "</body></html>"
     )
     _send(
@@ -173,6 +228,125 @@ def send_recipient_address_request(
         text_body=text_body,
         html_body=html_body,
         context="recipient-address-request",
+    )
+
+
+def send_recipient_address_followup(
+    *,
+    recipient_name: str,
+    recipient_email: str,
+    address_form_url: str,
+    redeem_url: str,
+    redeem_code: str,
+    gift_label: str,
+    note: str,
+    sender_name: str | None,
+    sender_company: str | None,
+    support_email: str = "Agent@closeandkeep.com",
+) -> None:
+    """Remind the gift recipient to share a shipping address (after ~72 hours)."""
+    to = recipient_email.strip().lower()
+    if not to:
+        logger.warning("Recipient email empty; skipping address-request follow-up.")
+        return
+
+    first_name = (recipient_name or "").strip().split()[0] if (recipient_name or "").strip() else "there"
+    sender = (sender_name or "").strip()
+    company = (sender_company or "").strip()
+    if sender and company:
+        subject = f"Reminder: {sender} from {company} sent you cookies"
+        who = f"{sender} from {company}"
+    elif sender:
+        subject = f"Reminder: {sender} sent you cookies"
+        who = sender
+    elif company:
+        subject = f"Reminder: Someone from {company} sent you cookies"
+        who = f"Someone from {company}"
+    else:
+        subject = "Reminder: Someone sent you cookies"
+        who = "Someone"
+
+    text_body = (
+        f"Hi {first_name},\n\n"
+        f"Just a quick reminder — {who} purchased a cookie gift for you through "
+        "Close & Keep, and we still need a delivery address to ship it.\n\n"
+        f"{sender or 'They'} included this message:\n"
+        f"“{note}”\n\n"
+        "No payment is required, and you will not be added to a mailing list.\n\n"
+        f"View your gift: {address_form_url}\n\n"
+        f"Prefer not to click the button? Visit CloseAndKeep.com/redeem and enter code "
+        f"{redeem_code}.\n\n"
+        f"Not expecting this gift? You can decline it or contact {support_email}.\n"
+    )
+    esc = html.escape
+    note_html = esc(note)
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;"
+        "line-height:1.5;color:#1c1917'>"
+        f"<p>Hi {esc(first_name)},</p>"
+        f"<p>Just a quick reminder — {esc(who)} purchased a cookie gift for you through "
+        "Close &amp; Keep, and we still need a delivery address to ship it.</p>"
+        f"<p>{esc(sender) if sender else 'They'} included this message:</p>"
+        f"<p style='margin:0 0 1em;padding:12px 16px;border-left:3px solid #8B5E3C;"
+        f"background:#faf7f2;font-style:italic'>“{note_html}”</p>"
+        "<p>No payment is required, and you will not be added to a mailing list.</p>"
+        f"<p><a href='{esc(address_form_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "View your gift</a></p>"
+        f"<p style='color:#57534e;font-size:13px'>Prefer not to click the button? Visit "
+        f"<a href='{esc(redeem_url)}' style='color:#8B5E3C'>CloseAndKeep.com/redeem</a> "
+        f"and enter code <strong>{esc(redeem_code)}</strong>.</p>"
+        f"<p style='color:#57534e;font-size:13px'>Gift: {esc(gift_label)}</p>"
+        f"<p style='color:#57534e;font-size:13px'>Not expecting this gift? You can decline it "
+        f"on the redeem page or contact "
+        f"<a href='mailto:{esc(support_email)}' style='color:#8B5E3C'>{esc(support_email)}</a>."
+        "</p>"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context="recipient-address-followup",
+    )
+
+
+def send_orderer_gift_declined(
+    *,
+    order_id: int,
+    orderer_email: str,
+    recipient_name: str,
+    order_url: str,
+) -> None:
+    """Notify the buyer that the recipient declined the gift."""
+    to = orderer_email.strip().lower()
+    if not to:
+        logger.warning("Orderer email empty; skipping gift-declined notice.")
+        return
+
+    subject = f"Gift declined — order #{order_id}"
+    text_body = (
+        f"{recipient_name} declined the cookie gift for order #{order_id}.\n\n"
+        "The payment authorization has been released and the order was canceled.\n"
+        f"View order: {order_url}\n"
+    )
+    esc = html.escape
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p><strong>{esc(recipient_name)}</strong> declined the cookie gift for order #{order_id}.</p>"
+        "<p>The payment authorization has been released and the order was canceled.</p>"
+        f"<p><a href='{esc(order_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "View order</a></p>"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"orderer-gift-declined order_id={order_id}",
     )
 
 

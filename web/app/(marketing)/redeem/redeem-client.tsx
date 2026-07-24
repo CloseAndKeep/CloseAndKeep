@@ -1,24 +1,32 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { labelForGiftId } from "@/lib/gift-catalog";
 
-type AddressRequest = {
+type GiftRequest = {
   recipient_name: string;
   gift_id: string;
   note: string;
   already_submitted: boolean;
 };
 
-export default function ShipAddressPage() {
-  const params = useParams<{ token: string }>();
-  const token = params.token;
+function normalizeCode(raw: string): string {
+  return raw.trim().replace(/\s+/g, "").toUpperCase();
+}
 
-  const [request, setRequest] = useState<AddressRequest | null>(null);
-  const [loading, setLoading] = useState(true);
+export function RedeemClient() {
+  const searchParams = useSearchParams();
+  const codeFromQuery = searchParams.get("code") ?? "";
+
+  const [codeInput, setCodeInput] = useState(codeFromQuery);
+  const [activeCode, setActiveCode] = useState(() =>
+    codeFromQuery ? normalizeCode(codeFromQuery) : "",
+  );
+  const [request, setRequest] = useState<GiftRequest | null>(null);
+  const [loading, setLoading] = useState(Boolean(codeFromQuery));
   const [submitting, setSubmitting] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,60 +36,73 @@ export default function ShipAddressPage() {
   const [recipientName, setRecipientName] = useState("");
   const [address, setAddress] = useState("");
 
-  const loadRequest = useCallback(async () => {
-    if (!token) return;
+  const loadRequest = useCallback(async (code: string) => {
+    const normalized = normalizeCode(code);
+    if (!normalized) return;
     setLoading(true);
     setError(null);
+    setDeclined(false);
     try {
-      const data = await apiFetch<AddressRequest>(`/public/address-requests/${token}`, {
+      const data = await apiFetch<GiftRequest>(`/public/redeem/${encodeURIComponent(normalized)}`, {
         credentials: "omit",
-        errorMessage: "This link is invalid or has expired.",
+        errorMessage: "This redeem code is invalid or has expired.",
       });
+      setActiveCode(normalized);
       setRequest(data);
       setRecipientName(data.recipient_name);
       setDone(data.already_submitted);
     } catch (loadError) {
-      const message =
-        loadError instanceof Error ? loadError.message : "Unable to load this link.";
-      setError(message);
+      setRequest(null);
+      setActiveCode("");
+      setError(
+        loadError instanceof Error ? loadError.message : "Unable to load this redeem code.",
+      );
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    void loadRequest();
-  }, [loadRequest]);
+    if (codeFromQuery) {
+      void loadRequest(codeFromQuery);
+    }
+  }, [codeFromQuery, loadRequest]);
+
+  async function onLookup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await loadRequest(codeInput);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !address.trim()) return;
+    if (!activeCode || !address.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
-      const data = await apiFetch<AddressRequest>(`/public/address-requests/${token}`, {
-        method: "POST",
-        credentials: "omit",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          shipping_address: address.trim(),
-          recipient_name: recipientName.trim() || undefined,
-        }),
-        errorMessage: "Unable to save address.",
-      });
+      const data = await apiFetch<GiftRequest>(
+        `/public/redeem/${encodeURIComponent(activeCode)}`,
+        {
+          method: "POST",
+          credentials: "omit",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            shipping_address: address.trim(),
+            recipient_name: recipientName.trim() || undefined,
+          }),
+          errorMessage: "Unable to save address.",
+        },
+      );
       setRequest(data);
       setDone(true);
     } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "Unable to save address.";
-      setError(message);
+      setError(submitError instanceof Error ? submitError.message : "Unable to save address.");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function onDecline() {
-    if (!token) return;
+    if (!activeCode) return;
     const confirmed = window.confirm(
       "Decline this gift? The sender will be notified and payment will not be charged.",
     );
@@ -89,7 +110,7 @@ export default function ShipAddressPage() {
     setDeclining(true);
     setError(null);
     try {
-      await apiFetch(`/public/address-requests/${token}/decline`, {
+      await apiFetch(`/public/redeem/${encodeURIComponent(activeCode)}/decline`, {
         method: "POST",
         credentials: "omit",
         errorMessage: "Unable to decline this gift.",
@@ -108,16 +129,28 @@ export default function ShipAddressPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-12 sm:px-6">
-      <h1 className="font-display text-3xl text-espresso">Your gift</h1>
+      <h1 className="font-display text-3xl text-espresso">Redeem a gift</h1>
       <p className="mt-2 text-sm text-stone-600">
-        Enter where we should send your cookie gift. No payment is required. The person who ordered
-        will be notified.
+        Enter the code from your email or the person who sent you cookies. No payment is required.
       </p>
 
-      {loading ? <p className="mt-8 text-sm text-stone-500">Loading…</p> : null}
+      <form onSubmit={onLookup} className="mt-8 flex flex-col gap-3 sm:flex-row">
+        <input
+          className="w-full flex-1 rounded-xl border border-stone-200 bg-white px-4 py-3 font-mono text-sm uppercase tracking-wide"
+          value={codeInput}
+          onChange={(event) => setCodeInput(event.target.value)}
+          placeholder="CK-48291"
+          autoComplete="off"
+          spellCheck={false}
+          required
+        />
+        <Button type="submit" variant="primary" disabled={loading || !codeInput.trim()}>
+          {loading ? "Looking up…" : "View gift"}
+        </Button>
+      </form>
 
       {error && !request ? (
-        <div className="mt-8 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </div>
       ) : null}

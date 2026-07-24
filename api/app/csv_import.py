@@ -27,6 +27,7 @@ CSV_TEMPLATE_HEADERS = "Name,Email,Cookies,Address\n"
 CSV_EXAMPLE_BODY = (
     'Jane Smith,jane@example.com,4,"123 Main St, Springfield, IL 62704"\n'
     "Bob Jones,bob@example.com,4,\n"
+    "Casey NoEmail,,4,\n"
     'Alex Rivera,alex@example.com,12,"456 Oak Ave Apt 2, Austin, TX 78701"\n'
 )
 
@@ -54,7 +55,7 @@ _HEADER_ALIASES: dict[str, str] = {
 class ParsedOrderRow:
     row_number: int  # 1-based data row (header is row 1)
     recipient_name: str
-    recipient_email: str
+    recipient_email: str | None
     gift_id: str
     cookie_count: int
     shipping_address: str | None
@@ -194,9 +195,7 @@ def parse_gift_orders_csv(
             row_errors.append("Name is required.")
 
         email = _validate_email(email_raw) if email_raw else None
-        if not email_raw:
-            row_errors.append("Email is required.")
-        elif not email:
+        if email_raw and not email:
             row_errors.append(f"Invalid email: {email_raw!r}.")
 
         cookie_count = _parse_cookie_count(cookies_raw)
@@ -215,12 +214,15 @@ def parse_gift_orders_csv(
         if address == "":
             address = None
 
+        if address and not email:
+            row_errors.append("Email is required when a shipping address is provided.")
+
         if row_errors:
             for message in row_errors:
                 errors.append(RowError(row=line_index, message=message))
             continue
 
-        assert cookie_count is not None and email is not None and name
+        assert cookie_count is not None and name
         gift_id = COOKIE_COUNT_TO_GIFT_ID[cookie_count]
         request_address = address is None
         rows.append(

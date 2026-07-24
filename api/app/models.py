@@ -12,6 +12,8 @@ class UserModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -179,10 +181,16 @@ class GiftOrderModel(Base):
     address_request_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+    redeem_code: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, unique=True, index=True
+    )
     address_request_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
     address_request_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    address_request_followup_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     requested_at: Mapped[datetime] = mapped_column(

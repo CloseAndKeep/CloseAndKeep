@@ -8,6 +8,8 @@ import { BrandLogo } from "@/components/brand-logo";
 
 export default function SignupPage() {
   const router = useRouter();
+  const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -18,6 +20,14 @@ export default function SignupPage() {
     event.preventDefault();
     setError(null);
 
+    if (!name.trim()) {
+      setError("Name is required.");
+      return;
+    }
+    if (!company.trim()) {
+      setError("Company is required.");
+      return;
+    }
     if (password.length < 12) {
       setError("Password must be at least 12 characters.");
       return;
@@ -36,7 +46,12 @@ export default function SignupPage() {
       await apiFetch("/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          name: name.trim(),
+          company: company.trim(),
+          email,
+          password,
+        }),
         errorMessage: "Sign up failed.",
       });
       router.replace("/dashboard");
@@ -59,6 +74,38 @@ export default function SignupPage() {
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="name">
+              Name
+            </label>
+            <input
+              id="name"
+              type="text"
+              autoComplete="name"
+              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+              maxLength={255}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="company">
+              Company
+            </label>
+            <input
+              id="company"
+              type="text"
+              autoComplete="organization"
+              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              value={company}
+              onChange={(event) => setCompany(event.target.value)}
+              required
+              maxLength={255}
+            />
+          </div>
+
           <div>
             <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="email">
               Email

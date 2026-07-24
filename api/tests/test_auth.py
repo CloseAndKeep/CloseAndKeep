@@ -5,6 +5,8 @@ Focus on validation, email normalization, and account-enumeration safety.
 
 from __future__ import annotations
 
+from conftest import signup_payload
+
 
 # --- §1.1 Signup -------------------------------------------------------------
 
@@ -12,7 +14,7 @@ from __future__ import annotations
 def test_signup_creates_user_and_authenticates(client):
     resp = client.post(
         "/auth/signup",
-        json={"email": "new@example.com", "password": "strong-pass-123"},
+        json=signup_payload("new@example.com", name="New User", company="New Co"),
     )
     assert resp.status_code == 200, resp.text
 
@@ -21,13 +23,15 @@ def test_signup_creates_user_and_authenticates(client):
     assert me.status_code == 200
     body = me.json()
     assert body["email"] == "new@example.com"
+    assert body["name"] == "New User"
+    assert body["company"] == "New Co"
     assert body["role"] == "user"
 
 
 def test_signup_rejects_invalid_email(client):
     resp = client.post(
         "/auth/signup",
-        json={"email": "not-an-email", "password": "strong-pass-123"},
+        json=signup_payload("not-an-email"),
     )
     assert resp.status_code == 422
 
@@ -35,7 +39,7 @@ def test_signup_rejects_invalid_email(client):
 def test_signup_enforces_min_password_length(client):
     resp = client.post(
         "/auth/signup",
-        json={"email": "shortpw@example.com", "password": "short"},
+        json=signup_payload("shortpw@example.com", "short"),
     )
     assert resp.status_code == 422
 
@@ -43,13 +47,33 @@ def test_signup_enforces_min_password_length(client):
 def test_signup_rejects_password_without_letter_and_digit(client):
     resp = client.post(
         "/auth/signup",
-        json={"email": "weakpw@example.com", "password": "alllettersonly"},
+        json=signup_payload("weakpw@example.com", "alllettersonly"),
     )
     assert resp.status_code == 422
 
 
+def test_signup_requires_name_and_company(client):
+    base = {"email": "profile@example.com", "password": "strong-pass-123"}
+    assert client.post("/auth/signup", json={**base, "company": "Acme"}).status_code == 422
+    assert client.post("/auth/signup", json={**base, "name": "Ada"}).status_code == 422
+    assert (
+        client.post(
+            "/auth/signup",
+            json={**base, "name": "  ", "company": "Acme"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/auth/signup",
+            json={**base, "name": "Ada", "company": "   "},
+        ).status_code
+        == 422
+    )
+
+
 def test_signup_duplicate_email_does_not_enumerate(client):
-    payload = {"email": "dupe@example.com", "password": "strong-pass-123"}
+    payload = signup_payload("dupe@example.com")
     assert client.post("/auth/signup", json=payload).status_code == 200
 
     resp = client.post("/auth/signup", json=payload)
@@ -63,7 +87,7 @@ def test_signup_normalizes_email_case(client):
     assert (
         client.post(
             "/auth/signup",
-            json={"email": "Mixed@Example.com", "password": "strong-pass-123"},
+            json=signup_payload("Mixed@Example.com"),
         ).status_code
         == 200
     )
@@ -71,7 +95,7 @@ def test_signup_normalizes_email_case(client):
     # Same address in a different case is treated as a duplicate.
     resp = client.post(
         "/auth/signup",
-        json={"email": "mixed@example.com", "password": "strong-pass-123"},
+        json=signup_payload("mixed@example.com"),
     )
     assert resp.status_code == 400
     assert "unable to create account" in resp.json()["detail"].lower()
@@ -81,10 +105,7 @@ def test_signup_normalizes_email_case(client):
 
 
 def test_login_with_valid_credentials(client):
-    client.post(
-        "/auth/signup",
-        json={"email": "login@example.com", "password": "strong-pass-123"},
-    )
+    client.post("/auth/signup", json=signup_payload("login@example.com"))
     client.post("/auth/logout")
 
     resp = client.post(
@@ -96,10 +117,7 @@ def test_login_with_valid_credentials(client):
 
 
 def test_login_accepts_email_in_any_case(client):
-    client.post(
-        "/auth/signup",
-        json={"email": "case@example.com", "password": "strong-pass-123"},
-    )
+    client.post("/auth/signup", json=signup_payload("case@example.com"))
     client.post("/auth/logout")
 
     resp = client.post(
@@ -110,10 +128,7 @@ def test_login_accepts_email_in_any_case(client):
 
 
 def test_login_wrong_password_and_unknown_email_are_indistinguishable(client):
-    client.post(
-        "/auth/signup",
-        json={"email": "real@example.com", "password": "strong-pass-123"},
-    )
+    client.post("/auth/signup", json=signup_payload("real@example.com"))
     client.post("/auth/logout")
 
     wrong_pw = client.post(
@@ -135,10 +150,7 @@ def test_login_wrong_password_and_unknown_email_are_indistinguishable(client):
 
 
 def test_logout_invalidates_session(client):
-    client.post(
-        "/auth/signup",
-        json={"email": "bye@example.com", "password": "strong-pass-123"},
-    )
+    client.post("/auth/signup", json=signup_payload("bye@example.com"))
     assert client.get("/auth/me").status_code == 200
 
     assert client.post("/auth/logout").status_code == 200
@@ -161,6 +173,8 @@ def test_guest_login_creates_ephemeral_session(client):
     body = me.json()
     assert body["role"] == "guest"
     assert body["is_guest"] is True
+    assert body["name"] is None
+    assert body["company"] is None
     assert body["email"].startswith("guest-")
     assert body["email"].endswith("@guest.example.com")
 
@@ -252,10 +266,7 @@ def test_guest_cannot_password_login(client):
 def test_login_rotates_session_cookie(client):
     from app.config import settings
 
-    client.post(
-        "/auth/signup",
-        json={"email": "rotate@example.com", "password": "strong-pass-123"},
-    )
+    client.post("/auth/signup", json=signup_payload("rotate@example.com"))
     first = client.cookies.get(settings.session_cookie_name)
     client.post("/auth/logout")
 
@@ -270,7 +281,7 @@ def test_login_rotates_session_cookie(client):
 def test_signup_promotes_admin_email(client):
     resp = client.post(
         "/auth/signup",
-        json={"email": "admin@example.com", "password": "admin-strong-pass-1"},
+        json=signup_payload("admin@example.com", "admin-strong-pass-1"),
     )
     assert resp.status_code == 200
     me = client.get("/auth/me").json()
@@ -288,7 +299,7 @@ def test_guest_then_signup_discards_empty_guest(client):
     assert (
         client.post(
             "/auth/signup",
-            json={"email": "upgraded@example.com", "password": "strong-pass-123"},
+            json=signup_payload("upgraded@example.com"),
         ).status_code
         == 200
     )

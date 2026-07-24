@@ -87,6 +87,8 @@ def test_authorization_sends_recipient_email(
     )
 
     order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    assert order["redeem_code"]
+    assert order["redeem_code"].startswith("CK-")
     _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
 
     refreshed = auth_client.get(f"/gift-orders/{order['id']}").json()
@@ -94,6 +96,48 @@ def test_authorization_sends_recipient_email(
     assert refreshed["status"] == "no_address"
     assert recipient_mail["recipient_email"] == "dana@example.com"
     assert "/ship/" in recipient_mail["address_form_url"]
+    assert recipient_mail["redeem_code"] == order["redeem_code"]
+    assert "/redeem" in recipient_mail["redeem_url"]
+    assert recipient_mail["sender_name"] == "Test Seller"
+    assert recipient_mail["sender_company"] == "CloseAndKeep Test"
+    assert recipient_mail["gift_label"]
+
+
+def test_request_address_without_email_skips_send_but_mints_redeem_code(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    recipient_mail: dict = {}
+    import app.stripe_payments as sp
+
+    monkeypatch.setattr(
+        sp, "send_recipient_address_request", lambda **kw: recipient_mail.update(kw)
+    )
+
+    payload = _request_payload(prospect_id)
+    del payload["recipient_email"]
+    resp = auth_client.post("/gift-orders", json=payload)
+    assert resp.status_code == 201, resp.text
+    order = resp.json()
+    assert order["recipient_email"] is None
+    assert order["redeem_code"]
+    assert order["status"] == "no_address"
+
+    params = stripe_stub.session_create_calls[0]
+    assert params["payment_intent_data"] == {"capture_method": "manual"}
+    assert params["metadata"]["defer_capture"] == "true"
+
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+    assert recipient_mail == {}
+    refreshed = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert refreshed["payment_status"] == "authorized"
+    assert refreshed["redeem_code"] == order["redeem_code"]
+
+
+def test_normal_order_still_requires_shipping_address(auth_client, prospect_id, stripe_stub):
+    payload = make_order_payload(prospect_id)
+    del payload["shipping_address"]
+    resp = auth_client.post("/gift-orders", json=payload)
+    assert resp.status_code == 422
 
 
 def test_cannot_checkout_again_after_authorization(
@@ -179,20 +223,6 @@ def test_submit_before_authorization_rejected(
     )
     assert resp.status_code == 400
     assert len(stripe_stub.payment_intent_capture_calls) == 0
-
-
-def test_request_address_requires_recipient_email(auth_client, prospect_id, stripe_stub):
-    payload = _request_payload(prospect_id)
-    del payload["recipient_email"]
-    resp = auth_client.post("/gift-orders", json=payload)
-    assert resp.status_code == 422
-
-
-def test_normal_order_still_requires_shipping_address(auth_client, prospect_id, stripe_stub):
-    payload = make_order_payload(prospect_id)
-    del payload["shipping_address"]
-    resp = auth_client.post("/gift-orders", json=payload)
-    assert resp.status_code == 422
 
 
 def test_normal_checkout_does_not_use_manual_capture(auth_client, prospect_id, stripe_stub):
@@ -366,3 +396,180 @@ def test_blank_shipping_address_on_public_submit_rejected(
     )
     assert resp.status_code == 422
     assert len(stripe_stub.payment_intent_capture_calls) == 0
+
+
+def test_public_redeem_by_code_submits_address(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.stripe_payments as sp
+    import app.fulfillment as fulfillment
+    import app.main as main
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    monkeypatch.setattr(fulfillment, "send_new_order_notification", lambda **kw: None)
+    orderer_mail: dict = {}
+    monkeypatch.setattr(
+        main, "send_orderer_address_received", lambda **kw: orderer_mail.update(kw)
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    code = order["redeem_code"]
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    auth_client.post("/auth/logout")
+    assert auth_client.get(f"/public/redeem/{code.lower()}").status_code == 200
+    resp = auth_client.post(
+        f"/public/redeem/{code}",
+        json={"shipping_address": "99 Redeem Lane", "recipient_name": "Dana Buyer"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["already_submitted"] is True
+    assert orderer_mail["order_id"] == order["id"]
+
+    assert auth_client.get(f"/public/redeem/{code}").status_code == 404
+
+
+def test_public_redeem_unknown_code_404(client):
+    assert client.get("/public/redeem/CK-00000").status_code == 404
+
+
+def test_decline_redeem_cancels_authorization(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.stripe_payments as sp
+    import app.main as main
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    declined_mail: dict = {}
+    monkeypatch.setattr(
+        main, "send_orderer_gift_declined", lambda **kw: declined_mail.update(kw)
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    code = order["redeem_code"]
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    resp = auth_client.post(f"/public/redeem/{code}/decline")
+    assert resp.status_code == 200, resp.text
+    assert declined_mail["order_id"] == order["id"]
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        assert row.status == "canceled"
+        assert row.payment_status == "canceled"
+        assert row.redeem_code is None
+        assert row.address_request_token is None
+
+    assert auth_client.get(f"/public/redeem/{code}").status_code == 404
+
+
+def test_address_request_followup_after_72_hours(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    import app.jobs.address_request_followups as followups
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    followup_mail: dict = {}
+    monkeypatch.setattr(
+        followups, "send_recipient_address_followup", lambda **kw: followup_mail.update(kw)
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        row.address_request_sent_at = datetime.now(UTC) - timedelta(hours=73)
+        db.add(row)
+        db.commit()
+
+    result = auth_client.post("/internal/jobs/address-request-followups")
+    assert result.status_code == 200, result.text
+    assert result.json()["sent"] == 1
+    assert followup_mail["recipient_email"] == "dana@example.com"
+    assert "/ship/" in followup_mail["address_form_url"]
+    assert followup_mail["redeem_code"] == order["redeem_code"]
+
+    # Idempotent: second run must not re-send.
+    followup_mail.clear()
+    again = auth_client.post("/internal/jobs/address-request-followups")
+    assert again.status_code == 200
+    assert again.json()["sent"] == 0
+    assert followup_mail == {}
+
+
+def test_address_request_followup_skips_before_window(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.jobs.address_request_followups as followups
+    import app.stripe_payments as sp
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    followup_mail: dict = {}
+    monkeypatch.setattr(
+        followups, "send_recipient_address_followup", lambda **kw: followup_mail.update(kw)
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    result = auth_client.post("/internal/jobs/address-request-followups")
+    assert result.status_code == 200
+    assert result.json()["sent"] == 0
+    assert followup_mail == {}
+
+
+def test_address_request_followup_skips_expired_link(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    import app.jobs.address_request_followups as followups
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    followup_mail: dict = {}
+    monkeypatch.setattr(
+        followups, "send_recipient_address_followup", lambda **kw: followup_mail.update(kw)
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        row.address_request_sent_at = datetime.now(UTC) - timedelta(hours=73)
+        row.address_request_expires_at = datetime.now(UTC) - timedelta(hours=1)
+        db.add(row)
+        db.commit()
+
+    result = auth_client.post("/internal/jobs/address-request-followups")
+    assert result.status_code == 200
+    assert result.json()["sent"] == 0
+    assert followup_mail == {}
+
+
+def test_address_request_followup_requires_secret_in_production(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "cron_secret", "expected-secret")
+
+    denied = client.post("/internal/jobs/address-request-followups")
+    assert denied.status_code == 401
+
+    ok = client.post(
+        "/internal/jobs/address-request-followups",
+        headers={"X-Cron-Secret": "expected-secret"},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["sent"] == 0

@@ -110,6 +110,18 @@ def _address_form_url(token: str) -> str:
     return f"{settings.web_base_url.rstrip('/')}/ship/{token}"
 
 
+def _redeem_page_url() -> str:
+    return f"{settings.web_base_url.rstrip('/')}/redeem"
+
+
+def _gift_label(gift_id: str) -> str:
+    for item in GIFT_CATALOG:
+        if str(item["id"]) == gift_id:
+            count = int(item["cookie_count"])
+            return "1 cookie" if count == 1 else f"{count} cookies"
+    return gift_id
+
+
 def _payment_intent_id_from_session(session: object) -> str | None:
     pi = _field(session, "payment_intent")
     if isinstance(pi, str) and pi:
@@ -126,8 +138,12 @@ def _session_defers_capture(session: object, order: GiftOrderModel) -> bool:
     metadata = _field(session, "metadata", {}) or {}
     if _field(metadata, "defer_capture") == "true":
         return True
-    # Fallback: address-request orders always use authorize-then-capture.
-    return bool(order.recipient_email) and order.status == "no_address" and not order.shipping_address
+    # Fallback: address-request / redeem orders always use authorize-then-capture.
+    return (
+        order.status == "no_address"
+        and not (order.shipping_address or "").strip()
+        and bool(order.address_request_token or order.redeem_code)
+    )
 
 
 def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
@@ -173,15 +189,21 @@ def mark_order_authorized(
     # Email the recipient only after authorization succeeds (and only once).
     if (
         order.address_request_token
+        and order.redeem_code
         and order.recipient_email
         and order.address_request_sent_at is None
     ):
+        owner = db.get(UserModel, order.owner_user_id)
         send_recipient_address_request(
             recipient_name=order.recipient_name,
             recipient_email=order.recipient_email,
             address_form_url=_address_form_url(order.address_request_token),
-            gift_id=order.gift_id,
+            redeem_url=_redeem_page_url(),
+            redeem_code=order.redeem_code,
+            gift_label=_gift_label(order.gift_id),
             note=order.note,
+            sender_name=owner.name if owner else None,
+            sender_company=owner.company if owner else None,
         )
         order.address_request_sent_at = datetime.now(UTC)
         db.add(order)
@@ -317,9 +339,10 @@ def expire_authorization_for_payment_intent(
         order.payment_status = "canceled"
         if order.status == "no_address":
             order.status = "canceled"
-        # Invalidate the ship link so PII is no longer fetchable.
+        # Invalidate the ship / redeem links so PII is no longer fetchable.
         order.address_request_token = None
         order.address_request_expires_at = None
+        order.redeem_code = None
         db.add(order)
     db.commit()
 
@@ -543,10 +566,15 @@ def _ensure_stripe_customer(current_user: UserModel, db: Session) -> str:
         except stripe.error.InvalidRequestError:
             pass
 
-    customer = stripe.Customer.create(
-        email=current_user.email,
-        metadata={"user_id": str(current_user.id)},
-    )
+    customer_kwargs: dict = {
+        "email": current_user.email,
+        "metadata": {"user_id": str(current_user.id)},
+    }
+    if current_user.name:
+        customer_kwargs["name"] = current_user.name
+    if current_user.company:
+        customer_kwargs["metadata"]["company"] = current_user.company
+    customer = stripe.Customer.create(**customer_kwargs)
     current_user.stripe_customer_id = customer["id"]
     db.add(current_user)
     db.commit()
@@ -586,7 +614,7 @@ def create_checkout_session_for_order(
 
     defer_capture = (
         order.status == "no_address"
-        and bool(order.recipient_email)
+        and bool(order.address_request_token or order.redeem_code)
         and not (order.shipping_address or "").strip()
     )
 

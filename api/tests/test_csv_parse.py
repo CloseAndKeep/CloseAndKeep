@@ -35,6 +35,21 @@ def test_parse_empty_address_marks_request_flow():
     assert rows[0].gift_id == "cookies-4"
 
 
+def test_parse_blank_email_allowed_for_request_flow():
+    csv_text = "Name,Email,Cookies,Address\nCasey,,4,\n"
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert errors == []
+    assert rows[0].recipient_email is None
+    assert rows[0].request_recipient_address is True
+
+
+def test_parse_blank_email_rejected_when_address_present():
+    csv_text = "Name,Email,Cookies,Address\nCasey,,4,123 Main\n"
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert rows == []
+    assert any("email is required" in e.message.lower() for e in errors)
+
+
 def test_parse_strips_utf8_bom():
     content = b"\xef\xbb\xbfName,Email,Cookies,Address\nJane,jane@example.com,4,1 Main\n"
     rows, errors = parse_gift_orders_csv(content)

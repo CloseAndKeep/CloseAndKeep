@@ -106,9 +106,7 @@ export function GiftOrderWizard() {
         ? Boolean(
             recipientName.trim() &&
               note.trim() &&
-              (requestAddress
-                ? recipientEmail.trim().includes("@")
-                : address.trim()),
+              (requestAddress ? true : address.trim()),
           )
         : true;
 
@@ -137,7 +135,9 @@ export function GiftOrderWizard() {
       };
       if (requestAddress) {
         body.request_recipient_address = true;
-        body.recipient_email = recipientEmail.trim();
+        if (recipientEmail.trim()) {
+          body.recipient_email = recipientEmail.trim();
+        }
       } else {
         body.shipping_address = address.trim();
       }
@@ -323,9 +323,10 @@ export function GiftOrderWizard() {
                       onChange={() => setAddressMode("request")}
                     />
                     <span>
-                      <span className="font-medium text-espresso">Email recipient for address</span>
+                      <span className="font-medium text-espresso">Ask recipient for address</span>
                       <span className="mt-0.5 block text-xs text-stone-500">
-                        Authorize payment now. We email them a link for shipping, and charge only after they reply.
+                        Authorize payment now. Email them a link, or share a redeem code — we charge
+                        only after they submit an address.
                       </span>
                     </span>
                   </label>
@@ -335,7 +336,9 @@ export function GiftOrderWizard() {
 
             {requestAddress ? (
               <div>
-                <label className="block text-sm font-medium text-espresso">Recipient email</label>
+                <label className="block text-sm font-medium text-espresso">
+                  Recipient email <span className="font-normal text-stone-500">(optional)</span>
+                </label>
                 <input
                   type="email"
                   className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm"
@@ -344,7 +347,8 @@ export function GiftOrderWizard() {
                   placeholder={selectedProspect?.email ?? "recipient@company.com"}
                 />
                 <p className="mt-1 text-xs text-stone-500">
-                  They will get a secure link to enter their shipping address.
+                  If you leave this blank, you&apos;ll get a redeem code after checkout to share
+                  yourself. With an email, we send them a link and include the code as a backup.
                 </p>
               </div>
             ) : (
