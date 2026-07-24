@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, fetchErrorMessage } from "@/lib/api";
 
 type MeResponse = {
   user_id: number;
@@ -34,6 +34,13 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -139,6 +146,50 @@ export default function ProfilePage() {
     }
   }
 
+  async function onChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
+    if (newPassword.length < 12) {
+      setPasswordError("Password must be at least 12 characters.");
+      return;
+    }
+    if (!/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setPasswordError("Password must include at least one letter and one number.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+    if (currentPassword === newPassword) {
+      setPasswordError("New password must be different from the current password.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      await apiFetch("/auth/me/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+        errorMessage: "Unable to update password.",
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordSuccess("Password updated.");
+    } catch (submitError) {
+      setPasswordError(fetchErrorMessage(submitError, "Unable to update password."));
+    } finally {
+      setPasswordLoading(false);
+    }
+  }
+
   const displayName = me?.name?.trim() || "Your profile";
   const initials = me ? initialsFor(me.name, me.email) : "?";
 
@@ -240,6 +291,93 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {!loading && me && !me.is_guest ? (
+        <div className="mt-6 rounded-2xl border border-stone-200/90 bg-white/90 p-8 shadow-sm">
+          <h2 className="font-display text-xl text-espresso">Change password</h2>
+          <p className="mt-1 text-sm text-stone-600">
+            Use at least 12 characters with one letter and one number.
+          </p>
+
+          <form className="mt-6 max-w-md space-y-4" onSubmit={onChangePassword}>
+            <div>
+              <label
+                className="mb-1 block text-sm font-medium text-stone-700"
+                htmlFor="currentPassword"
+              >
+                Current password
+              </label>
+              <input
+                id="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                className="mb-1 block text-sm font-medium text-stone-700"
+                htmlFor="newPassword"
+              >
+                New password
+              </label>
+              <input
+                id="newPassword"
+                type="password"
+                autoComplete="new-password"
+                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+                minLength={12}
+              />
+            </div>
+
+            <div>
+              <label
+                className="mb-1 block text-sm font-medium text-stone-700"
+                htmlFor="confirmNewPassword"
+              >
+                Confirm new password
+              </label>
+              <input
+                id="confirmNewPassword"
+                type="password"
+                autoComplete="new-password"
+                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+                minLength={12}
+              />
+            </div>
+
+            {passwordError ? (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {passwordError}
+              </p>
+            ) : null}
+
+            {passwordSuccess ? (
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                {passwordSuccess}
+              </p>
+            ) : null}
+
+            <button
+              type="submit"
+              className="rounded-xl bg-wood px-4 py-2 text-sm font-semibold text-white transition hover:bg-wood-dark disabled:opacity-70"
+              disabled={passwordLoading}
+            >
+              {passwordLoading ? "Updating…" : "Update password"}
+            </button>
+          </form>
+        </div>
+      ) : null}
     </>
   );
 }

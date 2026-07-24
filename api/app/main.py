@@ -86,6 +86,16 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+def validate_password_policy(value: str) -> str:
+    if len(value) < settings.password_min_length:
+        raise ValueError(
+            f"Password must be at least {settings.password_min_length} characters."
+        )
+    if not re.search(r"[A-Za-z]", value) or not re.search(r"\d", value):
+        raise ValueError("Password must include at least one letter and one number.")
+    return value
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     purge_expired_sessions()
@@ -118,13 +128,7 @@ class SignupRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def _password_policy(cls, value: str) -> str:
-        if len(value) < settings.password_min_length:
-            raise ValueError(
-                f"Password must be at least {settings.password_min_length} characters."
-            )
-        if not re.search(r"[A-Za-z]", value) or not re.search(r"\d", value):
-            raise ValueError("Password must include at least one letter and one number.")
-        return value
+        return validate_password_policy(value)
 
     @field_validator("name", "company")
     @classmethod
@@ -133,6 +137,16 @@ class SignupRequest(BaseModel):
         if not stripped:
             raise ValueError("must not be blank")
         return stripped
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=1)
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_policy(cls, value: str) -> str:
+        return validate_password_policy(value)
 
 
 class ProspectCreateRequest(BaseModel):
@@ -875,6 +889,30 @@ def delete_my_avatar(
     db.commit()
     db.refresh(current_user)
     return _me_response(current_user)
+
+
+@app.post("/auth/me/password")
+def change_my_password(
+    payload: ChangePasswordRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest accounts cannot change a password.",
+        )
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from the current password.",
+        )
+    current_user.password_hash = hash_password(payload.new_password)
+    db.add(current_user)
+    db.commit()
+    return {"message": "Password updated."}
 
 
 @app.get("/api-keys", response_model=list[ApiKeyResponse])

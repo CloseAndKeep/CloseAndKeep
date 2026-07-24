@@ -219,6 +219,98 @@ def test_avatar_rejects_oversized(auth_client, monkeypatch):
     assert "mb" in resp.json()["detail"].lower() or "smaller" in resp.json()["detail"].lower()
 
 
+# --- Change password ---------------------------------------------------------
+
+
+def test_change_password_updates_credentials(client):
+    client.post("/auth/signup", json=signup_payload("pwchange@example.com"))
+    resp = client.post(
+        "/auth/me/password",
+        json={
+            "current_password": "strong-pass-123",
+            "new_password": "even-stronger-456",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"] == "Password updated."
+
+    client.post("/auth/logout")
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "pwchange@example.com", "password": "strong-pass-123"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "pwchange@example.com", "password": "even-stronger-456"},
+        ).status_code
+        == 200
+    )
+
+
+def test_change_password_rejects_wrong_current(auth_client):
+    resp = auth_client.post(
+        "/auth/me/password",
+        json={
+            "current_password": "not-the-right-one",
+            "new_password": "even-stronger-456",
+        },
+    )
+    assert resp.status_code == 400
+    assert "current password" in resp.json()["detail"].lower()
+
+
+def test_change_password_enforces_policy(auth_client):
+    resp = auth_client.post(
+        "/auth/me/password",
+        json={
+            "current_password": "hunter2-correct-horse",
+            "new_password": "short",
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_change_password_rejects_same_password(auth_client):
+    resp = auth_client.post(
+        "/auth/me/password",
+        json={
+            "current_password": "hunter2-correct-horse",
+            "new_password": "hunter2-correct-horse",
+        },
+    )
+    assert resp.status_code == 400
+    assert "different" in resp.json()["detail"].lower()
+
+
+def test_change_password_forbidden_for_guest(client):
+    assert client.post("/auth/guest").status_code == 200
+    resp = client.post(
+        "/auth/me/password",
+        json={
+            "current_password": "anything-goes",
+            "new_password": "even-stronger-456",
+        },
+    )
+    assert resp.status_code == 403
+
+
+def test_change_password_requires_authentication(client):
+    assert (
+        client.post(
+            "/auth/me/password",
+            json={
+                "current_password": "strong-pass-123",
+                "new_password": "even-stronger-456",
+            },
+        ).status_code
+        == 401
+    )
+
+
 # --- Guest sessions ----------------------------------------------------------
 
 
