@@ -19,10 +19,10 @@ export const metadata: Metadata = {
 };
 
 const steps = [
-  "Log who you’re following up with",
-  "Start with a cookie gift that fits the moment",
-  "We ship with your note on the gift you stay human, not generic",
-  "Remind yourself to follow up; track won, lost, or open",
+  "Add a few CloseAndKeep fields to the CRM your reps already use",
+  "We can automatically collect the shipping address. No need to manually enter",
+  "We ship top quality cookies with your personal note; you stay human, not generic",
+  "Track every send and watch conversion rates rise, churn drop",
 ];
 
 const jsonLd = {
@@ -102,13 +102,13 @@ export default function HomePage() {
 
       <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
         <h2 className="font-display text-2xl text-espresso sm:text-3xl">
-          Why teams try it
+          Why teams use us
         </h2>
         <ul className="mt-8 grid gap-4 sm:grid-cols-3">
           {[
-            "Differentiated follow-up after crowded SaaS demos",
-            "Everything you need to ship and track in one place",
-            "Outcome tracking so you learn what actually moves deals",
+            "Stand out in a market flooded with AI generated outreach",
+            "Built for reps, right inside the CRM they already use",
+            "450% average ROI, driven by higher close rates and stronger retention",
           ].map((text) => (
             <li
               key={text}
