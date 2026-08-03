@@ -41,6 +41,9 @@ export function GiftOrderWizard() {
   const [isGuest, setIsGuest] = useState(false);
   const [loadingProspects, setLoadingProspects] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [creatingProspect, setCreatingProspect] = useState(false);
+  const [newProspectName, setNewProspectName] = useState("");
+  const [newProspectEmail, setNewProspectEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { byId: priceById } = useGiftPrices();
@@ -116,6 +119,37 @@ export function GiftOrderWizard() {
 
   function back() {
     if (step > 0) setStep((s) => s - 1);
+  }
+
+  async function createProspectInline() {
+    if (!newProspectName.trim() || !newProspectEmail.trim()) {
+      setError("Name and email are required to add a prospect.");
+      return;
+    }
+    setCreatingProspect(true);
+    setError(null);
+    try {
+      const created = await apiFetch<Prospect>("/prospects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newProspectName.trim(),
+          email: newProspectEmail.trim(),
+          deal_status: "open",
+        }),
+        errorMessage: "Unable to create prospect.",
+      });
+      setProspects((prev) => [...prev, created]);
+      setProspectId(String(created.id));
+      setNewProspectName("");
+      setNewProspectEmail("");
+    } catch (createError) {
+      const message =
+        createError instanceof Error ? createError.message : "Unable to create prospect.";
+      setError(message);
+    } finally {
+      setCreatingProspect(false);
+    }
   }
 
   async function submitOrder() {
@@ -203,7 +237,7 @@ export function GiftOrderWizard() {
             <div>
               <label className="block text-sm font-medium text-espresso">Prospect</label>
               <select
-                className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                className="mt-2 field-input"
                 value={prospectId}
                 onChange={(e) => setProspectId(e.target.value)}
                 disabled={loadingProspects || prospects.length === 0}
@@ -270,13 +304,48 @@ export function GiftOrderWizard() {
             </div>
 
             {prospects.length === 0 && !loadingProspects ? (
-              <p className="text-sm text-stone-600">
-                Add a prospect first in{" "}
-                <Link href="/prospects" className="font-medium text-wood-dark hover:underline">
-                  Prospects
-                </Link>
-                .
-              </p>
+              <div className="rounded-xl border border-dashed border-stone-300 bg-cream/60 p-4">
+                <p className="text-sm font-medium text-espresso">Add a prospect to continue</p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Orders are tied to a prospect so you can track outcomes later.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-espresso" htmlFor="wizard-prospect-name">
+                      Name
+                    </label>
+                    <input
+                      id="wizard-prospect-name"
+                      className="mt-1.5 field-input"
+                      value={newProspectName}
+                      onChange={(e) => setNewProspectName(e.target.value)}
+                      placeholder="Alex Rivera"
+                      autoComplete="name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-espresso" htmlFor="wizard-prospect-email">
+                      Email
+                    </label>
+                    <input
+                      id="wizard-prospect-email"
+                      type="email"
+                      className="mt-1.5 field-input"
+                      value={newProspectEmail}
+                      onChange={(e) => setNewProspectEmail(e.target.value)}
+                      placeholder="alex@company.com"
+                      autoComplete="email"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={creatingProspect || !newProspectName.trim() || !newProspectEmail.trim()}
+                    onClick={() => void createProspectInline()}
+                  >
+                    {creatingProspect ? "Adding..." : "Add prospect"}
+                  </Button>
+                </div>
+              </div>
             ) : null}
           </div>
         )}
@@ -288,7 +357,7 @@ export function GiftOrderWizard() {
                 Recipient name (for delivery)
               </label>
               <input
-                className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm"
+                className="mt-2 field-input"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
                 placeholder={selectedProspect?.name ?? "Full name"}
@@ -341,7 +410,7 @@ export function GiftOrderWizard() {
                 </label>
                 <input
                   type="email"
-                  className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm"
+                  className="mt-2 field-input"
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
                   placeholder={selectedProspect?.email ?? "recipient@company.com"}
@@ -357,7 +426,7 @@ export function GiftOrderWizard() {
                   Full shipping address
                 </label>
                 <textarea
-                  className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm min-h-[100px]"
+                  className="mt-2 field-input min-h-[100px]"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="Street, city, state, ZIP / postal code"
@@ -371,11 +440,11 @@ export function GiftOrderWizard() {
               </label>
               {fromCrmReminder ? (
                 <p className="mt-1 text-xs text-wood-dark">
-                  {reminderCrmLabel} demo completed add a short note they&apos;ll remember.
+                  {reminderCrmLabel} demo completed — add a short note they&apos;ll remember.
                 </p>
               ) : null}
               <textarea
-                className="mt-2 w-full rounded-xl border border-stone-200 px-4 py-3 text-sm min-h-[88px]"
+                className="mt-2 field-input min-h-[88px]"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Short personal message required before fulfillment."
@@ -428,7 +497,7 @@ export function GiftOrderWizard() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-stone-100 px-6 py-4">
-        <Link href="/dashboard" className="text-sm text-stone-600 hover:text-espresso">
+        <Link href="/orders" className="text-sm text-stone-600 hover:text-espresso">
           Cancel
         </Link>
         <div className="flex gap-2">

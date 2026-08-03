@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 
 type Prospect = {
@@ -11,6 +12,8 @@ type Prospect = {
   email: string;
   deal_status: "open" | "won" | "lost";
 };
+
+const inputClass = "field-input";
 
 export default function ProspectsPage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
@@ -70,34 +73,54 @@ export default function ProspectsPage() {
       <PageHeader
         title="Prospects"
         description="People and companies you're actively working."
+        action={
+          prospects.length > 0 ? (
+            <Link
+              href="/orders/new"
+              className="inline-flex items-center rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
+            >
+              Send a gift
+            </Link>
+          ) : undefined
+        }
       />
 
       <form
-        className="mb-6 grid gap-3 rounded-2xl border border-stone-200/90 bg-white/90 p-4 md:grid-cols-3"
+        className="mb-6 grid gap-3 rounded-2xl border border-stone-200/90 bg-white/90 p-4 md:grid-cols-3 md:items-end"
         onSubmit={onCreate}
       >
-        <input
-          className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
-          placeholder="Name"
-          value={form.name}
-          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-          required
-        />
-        <input
-          type="email"
-          className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
-          placeholder="Email"
-          value={form.email}
-          onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-          required
-        />
-        <button
-          type="submit"
-          className="rounded-xl bg-wood px-3 py-2 text-sm font-semibold text-white transition hover:bg-wood-dark disabled:opacity-70"
-          disabled={creating}
-        >
+        <div>
+          <label className="block text-sm font-medium text-espresso" htmlFor="prospect-name">
+            Name
+          </label>
+          <input
+            id="prospect-name"
+            className={`mt-1.5 ${inputClass}`}
+            placeholder="Alex Rivera"
+            value={form.name}
+            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+            required
+            autoComplete="name"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-espresso" htmlFor="prospect-email">
+            Email
+          </label>
+          <input
+            id="prospect-email"
+            type="email"
+            className={`mt-1.5 ${inputClass}`}
+            placeholder="alex@company.com"
+            value={form.email}
+            onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+            required
+            autoComplete="email"
+          />
+        </div>
+        <Button type="submit" className="w-full md:w-auto" disabled={creating}>
           {creating ? "Saving..." : "Add prospect"}
-        </button>
+        </Button>
       </form>
 
       {error ? (
@@ -106,8 +129,8 @@ export default function ProspectsPage() {
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-stone-200/90 bg-white/90 shadow-sm">
-        <table className="w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-stone-200/90 bg-white/90 shadow-sm">
+        <table className="w-full min-w-[20rem] text-left text-sm">
           <thead className="border-b border-stone-200 bg-stone-50/80 text-xs font-semibold uppercase tracking-wide text-stone-500">
             <tr>
               <th className="px-4 py-3">Name</th>
@@ -115,10 +138,26 @@ export default function ProspectsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
-            {!loading && prospects.length === 0 ? (
+            {loading ? (
               <tr>
                 <td className="px-4 py-3 text-stone-500" colSpan={2}>
-                  No prospects yet.
+                  Loading prospects...
+                </td>
+              </tr>
+            ) : null}
+            {!loading && prospects.length === 0 ? (
+              <tr>
+                <td className="px-4 py-8 text-center" colSpan={2}>
+                  <p className="font-medium text-espresso">No prospects yet</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Add someone above, then send cookies after your next pitch.
+                  </p>
+                  <Link
+                    href="/orders/new"
+                    className="mt-4 inline-flex text-sm font-medium text-wood-dark hover:underline"
+                  >
+                    Or start a gift order →
+                  </Link>
                 </td>
               </tr>
             ) : null}

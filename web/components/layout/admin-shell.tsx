@@ -6,7 +6,6 @@ import { PackageCheck, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
-import { SiteFooter } from "@/components/layout/site-footer";
 
 const nav = [
   { href: "/admin", label: "Order queue", icon: PackageCheck },
@@ -59,7 +58,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <p className="mt-1">Fulfill paid orders and add tracking.</p>
           <button
             type="button"
-            className="mt-3 inline-flex rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-medium text-stone-700 hover:bg-stone-100"
+            className="mt-3 inline-flex rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-medium text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wood/40"
             onClick={handleLogout}
           >
             Logout
@@ -88,7 +87,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-h-screen flex-1 flex-col md:pl-56">
         <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">{children}</div>
-        <SiteFooter />
       </div>
     </div>
   );

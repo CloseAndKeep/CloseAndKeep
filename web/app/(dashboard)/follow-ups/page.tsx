@@ -47,7 +47,7 @@ export default function FollowUpsPage() {
     <>
       <PageHeader
         title="Follow-ups"
-        description="Prospect reminders will live here once email delivery is connected."
+        description="Prospect reminders will live here once email delivery is connected. Coming soon."
       />
 
       <div className="rounded-2xl border border-dashed border-stone-300 bg-white/70 px-6 py-12 text-center">

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch, fetchErrorMessage } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
+import { Button } from "@/components/ui/button";
 import { safeInternalPath } from "@/lib/utils";
 
 export default function LoginPage() {
@@ -88,7 +89,7 @@ function LoginForm() {
               id="email"
               type="email"
               autoComplete="email"
-              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              className="field-input"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -103,7 +104,7 @@ function LoginForm() {
               id="password"
               type="password"
               autoComplete="current-password"
-              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              className="field-input"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
@@ -116,13 +117,9 @@ function LoginForm() {
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-wood px-3 py-2 text-sm font-semibold text-white transition hover:bg-wood-dark disabled:opacity-70"
-            disabled={busy}
-          >
+          <Button type="submit" className="w-full" disabled={busy}>
             {loading ? "Signing in..." : "Sign in"}
-          </button>
+          </Button>
         </form>
 
         <div className="mt-5">
@@ -131,16 +128,23 @@ function LoginForm() {
             <span className="text-xs uppercase tracking-wide text-stone-400">or</span>
             <div className="h-px flex-1 bg-stone-200" />
           </div>
-          <button
+          <Button
             type="button"
-            className="mt-4 w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:opacity-70"
+            variant="secondary"
+            className="mt-4 w-full"
             disabled={busy}
             onClick={() => void continueAsGuest()}
           >
             {guestLoading ? "Starting guest session..." : "Continue as guest"}
-          </button>
+          </Button>
           <p className="mt-2 text-xs text-stone-500">
-            Guest mode does not restore your session later, hides follow-ups, and keeps orders only for shipping.
+            Guest sessions are temporary: you must enter the shipping address yourself,
+            reminders and integrations are unavailable, and you can&apos;t restore this
+            session later.{" "}
+            <Link href="/signup" className="font-medium text-wood-dark hover:underline">
+              Create an account
+            </Link>{" "}
+            to keep your history.
           </p>
         </div>
 

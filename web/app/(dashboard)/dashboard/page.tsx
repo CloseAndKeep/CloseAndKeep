@@ -43,19 +43,58 @@ export default function DashboardPage() {
     return Math.round((summary.won / (summary.won + summary.lost)) * 100);
   }, [summary.lost, summary.won]);
 
+  const isEmpty = !loading && summary.total_prospects === 0;
+
   return (
     <>
       <PageHeader
         title="Dashboard"
-        description="Snapshot of your live prospect pipeline."
+        description="Your prospect pipeline and next gift sends."
+        action={
+          <Link
+            href="/orders/new"
+            className="inline-flex items-center rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
+          >
+            Send cookies
+          </Link>
+        }
       />
 
-      <div className="mb-8 rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-stone-700">
-        {loading
-          ? "Loading summary..."
-          : `Tracking ${summary.total_prospects} prospect${summary.total_prospects === 1 ? "" : "s"} in your pipeline.`}
-        {error ? <span className="ml-2 text-rose-700">{error}</span> : null}
-      </div>
+      {error ? (
+        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
+
+      {isEmpty ? (
+        <div className="mb-8 rounded-2xl border border-dashed border-stone-300 bg-white/80 px-6 py-10 text-center">
+          <p className="font-display text-xl text-espresso">Start with a prospect</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-stone-600">
+            Add someone you&apos;re working, then send cookies after the pitch — pay once at
+            checkout.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/prospects"
+              className="inline-flex rounded-full bg-wood px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
+            >
+              Add a prospect
+            </Link>
+            <Link
+              href="/orders/new"
+              className="inline-flex rounded-full border border-wood/40 bg-white px-5 py-2.5 text-sm font-medium text-wood-dark hover:bg-wood/5"
+            >
+              Send cookies
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-8 rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-stone-700">
+          {loading
+            ? "Loading summary..."
+            : `Tracking ${summary.total_prospects} prospect${summary.total_prospects === 1 ? "" : "s"} in your pipeline.`}
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -67,8 +106,12 @@ export default function DashboardPage() {
         <StatCard label="Won deals" value={summary.won} hint="Closed won prospects" />
         <StatCard
           label="Win rate (closed)"
-          value={rate !== null ? `${rate}%` : ""}
-          hint={summary.won + summary.lost > 0 ? `${summary.won} won / ${summary.lost} lost` : "No closed deals yet"}
+          value={rate !== null ? `${rate}%` : "—"}
+          hint={
+            summary.won + summary.lost > 0
+              ? `${summary.won} won / ${summary.lost} lost`
+              : "No closed deals yet"
+          }
         />
       </div>
 
@@ -76,7 +119,7 @@ export default function DashboardPage() {
         <section className="rounded-2xl border border-stone-200/90 bg-white/80 p-6 shadow-sm">
           <h2 className="font-display text-xl text-espresso">Prospects</h2>
           <p className="mt-4 text-sm text-stone-600">
-            Your live prospects flow is now active from the API.
+            Keep the people you&apos;re working in one list, then gift from their record.
           </p>
           <Link
             href="/prospects"
@@ -87,9 +130,9 @@ export default function DashboardPage() {
         </section>
 
         <section className="rounded-2xl border border-stone-200/90 bg-white/80 p-6 shadow-sm">
-          <h2 className="font-display text-xl text-espresso">Next up</h2>
+          <h2 className="font-display text-xl text-espresso">Gift orders</h2>
           <p className="mt-4 text-sm text-stone-600">
-            Gift order and follow-up flows can now build on real prospect records.
+            Place a cookie order after a pitch, or check status on what you&apos;ve already sent.
           </p>
           <div className="mt-4 flex flex-wrap gap-4 text-sm font-medium">
             <Link href="/orders/new" className="text-wood-dark hover:underline">

@@ -74,7 +74,7 @@ export default function OrdersPage() {
     <>
       <PageHeader
         title="Gift orders"
-        description="All cookie orders submitted from the live flow."
+        description="Orders you've submitted — payment, shipping, and status in one place."
         action={
           <div className="flex flex-wrap gap-2">
             <Link
@@ -130,8 +130,8 @@ export default function OrdersPage() {
         })}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-stone-200/90 bg-white/90 shadow-sm">
-        <table className="w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-stone-200/90 bg-white/90 shadow-sm">
+        <table className="w-full min-w-[36rem] text-left text-sm">
           <thead className="border-b border-stone-200 bg-stone-50/80 text-xs font-semibold uppercase tracking-wide text-stone-500">
             <tr>
               <th className="px-4 py-3">Requested</th>
@@ -152,10 +152,23 @@ export default function OrdersPage() {
             ) : null}
             {!loading && filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-3 text-stone-500">
-                  {orders.length === 0
-                    ? "No orders yet. Create your first cookie order."
-                    : "No orders match this status filter."}
+                <td colSpan={6} className="px-4 py-8 text-center">
+                  {orders.length === 0 ? (
+                    <>
+                      <p className="font-medium text-espresso">No orders yet</p>
+                      <p className="mt-1 text-sm text-stone-500">
+                        Send cookies after a pitch — pay once at checkout.
+                      </p>
+                      <Link
+                        href="/orders/new"
+                        className="mt-4 inline-flex rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
+                      >
+                        Create your first order
+                      </Link>
+                    </>
+                  ) : (
+                    <p className="text-stone-500">No orders match this status filter.</p>
+                  )}
                 </td>
               </tr>
             ) : null}

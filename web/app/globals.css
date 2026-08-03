@@ -16,4 +16,8 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  .field-input {
+    @apply w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none transition focus:border-wood focus-visible:ring-2 focus-visible:ring-wood/40;
+  }
 }

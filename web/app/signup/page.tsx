@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, fetchErrorMessage } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
+import { Button } from "@/components/ui/button";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -82,7 +83,7 @@ export default function SignupPage() {
               id="name"
               type="text"
               autoComplete="name"
-              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              className="field-input"
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
@@ -98,7 +99,7 @@ export default function SignupPage() {
               id="company"
               type="text"
               autoComplete="organization"
-              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              className="field-input"
               value={company}
               onChange={(event) => setCompany(event.target.value)}
               required
@@ -114,7 +115,7 @@ export default function SignupPage() {
               id="email"
               type="email"
               autoComplete="email"
-              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              className="field-input"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -129,7 +130,7 @@ export default function SignupPage() {
               id="password"
               type="password"
               autoComplete="new-password"
-              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              className="field-input"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
@@ -145,7 +146,7 @@ export default function SignupPage() {
               id="confirmPassword"
               type="password"
               autoComplete="new-password"
-              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-espresso outline-none focus:border-wood"
+              className="field-input"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
               required
@@ -159,13 +160,9 @@ export default function SignupPage() {
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-wood px-3 py-2 text-sm font-semibold text-white transition hover:bg-wood-dark disabled:opacity-70"
-            disabled={loading}
-          >
+          <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creating account..." : "Create account"}
-          </button>
+          </Button>
         </form>
 
         <p className="mt-4 text-sm text-stone-600">
