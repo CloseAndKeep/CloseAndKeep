@@ -96,7 +96,7 @@ export default function HomePage() {
                 alt=""
                 width={48}
                 height={62}
-                className="h-12 w-auto"
+                className="h-12 w-auto self-start object-contain"
                 priority
               />
               <div>

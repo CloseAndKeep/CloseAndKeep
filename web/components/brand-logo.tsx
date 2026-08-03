@@ -23,7 +23,7 @@ export function BrandLogo({
         alt="CloseAndKeep"
         width={40}
         height={52}
-        className="h-8 w-auto"
+        className="h-8 w-auto max-w-none object-contain"
         priority={priority}
       />
     ) : (
@@ -32,7 +32,7 @@ export function BrandLogo({
         alt="CloseAndKeep"
         width={220}
         height={58}
-        className="h-8 w-auto sm:h-9"
+        className="h-8 w-auto max-w-none object-contain sm:h-9"
         priority={priority}
       />
     );
