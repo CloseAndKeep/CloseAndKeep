@@ -22,7 +22,7 @@ const steps = [
   "Add a few CloseAndKeep fields to the CRM your reps already use",
   "We can automatically collect the shipping address. No need to manually enter",
   "We ship top quality cookies with your personal note; you stay human, not generic",
-  "Track every send and watch conversion rates rise, churn drop",
+  "Track every send and watch conversion rates rise.",
 ];
 
 const jsonLd = {
