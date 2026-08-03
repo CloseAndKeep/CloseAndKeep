@@ -66,6 +66,7 @@ class ManualEmailFulfillment:
             prospect_email=prospect.email,
             prospect_deal_status=prospect.deal_status,
             placed_by_email=owner.email,
+            payment_status=order.payment_status,
         )
 
 

@@ -41,6 +41,7 @@ from .models import (
     UserModel,
 )
 from .jobs.address_request_followups import send_due_address_request_followups
+from .jobs.monthly_billing import run_monthly_billing_job
 from .order_email import send_orderer_gift_declined
 from .rate_limit import client_ip, limiter
 from .session_store import (
@@ -53,15 +54,25 @@ from .session_store import (
     rotate_session,
 )
 from .stripe_payments import (
+    AUTO_ORDER_GIFT_IDS,
+    BILLING_MODE_MONTHLY,
+    BILLING_MODE_PER_ORDER,
     cancel_payment_authorization,
     capture_authorized_order,
+    charge_owed_balance,
     create_checkout_session_for_order,
     create_checkout_session_for_orders,
+    create_setup_checkout_session,
     ensure_stripe_webhook_configured,
     expire_authorization_for_payment_intent,
     fulfill_order_from_checkout_session,
     list_gift_prices,
+    monthly_balance_for_user,
+    prepare_monthly_owed_order,
+    queue_owed_order_for_fulfillment,
     sync_order_payment_from_stripe,
+    user_has_saved_payment_method,
+    user_uses_monthly_billing,
 )
 
 
@@ -240,6 +251,32 @@ class GiftOrderImportResponse(BaseModel):
 
 class StripeCheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class BillingPrefsUpdateRequest(BaseModel):
+    billing_mode: str | None = None
+    auto_order_enabled: bool | None = None
+    auto_order_gift_id: str | None = None
+
+    @field_validator("billing_mode")
+    @classmethod
+    def _valid_billing_mode(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {BILLING_MODE_PER_ORDER, BILLING_MODE_MONTHLY}:
+            raise ValueError("billing_mode must be 'per_order' or 'monthly'")
+        return normalized
+
+    @field_validator("auto_order_gift_id")
+    @classmethod
+    def _valid_auto_order_gift(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if normalized not in AUTO_ORDER_GIFT_IDS:
+            raise ValueError("auto_order_gift_id must be 'cookies-4' or 'cookies-12'")
+        return normalized
 
 
 class AddressRequestPublicResponse(BaseModel):
@@ -466,6 +503,10 @@ def _expire_address_request_order(order: GiftOrderModel, db: Session) -> None:
         order.payment_status = "canceled"
         if order.status == "no_address":
             order.status = "canceled"
+    elif order.payment_status == "owed" and order.status == "no_address":
+        # Monthly order never collected an address — drop it from the balance.
+        order.payment_status = "canceled"
+        order.status = "canceled"
     db.add(order)
     db.commit()
 
@@ -726,6 +767,16 @@ def run_address_request_followups(
     return send_due_address_request_followups(db)
 
 
+@app.post("/internal/jobs/monthly-billing")
+def run_monthly_billing(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, int | str]:
+    """Charge monthly balances on month-end; remind a few days before."""
+    _require_cron_secret(request)
+    return run_monthly_billing_job(db)
+
+
 @app.get("/gifts", response_model=list[GiftCatalogItem])
 def list_gifts() -> list[GiftCatalogItem]:
     return [GiftCatalogItem(**item) for item in list_gift_prices()]
@@ -829,8 +880,24 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
 _AVATAR_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 
 
-def _me_response(user: UserModel) -> dict[str, str | int | bool | None]:
-    return {
+def _user_has_crm_connection(user_id: int, db: Session) -> bool:
+    row = db.scalar(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.owner_user_id == user_id,
+            IntegrationConnectionModel.provider.in_(
+                [PROVIDER_SALESFORCE, PROVIDER_HUBSPOT]
+            ),
+            IntegrationConnectionModel.enabled.is_(True),
+        )
+    )
+    return row is not None
+
+
+def _me_response(
+    user: UserModel,
+    db: Session | None = None,
+) -> dict[str, str | int | bool | None]:
+    payload: dict[str, str | int | bool | None] = {
         "user_id": user.id,
         "email": user.email,
         "name": user.name,
@@ -838,12 +905,120 @@ def _me_response(user: UserModel) -> dict[str, str | int | bool | None]:
         "role": user.role,
         "is_guest": user.role == "guest",
         "has_avatar": bool(user.avatar_data),
+        "billing_mode": user.billing_mode or BILLING_MODE_PER_ORDER,
+        "auto_order_enabled": bool(user.auto_order_enabled),
+        "auto_order_gift_id": user.auto_order_gift_id,
+        "has_payment_method": user_has_saved_payment_method(user),
+        "crm_connected": False,
+        "monthly_balance_cents": 0,
+        "monthly_order_count": 0,
     }
+    if db is not None:
+        payload["crm_connected"] = _user_has_crm_connection(user.id, db)
+        amount, _currency, count = monthly_balance_for_user(user.id, db)
+        payload["monthly_balance_cents"] = amount
+        payload["monthly_order_count"] = count
+    return payload
 
 
 @app.get("/auth/me")
-def me(current_user: UserModel = Depends(get_current_user)) -> dict[str, str | int | bool | None]:
-    return _me_response(current_user)
+def me(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str | int | bool | None]:
+    return _me_response(current_user, db)
+
+
+@app.patch("/auth/me/billing")
+def update_billing_prefs(
+    payload: BillingPrefsUpdateRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str | int | bool | None]:
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest accounts cannot change billing preferences.",
+        )
+
+    crm_connected = _user_has_crm_connection(current_user.id, db)
+    wants_monthly = (
+        payload.billing_mode == BILLING_MODE_MONTHLY
+        if payload.billing_mode is not None
+        else user_uses_monthly_billing(current_user)
+    )
+    wants_auto = (
+        payload.auto_order_enabled
+        if payload.auto_order_enabled is not None
+        else bool(current_user.auto_order_enabled)
+    )
+
+    if (wants_monthly or wants_auto) and not crm_connected:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Salesforce or HubSpot before enabling monthly billing or auto-order.",
+        )
+
+    if payload.billing_mode is not None:
+        if payload.billing_mode == BILLING_MODE_MONTHLY and not user_has_saved_payment_method(
+            current_user
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Add a payment method before enabling monthly billing.",
+            )
+        current_user.billing_mode = payload.billing_mode
+
+    if payload.auto_order_gift_id is not None:
+        current_user.auto_order_gift_id = payload.auto_order_gift_id
+
+    if payload.auto_order_enabled is not None:
+        if payload.auto_order_enabled:
+            gift_id = current_user.auto_order_gift_id
+            if gift_id not in AUTO_ORDER_GIFT_IDS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Choose a 4-cookie or 12-cookie pack before enabling auto-order.",
+                )
+        current_user.auto_order_enabled = payload.auto_order_enabled
+
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return _me_response(current_user, db)
+
+
+@app.post("/auth/me/billing/setup-payment-method")
+def setup_billing_payment_method(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest accounts cannot save a payment method.",
+        )
+    if not _user_has_crm_connection(current_user.id, db):
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Salesforce or HubSpot before saving a card for monthly billing.",
+        )
+    setup_url = create_setup_checkout_session(current_user, db)
+    return {"setup_url": setup_url}
+
+
+@app.post("/auth/me/billing/pay-balance")
+def pay_monthly_balance(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest accounts cannot pay a monthly balance.",
+        )
+    # Allow payoff even after switching back to per_order while owed orders remain.
+    return charge_owed_balance(current_user, db, notify_on_failure=False)
 
 
 @app.get("/auth/me/avatar")
@@ -883,7 +1058,7 @@ async def upload_my_avatar(
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
-    return _me_response(current_user)
+    return _me_response(current_user, db)
 
 
 @app.delete("/auth/me/avatar")
@@ -896,7 +1071,7 @@ def delete_my_avatar(
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
-    return _me_response(current_user)
+    return _me_response(current_user, db)
 
 
 @app.post("/auth/me/password")
@@ -1105,6 +1280,11 @@ def create_gift_order(
     if not prospect or prospect.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Prospect not found.")
 
+    monthly = (
+        user_uses_monthly_billing(current_user)
+        and user_has_saved_payment_method(current_user)
+    )
+
     if payload.request_recipient_address:
         if current_user.role == "guest":
             raise HTTPException(
@@ -1130,12 +1310,22 @@ def create_gift_order(
             address_request_token=token,
             redeem_code=redeem_code,
             address_request_expires_at=expires_at,
-            # Email is sent after Stripe authorization succeeds — not yet.
+            # Email is sent after Stripe authorization succeeds — or immediately for monthly.
             address_request_sent_at=None,
         )
         db.add(order)
         db.commit()
         db.refresh(order)
+
+        if monthly:
+            try:
+                order = prepare_monthly_owed_order(order, db)
+            except HTTPException:
+                db.delete(order)
+                db.commit()
+                raise
+            response = _gift_order_response(order)
+            return GiftOrderCreateResponse(**response.model_dump(), checkout_url=None)
 
         try:
             checkout_url = create_checkout_session_for_order(order, current_user, db)
@@ -1161,6 +1351,16 @@ def create_gift_order(
     db.add(order)
     db.commit()
     db.refresh(order)
+
+    if monthly:
+        try:
+            order = prepare_monthly_owed_order(order, db)
+        except HTTPException:
+            db.delete(order)
+            db.commit()
+            raise
+        response = _gift_order_response(order)
+        return GiftOrderCreateResponse(**response.model_dump(), checkout_url=None)
 
     try:
         checkout_url = create_checkout_session_for_order(order, current_user, db)
@@ -1282,6 +1482,10 @@ async def import_gift_orders_csv(
     created: list[GiftOrderCreateResponse] = []
     staged_orders: list[GiftOrderModel] = []
     batch_checkout_url: str | None = None
+    monthly = (
+        user_uses_monthly_billing(current_user)
+        and user_has_saved_payment_method(current_user)
+    )
 
     try:
         for row in parsed_rows:
@@ -1328,27 +1532,35 @@ async def import_gift_orders_csv(
         for order in staged_orders:
             db.refresh(order)
 
-        known_address = [
-            o for o in staged_orders if o.status == "pending_payment" and o.shipping_address
-        ]
-        needs_address = [o for o in staged_orders if o.status == "no_address"]
-
         checkout_by_id: dict[int, str | None] = {}
 
-        if known_address:
-            batch_checkout_url = create_checkout_session_for_orders(
-                known_address, current_user, db
-            )
-            for order in known_address:
-                db.refresh(order)
-                checkout_by_id[order.id] = batch_checkout_url
+        if monthly:
+            for order in staged_orders:
+                order = prepare_monthly_owed_order(order, db)
+                checkout_by_id[order.id] = None
+        else:
+            known_address = [
+                o
+                for o in staged_orders
+                if o.status == "pending_payment" and o.shipping_address
+            ]
+            needs_address = [o for o in staged_orders if o.status == "no_address"]
 
-        for order in needs_address:
-            checkout_url = create_checkout_session_for_order(order, current_user, db)
-            db.refresh(order)
-            checkout_by_id[order.id] = checkout_url
+            if known_address:
+                batch_checkout_url = create_checkout_session_for_orders(
+                    known_address, current_user, db
+                )
+                for order in known_address:
+                    db.refresh(order)
+                    checkout_by_id[order.id] = batch_checkout_url
+
+            for order in needs_address:
+                checkout_url = create_checkout_session_for_order(order, current_user, db)
+                db.refresh(order)
+                checkout_by_id[order.id] = checkout_url
 
         for order in staged_orders:
+            db.refresh(order)
             response = _gift_order_response(order)
             created.append(
                 GiftOrderCreateResponse(
@@ -1381,7 +1593,7 @@ def _submit_shipping_for_order(
             note=order.note,
             already_submitted=True,
         )
-    if order.payment_status != "authorized":
+    if order.payment_status not in {"authorized", "owed"}:
         raise HTTPException(
             status_code=400,
             detail="This gift is not ready for an address yet. Please try again later.",
@@ -1392,13 +1604,15 @@ def _submit_shipping_for_order(
     if payload.recipient_name:
         values["recipient_name"] = payload.recipient_name.strip()
 
+    payment_status = order.payment_status
+
     # Atomic claim: only one concurrent submit can transition no_address → address set.
     result = db.execute(
         update(GiftOrderModel)
         .where(
             GiftOrderModel.id == order.id,
             GiftOrderModel.status == "no_address",
-            GiftOrderModel.payment_status == "authorized",
+            GiftOrderModel.payment_status == payment_status,
             or_(
                 GiftOrderModel.shipping_address.is_(None),
                 GiftOrderModel.shipping_address == "",
@@ -1417,6 +1631,19 @@ def _submit_shipping_for_order(
         )
 
     db.refresh(order)
+
+    if payment_status == "owed":
+        order = queue_owed_order_for_fulfillment(order, db)
+        _clear_address_request_token(order)
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return AddressRequestPublicResponse(
+            recipient_name=order.recipient_name,
+            gift_id=order.gift_id,
+            note=order.note,
+            already_submitted=True,
+        )
 
     try:
         # Capture the held payment now that we have a ship-to address.
@@ -1610,17 +1837,18 @@ def admin_update_gift_order(
 
     if payload.status is not None:
         # Unpaid orders stay in pre-pay statuses (or can be canceled). Paid
-        # orders move through fulfillment statuses.
+        # orders — and monthly owed orders — move through fulfillment statuses.
         unpaid_allowed = {"no_address", "pending_payment", "canceled"}
-        if order.payment_status != "paid" and payload.status not in unpaid_allowed:
+        fulfillment_ok = order.payment_status in {"paid", "owed"}
+        if not fulfillment_ok and payload.status not in unpaid_allowed:
             raise HTTPException(
                 status_code=400,
                 detail="Order must be paid before it can move through fulfillment.",
             )
-        if order.payment_status == "paid" and payload.status in {"no_address", "pending_payment"}:
+        if fulfillment_ok and payload.status in {"no_address", "pending_payment"}:
             raise HTTPException(
                 status_code=400,
-                detail="Paid orders cannot return to a pre-payment status.",
+                detail="Paid or monthly owed orders cannot return to a pre-payment status.",
             )
         if payload.status == "canceled" and order.payment_status == "authorized":
             cancel_payment_authorization(order)

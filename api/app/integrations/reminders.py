@@ -1,22 +1,32 @@
-"""Process CRM stage events into cookie-order reminder emails."""
+"""Process CRM stage events into cookie-order reminders or auto-orders."""
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from secrets import randbelow, token_urlsafe
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..models import (
     CrmReminderEventModel,
+    GiftOrderModel,
     IntegrationConnectionModel,
     ProspectModel,
     UserModel,
 )
-from ..order_email import send_cookie_reminder
-from ..config import settings
+from ..order_email import send_auto_order_checkout, send_cookie_reminder
+from ..stripe_payments import (
+    AUTO_ORDER_GIFT_IDS,
+    create_checkout_session_for_order,
+    prepare_monthly_owed_order,
+    user_has_saved_payment_method,
+    user_uses_monthly_billing,
+    _gift_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +41,10 @@ _REMINDER_FROM = {
     PROVIDER_SALESFORCE: "sf_reminder",
     PROVIDER_HUBSPOT: "hs_reminder",
 }
+
+DEFAULT_AUTO_ORDER_NOTE = (
+    "Thanks for meeting with us — enjoy these cookies!"
+)
 
 
 def upsert_prospect_from_crm(
@@ -75,6 +89,99 @@ def upsert_prospect_from_crm(
     return prospect
 
 
+def _mint_address_token() -> tuple[str, datetime]:
+    token = token_urlsafe(32)
+    expires = datetime.now(UTC) + timedelta(days=settings.address_request_ttl_days)
+    return token, expires
+
+
+def _mint_redeem_code(db: Session) -> str:
+    """Allocate a short human redeem code like CK-48291 (matches main.py)."""
+    for _ in range(40):
+        code = f"CK-{randbelow(100_000):05d}"
+        exists = db.scalar(
+            select(GiftOrderModel.id).where(GiftOrderModel.redeem_code == code).limit(1)
+        )
+        if not exists:
+            return code
+    raise RuntimeError("Unable to mint redeem code")
+
+
+def _create_auto_order(
+    db: Session,
+    *,
+    owner: UserModel,
+    prospect: ProspectModel,
+) -> dict:
+    """Create an address-request gift order for CRM auto-order."""
+    gift_id = (owner.auto_order_gift_id or "").strip()
+    if gift_id not in AUTO_ORDER_GIFT_IDS:
+        return {"status": "error", "reason": "invalid_auto_order_gift"}
+
+    recipient_email = (prospect.email or "").strip().lower()
+    if not recipient_email or recipient_email.endswith("@unknown.salesforce") or recipient_email.endswith(
+        "@unknown.hubspot"
+    ):
+        # Still create — redeem code works without email; skip email send later.
+        pass
+
+    token, expires_at = _mint_address_token()
+    order = GiftOrderModel(
+        owner_user_id=owner.id,
+        prospect_id=prospect.id,
+        gift_id=gift_id,
+        recipient_name=prospect.name,
+        shipping_address=None,
+        recipient_email=recipient_email or None,
+        note=DEFAULT_AUTO_ORDER_NOTE,
+        status="no_address",
+        payment_status="pending",
+        address_request_token=token,
+        redeem_code=_mint_redeem_code(db),
+        address_request_expires_at=expires_at,
+        address_request_sent_at=None,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    order_url = f"{settings.web_base_url.rstrip('/')}/orders/{order.id}"
+    monthly = user_uses_monthly_billing(owner) and user_has_saved_payment_method(owner)
+
+    if monthly:
+        order = prepare_monthly_owed_order(order, db)
+        return {
+            "status": "auto_ordered",
+            "order_id": order.id,
+            "billing": "monthly",
+            "payment_status": order.payment_status,
+            "order_url": order_url,
+        }
+
+    try:
+        checkout_url = create_checkout_session_for_order(order, owner, db)
+    except Exception:
+        logger.exception("Auto-order checkout failed order_id=%s", order.id)
+        db.delete(order)
+        db.commit()
+        return {"status": "error", "reason": "checkout_failed"}
+
+    send_auto_order_checkout(
+        to_email=owner.email,
+        prospect_name=prospect.name,
+        gift_label=_gift_label(gift_id),
+        checkout_url=checkout_url,
+        order_url=order_url,
+    )
+    return {
+        "status": "auto_ordered",
+        "order_id": order.id,
+        "billing": "per_order",
+        "checkout_url": checkout_url,
+        "order_url": order_url,
+    }
+
+
 def process_stage_completed_reminder(
     db: Session,
     *,
@@ -84,7 +191,7 @@ def process_stage_completed_reminder(
     contact_name: str,
     contact_email: str,
 ) -> dict:
-    """Upsert prospect, dedupe by opportunity, and email the salesperson immediately.
+    """Upsert prospect, dedupe by opportunity, then auto-order or email reminder.
 
     Returns a small status dict for API/logging. Does not raise on email transport
     failure (Resend is best-effort, matching other order emails).
@@ -167,6 +274,24 @@ def process_stage_completed_reminder(
         }
     db.refresh(event)
     db.refresh(prospect)
+
+    if owner.auto_order_enabled and (owner.auto_order_gift_id or "") in AUTO_ORDER_GIFT_IDS:
+        auto_result = _create_auto_order(db, owner=owner, prospect=prospect)
+        event.status = "auto_ordered" if auto_result.get("status") == "auto_ordered" else "error"
+        db.add(event)
+        db.commit()
+        logger.info(
+            "CRM auto-order connection_id=%s opportunity=%s prospect_id=%s result=%s",
+            connection.id,
+            opportunity_id,
+            prospect.id,
+            auto_result.get("status"),
+        )
+        return {
+            **auto_result,
+            "event_id": event.id,
+            "prospect_id": prospect.id,
+        }
 
     send_cookie_reminder(
         to_email=owner.email,

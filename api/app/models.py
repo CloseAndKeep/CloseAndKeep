@@ -16,6 +16,14 @@ class UserModel(Base):
     company: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # per_order (default) | monthly — monthly accrues owed orders and charges at month end.
+    billing_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="per_order")
+    auto_order_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # cookies-4 | cookies-12 when auto_order_enabled.
+    auto_order_gift_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stripe_default_payment_method_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     # Small profile photo stored in-DB (MVP; can move to object storage later).
     avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     avatar_content_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -175,7 +183,10 @@ class GiftOrderModel(Base):
     recipient_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     note: Mapped[str] = mapped_column(String(1000), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_payment")
+    # pending | authorized | paid | canceled | owed (monthly unpaid; may still fulfill)
     payment_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    # YYYY-MM grouping for month-end charges when payment_status is owed.
+    billing_period: Mapped[str | None] = mapped_column(String(7), nullable=True, index=True)
     tracking_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
     admin_notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)

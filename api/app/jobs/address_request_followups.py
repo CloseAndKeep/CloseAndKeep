@@ -32,7 +32,7 @@ def send_due_address_request_followups(db: Session) -> dict[str, int]:
     candidates = db.scalars(
         select(GiftOrderModel).where(
             GiftOrderModel.status == "no_address",
-            GiftOrderModel.payment_status == "authorized",
+            GiftOrderModel.payment_status.in_(["authorized", "owed"]),
             or_(
                 GiftOrderModel.shipping_address.is_(None),
                 GiftOrderModel.shipping_address == "",
@@ -59,7 +59,7 @@ def send_due_address_request_followups(db: Session) -> dict[str, int]:
             .where(
                 GiftOrderModel.id == order.id,
                 GiftOrderModel.status == "no_address",
-                GiftOrderModel.payment_status == "authorized",
+                GiftOrderModel.payment_status.in_(["authorized", "owed"]),
                 GiftOrderModel.address_request_followup_sent_at.is_(None),
                 or_(
                     GiftOrderModel.shipping_address.is_(None),

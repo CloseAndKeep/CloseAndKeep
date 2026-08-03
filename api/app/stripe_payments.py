@@ -1,4 +1,4 @@
-"""Stripe one-time Checkout for gift orders."""
+"""Stripe Checkout, SetupIntent, and off-session charges for gift orders."""
 
 from __future__ import annotations
 
@@ -13,9 +13,32 @@ from sqlalchemy.orm import Session
 
 from .config import GIFT_CATALOG, settings, stripe_price_for_gift
 from .models import GiftOrderModel, ProspectModel, UserModel
-from .order_email import send_orderer_receipt, send_recipient_address_request
+from .order_email import (
+    send_monthly_billing_receipt,
+    send_monthly_charge_failed,
+    send_orderer_receipt,
+    send_recipient_address_request,
+)
 
 logger = logging.getLogger(__name__)
+
+BILLING_MODE_PER_ORDER = "per_order"
+BILLING_MODE_MONTHLY = "monthly"
+AUTO_ORDER_GIFT_IDS = frozenset({"cookies-4", "cookies-12"})
+
+
+def current_billing_period(now: datetime | None = None) -> str:
+    """Return YYYY-MM for grouping monthly owed orders."""
+    stamp = now or datetime.now(UTC)
+    return stamp.strftime("%Y-%m")
+
+
+def user_uses_monthly_billing(user: UserModel) -> bool:
+    return (user.billing_mode or BILLING_MODE_PER_ORDER) == BILLING_MODE_MONTHLY
+
+
+def user_has_saved_payment_method(user: UserModel) -> bool:
+    return bool((user.stripe_default_payment_method_id or "").strip())
 
 
 def _field(obj: object, key: str, default: object | None = None) -> object | None:
@@ -150,8 +173,10 @@ def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
     if order.payment_status == "paid":
         return order
 
+    already_queued = order.status in {"queued", "ordered", "shipped", "delivered"}
     order.payment_status = "paid"
-    order.status = "queued"
+    if order.status not in {"queued", "ordered", "shipped", "delivered", "canceled"}:
+        order.status = "queued"
     db.add(order)
     db.commit()
     db.refresh(order)
@@ -167,11 +192,91 @@ def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
             shipping_address=order.shipping_address,
             order_url=f"{settings.web_base_url.rstrip('/')}/orders/{order.id}",
         )
-    if prospect and owner:
+    if prospect and owner and not already_queued:
         # Payment is done; hand off to fulfillment (email today, bakery API later).
         from .fulfillment import dispatch_queued_fulfillment
 
         dispatch_queued_fulfillment(order, prospect=prospect, owner=owner, db=db)
+    return order
+
+
+def send_address_request_for_order(order: GiftOrderModel, db: Session) -> GiftOrderModel:
+    """Email the recipient an address-request link (once) for authorize or monthly owed."""
+    if (
+        not order.address_request_token
+        or not order.redeem_code
+        or not order.recipient_email
+        or order.address_request_sent_at is not None
+    ):
+        return order
+
+    owner = db.get(UserModel, order.owner_user_id)
+    send_recipient_address_request(
+        recipient_name=order.recipient_name,
+        recipient_email=order.recipient_email,
+        address_form_url=_address_form_url(order.address_request_token),
+        redeem_url=_redeem_page_url(),
+        redeem_code=order.redeem_code,
+        gift_label=_gift_label(order.gift_id),
+        note=order.note,
+        sender_name=owner.name if owner else None,
+        sender_company=owner.company if owner else None,
+        sender_avatar_data=owner.avatar_data if owner else None,
+        sender_avatar_content_type=owner.avatar_content_type if owner else None,
+    )
+    order.address_request_sent_at = datetime.now(UTC)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def queue_owed_order_for_fulfillment(order: GiftOrderModel, db: Session) -> GiftOrderModel:
+    """Move a monthly owed order to queued and notify ops (payment stays owed)."""
+    if order.payment_status != "owed":
+        raise HTTPException(status_code=400, detail="Order is not on monthly billing.")
+    if not (order.shipping_address or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="A shipping address is required before queuing fulfillment.",
+        )
+
+    already_notified = order.status in {"queued", "ordered", "shipped", "delivered"}
+    order.status = "queued"
+    if not order.billing_period:
+        order.billing_period = current_billing_period()
+    if not order.stripe_price_id:
+        order.stripe_price_id = resolve_stripe_price_id(order.gift_id)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    if already_notified:
+        return order
+
+    prospect = db.get(ProspectModel, order.prospect_id)
+    owner = db.get(UserModel, order.owner_user_id)
+    if prospect and owner:
+        from .fulfillment import dispatch_queued_fulfillment
+
+        dispatch_queued_fulfillment(order, prospect=prospect, owner=owner, db=db)
+    return order
+
+
+def prepare_monthly_owed_order(order: GiftOrderModel, db: Session) -> GiftOrderModel:
+    """Stamp an order as monthly owed and send the address request when needed."""
+    order.payment_status = "owed"
+    order.billing_period = order.billing_period or current_billing_period()
+    order.stripe_price_id = order.stripe_price_id or resolve_stripe_price_id(order.gift_id)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    if order.status == "no_address" and not (order.shipping_address or "").strip():
+        return send_address_request_for_order(order, db)
+
+    if (order.shipping_address or "").strip():
+        return queue_owed_order_for_fulfillment(order, db)
     return order
 
 
@@ -196,32 +301,7 @@ def mark_order_authorized(
     db.refresh(order)
 
     # Email the recipient only after authorization succeeds (and only once).
-    if (
-        order.address_request_token
-        and order.redeem_code
-        and order.recipient_email
-        and order.address_request_sent_at is None
-    ):
-        owner = db.get(UserModel, order.owner_user_id)
-        send_recipient_address_request(
-            recipient_name=order.recipient_name,
-            recipient_email=order.recipient_email,
-            address_form_url=_address_form_url(order.address_request_token),
-            redeem_url=_redeem_page_url(),
-            redeem_code=order.redeem_code,
-            gift_label=_gift_label(order.gift_id),
-            note=order.note,
-            sender_name=owner.name if owner else None,
-            sender_company=owner.company if owner else None,
-            sender_avatar_data=owner.avatar_data if owner else None,
-            sender_avatar_content_type=owner.avatar_content_type if owner else None,
-        )
-        order.address_request_sent_at = datetime.now(UTC)
-        db.add(order)
-        db.commit()
-        db.refresh(order)
-
-    return order
+    return send_address_request_for_order(order, db)
 
 
 def capture_authorized_order(order: GiftOrderModel, db: Session) -> GiftOrderModel:
@@ -617,6 +697,11 @@ def create_checkout_session_for_order(
 ) -> str:
     if order.payment_status == "paid":
         raise HTTPException(status_code=400, detail="This order is already paid.")
+    if order.payment_status == "owed":
+        raise HTTPException(
+            status_code=400,
+            detail="This order is on monthly billing. Use Pay now on your profile to settle the balance.",
+        )
     if order.payment_status == "authorized":
         raise HTTPException(
             status_code=400,
@@ -684,6 +769,11 @@ def create_checkout_session_for_orders(
     for order in orders:
         if order.payment_status == "paid":
             raise HTTPException(status_code=400, detail="This order is already paid.")
+        if order.payment_status == "owed":
+            raise HTTPException(
+                status_code=400,
+                detail="This order is on monthly billing. Use Pay now on your profile to settle the balance.",
+            )
         if order.payment_status == "authorized":
             raise HTTPException(
                 status_code=400,
@@ -755,8 +845,280 @@ def create_checkout_session_for_orders(
     return session["url"]
 
 
+def create_setup_checkout_session(current_user: UserModel, db: Session) -> str:
+    """Stripe Checkout in setup mode to save a card for monthly billing."""
+    ensure_stripe_configured()
+    customer_id = _ensure_stripe_customer(current_user, db)
+    session = stripe.checkout.Session.create(
+        mode="setup",
+        customer=customer_id,
+        success_url=f"{settings.web_base_url.rstrip('/')}/profile?billing=setup_success",
+        cancel_url=f"{settings.web_base_url.rstrip('/')}/profile?billing=setup_cancel",
+        metadata={
+            "user_id": str(current_user.id),
+            "purpose": "save_payment_method",
+        },
+    )
+    url = _field(session, "url")
+    if not isinstance(url, str) or not url:
+        raise HTTPException(status_code=502, detail="Unable to start card setup.")
+    return url
+
+
+def fulfill_setup_checkout_session(session: dict | object, db: Session) -> None:
+    """Persist the payment method from a completed setup-mode Checkout Session."""
+    if _field(session, "mode") != "setup":
+        return
+    metadata = _field(session, "metadata", {}) or {}
+    user_id_raw = _field(metadata, "user_id")
+    if not user_id_raw:
+        return
+    try:
+        user_id = int(str(user_id_raw))
+    except ValueError:
+        return
+    user = db.get(UserModel, user_id)
+    if not user:
+        return
+
+    setup_intent = _field(session, "setup_intent")
+    setup_intent_id: str | None = None
+    if isinstance(setup_intent, str):
+        setup_intent_id = setup_intent
+    elif setup_intent is not None:
+        sid = _field(setup_intent, "id")
+        if isinstance(sid, str):
+            setup_intent_id = sid
+
+    payment_method_id: str | None = None
+    if setup_intent_id:
+        try:
+            intent = stripe.SetupIntent.retrieve(setup_intent_id)
+            pm = _field(intent, "payment_method")
+            if isinstance(pm, str):
+                payment_method_id = pm
+            elif pm is not None:
+                pmid = _field(pm, "id")
+                if isinstance(pmid, str):
+                    payment_method_id = pmid
+        except stripe.error.StripeError:
+            logger.exception("Failed to retrieve SetupIntent %s", setup_intent_id)
+
+    if not payment_method_id:
+        logger.warning(
+            "Setup checkout completed without payment_method user_id=%s session=%s",
+            user_id,
+            _field(session, "id"),
+        )
+        return
+
+    customer_id = _ensure_stripe_customer(user, db)
+    try:
+        stripe.Customer.modify(
+            customer_id,
+            invoice_settings={"default_payment_method": payment_method_id},
+        )
+    except stripe.error.StripeError:
+        logger.exception(
+            "Failed to set default payment method for user_id=%s", user_id
+        )
+
+    user.stripe_default_payment_method_id = payment_method_id
+    if not user.stripe_customer_id:
+        user.stripe_customer_id = customer_id
+    db.add(user)
+    db.commit()
+
+
+def list_owed_orders_for_user(user_id: int, db: Session) -> list[GiftOrderModel]:
+    return list(
+        db.scalars(
+            select(GiftOrderModel)
+            .where(
+                GiftOrderModel.owner_user_id == user_id,
+                GiftOrderModel.payment_status == "owed",
+            )
+            .order_by(GiftOrderModel.requested_at.asc())
+        ).all()
+    )
+
+
+def monthly_balance_for_user(user_id: int, db: Session) -> tuple[int, str, int]:
+    """Return (amount_cents, currency, order_count) for owed orders."""
+    orders = list_owed_orders_for_user(user_id, db)
+    if not orders:
+        return 0, "usd", 0
+    amount, currency = _expected_amount_for_orders(orders)
+    return amount, currency, len(orders)
+
+
+def _profile_billing_url() -> str:
+    return f"{settings.web_base_url.rstrip('/')}/profile"
+
+
+def charge_owed_balance(
+    user: UserModel,
+    db: Session,
+    *,
+    notify_on_failure: bool = True,
+) -> dict:
+    """Charge the user's saved card for all owed orders (Pay now / month-end)."""
+    orders = list_owed_orders_for_user(user.id, db)
+    if not orders:
+        return {
+            "status": "noop",
+            "charged_cents": 0,
+            "order_ids": [],
+            "order_count": 0,
+        }
+
+    ensure_stripe_configured()
+    amount, currency = _expected_amount_for_orders(orders)
+    pm_id = (user.stripe_default_payment_method_id or "").strip()
+    if not pm_id:
+        if notify_on_failure:
+            send_monthly_charge_failed(
+                orderer_email=user.email,
+                amount_cents=amount,
+                currency=currency,
+                order_count=len(orders),
+                profile_url=_profile_billing_url(),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail="Add a payment method before paying your monthly balance.",
+        )
+
+    customer_id = _ensure_stripe_customer(user, db)
+    order_ids = [o.id for o in orders]
+    metadata_ids = ",".join(str(i) for i in order_ids)
+    if len(metadata_ids) > 500:
+        metadata_ids = metadata_ids[:497] + "..."
+
+    # Capture pre-charge fulfillment state so we do not re-email ops.
+    already_in_fulfillment = {
+        o.id
+        for o in orders
+        if o.status in {"queued", "ordered", "shipped", "delivered"}
+    }
+
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=amount,
+            currency=currency,
+            customer=customer_id,
+            payment_method=pm_id,
+            off_session=True,
+            confirm=True,
+            metadata={
+                "user_id": str(user.id),
+                "purpose": "monthly_balance",
+                "gift_order_ids": metadata_ids,
+            },
+        )
+    except stripe.error.CardError as exc:
+        logger.warning("Monthly charge card error user_id=%s: %s", user.id, exc)
+        if notify_on_failure:
+            send_monthly_charge_failed(
+                orderer_email=user.email,
+                amount_cents=amount,
+                currency=currency,
+                order_count=len(orders),
+                profile_url=_profile_billing_url(),
+            )
+        raise HTTPException(
+            status_code=402,
+            detail="Card was declined. Update your card or try Pay now again.",
+        ) from exc
+    except stripe.error.StripeError as exc:
+        logger.exception("Monthly charge failed user_id=%s", user.id)
+        if notify_on_failure:
+            send_monthly_charge_failed(
+                orderer_email=user.email,
+                amount_cents=amount,
+                currency=currency,
+                order_count=len(orders),
+                profile_url=_profile_billing_url(),
+            )
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to charge your saved card. Please try again or update your card.",
+        ) from exc
+
+    status = _field(intent, "status")
+    pi_id = _field(intent, "id")
+    if status != "succeeded":
+        if notify_on_failure:
+            send_monthly_charge_failed(
+                orderer_email=user.email,
+                amount_cents=amount,
+                currency=currency,
+                order_count=len(orders),
+                profile_url=_profile_billing_url(),
+            )
+        raise HTTPException(
+            status_code=402,
+            detail="Card payment did not complete. Update your card or try again.",
+        )
+
+    summaries: list[dict[str, str | int]] = []
+    for order in orders:
+        order.payment_status = "paid"
+        if isinstance(pi_id, str):
+            order.stripe_payment_intent_id = pi_id
+        if (
+            order.id not in already_in_fulfillment
+            and order.status not in {"canceled"}
+            and (order.shipping_address or "").strip()
+        ):
+            order.status = "queued"
+        db.add(order)
+        summaries.append(
+            {
+                "order_id": order.id,
+                "gift_label": _gift_label(order.gift_id),
+                "recipient_name": order.recipient_name,
+            }
+        )
+    db.commit()
+    for order in orders:
+        db.refresh(order)
+
+    for order in orders:
+        if order.id in already_in_fulfillment or order.status != "queued":
+            continue
+        if not (order.shipping_address or "").strip():
+            continue
+        prospect = db.get(ProspectModel, order.prospect_id)
+        if prospect:
+            from .fulfillment import dispatch_queued_fulfillment
+
+            dispatch_queued_fulfillment(order, prospect=prospect, owner=user, db=db)
+
+    send_monthly_billing_receipt(
+        orderer_email=user.email,
+        order_summaries=summaries,
+        amount_cents=amount,
+        currency=currency,
+        profile_url=_profile_billing_url(),
+    )
+
+    return {
+        "status": "paid",
+        "charged_cents": amount,
+        "currency": currency,
+        "order_ids": order_ids,
+        "order_count": len(order_ids),
+        "payment_intent_id": pi_id if isinstance(pi_id, str) else None,
+    }
+
+
 def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
-    if _field(session, "mode") != "payment":
+    mode = _field(session, "mode")
+    if mode == "setup":
+        fulfill_setup_checkout_session(session, db)
+        return
+    if mode != "payment":
         return
 
     session_id = _field(session, "id")

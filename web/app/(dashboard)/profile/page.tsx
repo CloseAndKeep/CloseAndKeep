@@ -13,6 +13,13 @@ type MeResponse = {
   role: string;
   is_guest: boolean;
   has_avatar: boolean;
+  billing_mode?: "per_order" | "monthly";
+  auto_order_enabled?: boolean;
+  auto_order_gift_id?: string | null;
+  has_payment_method?: boolean;
+  crm_connected?: boolean;
+  monthly_balance_cents?: number;
+  monthly_order_count?: number;
 };
 
 function initialsFor(name: string | null, email: string): string {
@@ -41,6 +48,10 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [passwordLoading, setPasswordLoading] = useState(false);
+
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingSuccess, setBillingSuccess] = useState<string | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -143,6 +154,77 @@ export default function ProfilePage() {
       );
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function patchBilling(body: Record<string, unknown>) {
+    setBillingLoading(true);
+    setBillingError(null);
+    setBillingSuccess(null);
+    try {
+      const updated = await apiFetch<MeResponse>("/auth/me/billing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        errorMessage: "Unable to update billing preferences.",
+      });
+      setMe(updated);
+      setBillingSuccess("Billing preferences saved.");
+    } catch (err) {
+      setBillingError(fetchErrorMessage(err, "Unable to update billing preferences."));
+    } finally {
+      setBillingLoading(false);
+    }
+  }
+
+  async function startCardSetup() {
+    setBillingLoading(true);
+    setBillingError(null);
+    setBillingSuccess(null);
+    try {
+      const data = await apiFetch<{ setup_url: string }>(
+        "/auth/me/billing/setup-payment-method",
+        {
+          method: "POST",
+          errorMessage: "Unable to start card setup.",
+        },
+      );
+      window.location.href = data.setup_url;
+    } catch (err) {
+      setBillingError(fetchErrorMessage(err, "Unable to start card setup."));
+      setBillingLoading(false);
+    }
+  }
+
+  async function payBalanceNow() {
+    setBillingLoading(true);
+    setBillingError(null);
+    setBillingSuccess(null);
+    try {
+      const result = await apiFetch<{
+        status: string;
+        charged_cents?: number;
+        order_count?: number;
+      }>("/auth/me/billing/pay-balance", {
+        method: "POST",
+        errorMessage: "Unable to charge your balance.",
+      });
+      const refreshed = await apiFetch<MeResponse>("/auth/me", {
+        errorMessage: "Unable to refresh profile.",
+      });
+      setMe(refreshed);
+      if (result.status === "paid") {
+        const dollars = ((result.charged_cents ?? 0) / 100).toFixed(2);
+        setBillingSuccess(
+          `Charged $${dollars} for ${result.order_count ?? 0} order(s). A receipt was emailed.`,
+        );
+      } else {
+        setBillingSuccess("No open balance to charge.");
+      }
+    } catch (err) {
+      setBillingError(fetchErrorMessage(err, "Unable to charge your balance."));
+    } finally {
+      setBillingLoading(false);
     }
   }
 
@@ -291,6 +373,179 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {!loading && me && !me.is_guest && me.crm_connected ? (
+        <div className="mt-6 rounded-2xl border border-stone-200/90 bg-white/90 p-8 shadow-sm">
+          <h2 className="font-display text-xl text-espresso">Monthly billing &amp; auto-order</h2>
+          <p className="mt-1 text-sm text-stone-600">
+            Available because Salesforce or HubSpot is connected.
+          </p>
+
+          <div className="mt-6 space-y-6">
+            <div>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-stone-300 text-wood focus:ring-wood"
+                  checked={me.billing_mode === "monthly"}
+                  disabled={billingLoading}
+                  onChange={(event) => {
+                    if (event.target.checked) {
+                      if (
+                        !window.confirm(
+                          "You will be billed automatically at the end of each month for all open cookie orders. A receipt will be emailed after each charge. Continue?",
+                        )
+                      ) {
+                        return;
+                      }
+                      if (!me.has_payment_method) {
+                        setBillingError(
+                          "Add a card before enabling monthly billing.",
+                        );
+                        return;
+                      }
+                      void patchBilling({ billing_mode: "monthly" });
+                    } else {
+                      void patchBilling({ billing_mode: "per_order" });
+                    }
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-espresso">
+                    Pay monthly
+                  </span>
+                  <span className="mt-1 block text-sm text-stone-600">
+                    Accrue cookie orders during the month and charge your saved
+                    card at month end (or anytime with Pay now). Orders can still
+                    ship before the monthly charge.
+                  </span>
+                </span>
+              </label>
+
+              <p className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-stone-700">
+                Your saved card is billed automatically at month end for the
+                running balance. A receipt email is sent after each successful
+                charge. Card details are stored securely by Stripe — not on
+                CloseAndKeep servers. Fulfillment can proceed while payment is
+                still owed for the month.
+              </p>
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={billingLoading}
+                  onClick={() => void startCardSetup()}
+                  className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-60"
+                >
+                  {me.has_payment_method ? "Update card" : "Add card"}
+                </button>
+                <span className="text-sm text-stone-500">
+                  {me.has_payment_method
+                    ? "Card on file"
+                    : "No card saved yet"}
+                </span>
+              </div>
+            </div>
+
+            {(me.billing_mode === "monthly" ||
+              (me.monthly_order_count ?? 0) > 0) ? (
+              <div className="rounded-xl border border-stone-200 bg-stone-50/80 px-4 py-3">
+                <p className="text-sm text-stone-700">
+                  Open balance:{" "}
+                  <span className="font-semibold text-espresso">
+                    ${((me.monthly_balance_cents ?? 0) / 100).toFixed(2)}
+                  </span>{" "}
+                  across {me.monthly_order_count ?? 0} order
+                  {(me.monthly_order_count ?? 0) === 1 ? "" : "s"}
+                </p>
+                <button
+                  type="button"
+                  disabled={
+                    billingLoading || (me.monthly_order_count ?? 0) === 0
+                  }
+                  onClick={() => void payBalanceNow()}
+                  className="mt-3 rounded-xl bg-wood px-4 py-2 text-sm font-semibold text-white hover:bg-wood-dark disabled:opacity-60"
+                >
+                  Pay now
+                </button>
+              </div>
+            ) : null}
+
+            <div>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-stone-300 text-wood focus:ring-wood"
+                  checked={Boolean(me.auto_order_enabled)}
+                  disabled={billingLoading}
+                  onChange={(event) => {
+                    if (event.target.checked) {
+                      const giftId =
+                        me.auto_order_gift_id === "cookies-12"
+                          ? "cookies-12"
+                          : "cookies-4";
+                      void patchBilling({
+                        auto_order_gift_id: giftId,
+                        auto_order_enabled: true,
+                      });
+                    } else {
+                      void patchBilling({ auto_order_enabled: false });
+                    }
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-espresso">
+                    Auto-order on CRM stage
+                  </span>
+                  <span className="mt-1 block text-sm text-stone-600">
+                    When a deal hits your trigger stage, create a cookie order
+                    and email the recipient for their address instead of sending
+                    a reminder.
+                  </span>
+                </span>
+              </label>
+
+              <fieldset className="mt-3 ml-7 space-y-2" disabled={billingLoading}>
+                <legend className="sr-only">Auto-order pack size</legend>
+                {(
+                  [
+                    ["cookies-4", "4 cookies"],
+                    ["cookies-12", "12 cookies"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <label key={id} className="flex items-center gap-2 text-sm text-stone-700">
+                    <input
+                      type="radio"
+                      name="auto_order_gift_id"
+                      checked={(me.auto_order_gift_id || "cookies-4") === id}
+                      onChange={() => {
+                        void patchBilling({
+                          auto_order_gift_id: id,
+                          ...(me.auto_order_enabled
+                            ? {}
+                            : { auto_order_enabled: false }),
+                        });
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+
+            {billingError ? (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {billingError}
+              </p>
+            ) : null}
+            {billingSuccess ? (
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                {billingSuccess}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {!loading && me && !me.is_guest ? (
         <div className="mt-6 rounded-2xl border border-stone-200/90 bg-white/90 p-8 shadow-sm">
