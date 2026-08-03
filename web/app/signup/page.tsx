@@ -55,7 +55,10 @@ export default function SignupPage() {
         }),
         errorMessage: "Sign up failed.",
       });
-      router.replace("/dashboard");
+      const trimmedEmail = email.trim();
+      router.replace(
+        `/check-email?email=${encodeURIComponent(trimmedEmail)}`,
+      );
     } catch (submitError) {
       setError(fetchErrorMessage(submitError, "Sign up failed."));
     } finally {

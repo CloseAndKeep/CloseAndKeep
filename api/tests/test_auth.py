@@ -5,27 +5,46 @@ Focus on validation, email normalization, and account-enumeration safety.
 
 from __future__ import annotations
 
-from conftest import signup_payload
+from conftest import mark_email_verified, signup, signup_payload
 
 
 # --- §1.1 Signup -------------------------------------------------------------
 
 
-def test_signup_creates_user_and_authenticates(client):
+def test_signup_requires_email_verification_before_session(client):
     resp = client.post(
         "/auth/signup",
         json=signup_payload("new@example.com", name="New User", company="New Co"),
     )
     assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("verification_required") is True
+    assert client.get("/auth/me").status_code == 401
 
-    # The session cookie now authenticates follow-up requests.
+    # Correct password still cannot log in until verified.
+    blocked = client.post(
+        "/auth/login",
+        json={"email": "new@example.com", "password": "strong-pass-123"},
+    )
+    assert blocked.status_code == 403
+    assert "verification" in blocked.json()["detail"].lower()
+
+    mark_email_verified("new@example.com")
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "new@example.com", "password": "strong-pass-123"},
+        ).status_code
+        == 200
+    )
     me = client.get("/auth/me")
     assert me.status_code == 200
-    body = me.json()
-    assert body["email"] == "new@example.com"
-    assert body["name"] == "New User"
-    assert body["company"] == "New Co"
-    assert body["role"] == "user"
+    profile = me.json()
+    assert profile["email"] == "new@example.com"
+    assert profile["name"] == "New User"
+    assert profile["company"] == "New Co"
+    assert profile["role"] == "user"
+    assert profile["email_verified"] is True
 
 
 def test_signup_rejects_invalid_email(client):
@@ -105,7 +124,7 @@ def test_signup_normalizes_email_case(client):
 
 
 def test_login_with_valid_credentials(client):
-    client.post("/auth/signup", json=signup_payload("login@example.com"))
+    signup(client, "login@example.com")
     client.post("/auth/logout")
 
     resp = client.post(
@@ -117,7 +136,7 @@ def test_login_with_valid_credentials(client):
 
 
 def test_login_accepts_email_in_any_case(client):
-    client.post("/auth/signup", json=signup_payload("case@example.com"))
+    signup(client, "case@example.com")
     client.post("/auth/logout")
 
     resp = client.post(
@@ -128,7 +147,7 @@ def test_login_accepts_email_in_any_case(client):
 
 
 def test_login_wrong_password_and_unknown_email_are_indistinguishable(client):
-    client.post("/auth/signup", json=signup_payload("real@example.com"))
+    signup(client, "real@example.com")
     client.post("/auth/logout")
 
     wrong_pw = client.post(
@@ -150,7 +169,7 @@ def test_login_wrong_password_and_unknown_email_are_indistinguishable(client):
 
 
 def test_logout_invalidates_session(client):
-    client.post("/auth/signup", json=signup_payload("bye@example.com"))
+    signup(client, "bye@example.com")
     assert client.get("/auth/me").status_code == 200
 
     assert client.post("/auth/logout").status_code == 200
@@ -223,7 +242,7 @@ def test_avatar_rejects_oversized(auth_client, monkeypatch):
 
 
 def test_change_password_updates_credentials(client):
-    client.post("/auth/signup", json=signup_payload("pwchange@example.com"))
+    signup(client, "pwchange@example.com")
     resp = client.post(
         "/auth/me/password",
         json={
@@ -417,7 +436,7 @@ def test_guest_cannot_password_login(client):
 def test_login_rotates_session_cookie(client):
     from app.config import settings
 
-    client.post("/auth/signup", json=signup_payload("rotate@example.com"))
+    signup(client, "rotate@example.com")
     first = client.cookies.get(settings.session_cookie_name)
     client.post("/auth/logout")
 
@@ -430,22 +449,14 @@ def test_login_rotates_session_cookie(client):
 
 
 def test_signup_promotes_admin_email(client):
-    resp = client.post(
-        "/auth/signup",
-        json=signup_payload("admin@example.com", "admin-strong-pass-1"),
-    )
-    assert resp.status_code == 200
+    signup(client, "admin@example.com", "admin-strong-pass-1")
     me = client.get("/auth/me").json()
     assert me["role"] == "admin"
     assert me["is_guest"] is False
 
 
 def test_signup_promotes_closeandkeep_domain(client):
-    resp = client.post(
-        "/auth/signup",
-        json=signup_payload("ops@closeandkeep.com", "domain-admin-pass-1"),
-    )
-    assert resp.status_code == 200
+    signup(client, "ops@closeandkeep.com", "domain-admin-pass-1")
     me = client.get("/auth/me").json()
     assert me["role"] == "admin"
     assert me["email"] == "ops@closeandkeep.com"
@@ -465,12 +476,88 @@ def test_guest_then_signup_discards_empty_guest(client):
         ).status_code
         == 200
     )
+    # Signup clears the guest session but does not authenticate until verified.
+    assert client.get("/auth/me").status_code == 401
+
+    with SessionLocal() as db:
+        assert db.get(UserModel, guest_id) is None
+
+    mark_email_verified("upgraded@example.com")
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "upgraded@example.com", "password": "strong-pass-123"},
+        ).status_code
+        == 200
+    )
     me = client.get("/auth/me").json()
     assert me["email"] == "upgraded@example.com"
     assert me["role"] == "user"
 
-    with SessionLocal() as db:
-        assert db.get(UserModel, guest_id) is None
+
+def test_verify_email_token_logs_user_in(client, monkeypatch):
+    captured: dict[str, str] = {}
+
+    def _capture(*, to_email: str, verify_url: str, name: str | None = None) -> None:
+        captured["to"] = to_email
+        captured["url"] = verify_url
+        captured["name"] = name or ""
+
+    monkeypatch.setattr("app.main.send_email_verification", _capture)
+
+    assert (
+        client.post(
+            "/auth/signup",
+            json=signup_payload("verify-me@example.com", name="Vera User"),
+        ).status_code
+        == 200
+    )
+    assert "token=" in captured["url"]
+    token = captured["url"].split("token=", 1)[1]
+
+    resp = client.post("/auth/verify-email", json={"token": token})
+    assert resp.status_code == 200, resp.text
+    me = client.get("/auth/me")
+    assert me.status_code == 200
+    assert me.json()["email"] == "verify-me@example.com"
+    assert me.json()["email_verified"] is True
+
+
+def test_verify_email_rejects_invalid_token(client):
+    resp = client.post("/auth/verify-email", json={"token": "not-a-real-token"})
+    assert resp.status_code == 400
+    assert "invalid" in resp.json()["detail"].lower()
+
+
+def test_resend_verification_is_anti_enumeration(client, monkeypatch):
+    sent: list[str] = []
+
+    def _capture(*, to_email: str, verify_url: str, name: str | None = None) -> None:
+        sent.append(to_email)
+
+    monkeypatch.setattr("app.main.send_email_verification", _capture)
+
+    assert (
+        client.post(
+            "/auth/signup",
+            json=signup_payload("needs-link@example.com"),
+        ).status_code
+        == 200
+    )
+    sent.clear()
+
+    known = client.post(
+        "/auth/resend-verification",
+        json={"email": "needs-link@example.com"},
+    )
+    unknown = client.post(
+        "/auth/resend-verification",
+        json={"email": "nobody@example.com"},
+    )
+    assert known.status_code == 200
+    assert unknown.status_code == 200
+    assert known.json()["message"] == unknown.json()["message"]
+    assert sent == ["needs-link@example.com"]
 
 
 def test_auth_endpoints_are_rate_limited(client, monkeypatch):

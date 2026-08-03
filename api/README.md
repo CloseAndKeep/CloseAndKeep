@@ -49,7 +49,7 @@ See `.env.example` for the full list. Important knobs:
 
 **Auth**
 
-- `POST /auth/signup`, `POST /auth/login`, `POST /auth/guest`, `POST /auth/logout`, `GET /auth/me`
+- `POST /auth/signup`, `POST /auth/login`, `POST /auth/verify-email`, `POST /auth/resend-verification`, `POST /auth/guest`, `POST /auth/logout`, `GET /auth/me`
 
 **Catalog / health**
 

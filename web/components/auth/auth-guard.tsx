@@ -19,6 +19,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
           setReady(true);
         }
       } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.status === 403 &&
+          String(error.message).toLowerCase().includes("verification")
+        ) {
+          router.replace("/check-email");
+          return;
+        }
         if (error instanceof ApiError && error.status === 401) {
           router.replace(`/login?next=${encodeURIComponent(pathname)}`);
           return;

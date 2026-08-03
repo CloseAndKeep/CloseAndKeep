@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { apiFetch, fetchErrorMessage } from "@/lib/api";
+import { apiFetch, ApiError, fetchErrorMessage } from "@/lib/api";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { safeInternalPath } from "@/lib/utils";
@@ -41,6 +41,14 @@ function LoginForm() {
       });
       router.replace(nextPath);
     } catch (submitError) {
+      if (
+        submitError instanceof ApiError &&
+        submitError.status === 403 &&
+        String(submitError.message).toLowerCase().includes("verification")
+      ) {
+        router.replace(`/check-email?email=${encodeURIComponent(email.trim())}`);
+        return;
+      }
       setError(fetchErrorMessage(submitError, "Login failed."));
     } finally {
       setLoading(false);

@@ -27,6 +27,16 @@ class UserModel(Base):
     # Small profile photo stored in-DB (MVP; can move to object storage later).
     avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     avatar_content_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Null until the user confirms their email (guests are exempt at the auth gate).
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    email_verification_token_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    email_verification_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

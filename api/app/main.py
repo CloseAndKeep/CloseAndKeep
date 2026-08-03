@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from secrets import compare_digest, randbelow, token_urlsafe
 import re
 
@@ -18,6 +19,7 @@ from .api_keys import (
     list_api_keys,
     revoke_api_key,
 )
+from .auth_email import send_email_verification
 from .config import is_known_gift, settings
 from .csv_import import (
     DEFAULT_IMPORT_NOTE,
@@ -158,6 +160,14 @@ class ChangePasswordRequest(BaseModel):
     @classmethod
     def _password_policy(cls, value: str) -> str:
         return validate_password_policy(value)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
 
 
 class ProspectCreateRequest(BaseModel):
@@ -452,6 +462,47 @@ def _normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _hash_email_verification_token(token: str) -> str:
+    return sha256(token.encode("utf-8")).hexdigest()
+
+
+def _email_verification_expiry() -> datetime:
+    hours = max(1, int(settings.email_verification_ttl_hours))
+    return datetime.now(UTC) + timedelta(hours=hours)
+
+
+def _mint_email_verification_token() -> tuple[str, str, datetime]:
+    """Return (raw_token, token_hash, expires_at)."""
+    raw = token_urlsafe(32)
+    return raw, _hash_email_verification_token(raw), _email_verification_expiry()
+
+
+def _verification_url(raw_token: str) -> str:
+    base = settings.web_base_url.rstrip("/")
+    return f"{base}/verify-email?token={raw_token}"
+
+
+def _issue_email_verification(user: UserModel, db: Session) -> None:
+    raw, token_hash, expires_at = _mint_email_verification_token()
+    user.email_verification_token_hash = token_hash
+    user.email_verification_expires_at = expires_at
+    db.add(user)
+    db.commit()
+    send_email_verification(
+        to_email=user.email,
+        verify_url=_verification_url(raw),
+        name=user.name,
+    )
+
+
+def _user_email_verified(user: UserModel) -> bool:
+    return user.role == "guest" or user.email_verified_at is not None
+
+
+def _clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(key=settings.session_cookie_name)
+
+
 def _address_request_expiry() -> datetime:
     return datetime.now(UTC) + timedelta(days=settings.address_request_ttl_days)
 
@@ -653,6 +704,11 @@ def get_current_user(request: Request, response: Response, db: Session = Depends
         user = authenticate_api_key(token, db)
         if not user:
             raise HTTPException(status_code=401, detail="Invalid or revoked API key.")
+        if not _user_email_verified(user):
+            raise HTTPException(
+                status_code=403,
+                detail="Email verification required. Check your inbox for a confirmation link.",
+            )
         request.state.auth_method = "api_key"
         return _sync_admin_role(user, db)
 
@@ -664,8 +720,16 @@ def get_current_user(request: Request, response: Response, db: Session = Depends
     user = db.get(UserModel, session.user_id)
     if not user:
         delete_session(session.session_id)
-        response.delete_cookie(key=settings.session_cookie_name)
+        _clear_session_cookie(response)
         raise HTTPException(status_code=401, detail="Not authenticated.")
+
+    if not _user_email_verified(user):
+        delete_session(session.session_id)
+        _clear_session_cookie(response)
+        raise HTTPException(
+            status_code=403,
+            detail="Email verification required. Check your inbox for a confirmation link.",
+        )
 
     request.state.auth_method = "session"
     user = _sync_admin_role(user, db)
@@ -790,6 +854,12 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     if not user or user.role == "guest" or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
+    if not _user_email_verified(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Email verification required. Check your inbox for a confirmation link.",
+        )
+
     user = _sync_admin_role(user, db)
     previous_session_id = request.cookies.get(settings.session_cookie_name)
     # Switching from guest → registered account: drop empty guests only.
@@ -803,7 +873,12 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
 
 
 @app.post("/auth/signup")
-def signup(payload: SignupRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
+def signup(
+    payload: SignupRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict[str, str | bool]:
     email = _normalize_email(payload.email)
     _enforce_auth_rate_limit(request, email=email)
     existing = db.scalar(select(UserModel).where(UserModel.email == email))
@@ -821,11 +896,64 @@ def signup(payload: SignupRequest, request: Request, response: Response, db: Ses
         name=payload.name,
         company=payload.company,
         role=role,
+        email_verified_at=None,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    _issue_email_verification(user, db)
 
+    # Drop any prior guest session; do not authenticate until email is verified.
+    previous_session_id = request.cookies.get(settings.session_cookie_name)
+    previous = get_session(previous_session_id)
+    if previous:
+        previous_user = db.get(UserModel, previous.user_id)
+        delete_session(previous_session_id)
+        if previous_user and previous_user.id != user.id:
+            _discard_empty_guest(previous_user, db)
+        _clear_session_cookie(response)
+
+    return {
+        "message": "Check your email to verify your account.",
+        "verification_required": True,
+    }
+
+
+@app.post("/auth/verify-email")
+def verify_email(
+    payload: VerifyEmailRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    token = (payload.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
+
+    token_hash = _hash_email_verification_token(token)
+    user = db.scalar(
+        select(UserModel).where(UserModel.email_verification_token_hash == token_hash)
+    )
+    now = datetime.now(UTC)
+    expires = user.email_verification_expires_at if user else None
+    if expires is not None and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    if (
+        not user
+        or user.role == "guest"
+        or expires is None
+        or expires < now
+    ):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
+
+    user.email_verified_at = now
+    user.email_verification_token_hash = None
+    user.email_verification_expires_at = None
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    user = _sync_admin_role(user, db)
     previous_session_id = request.cookies.get(settings.session_cookie_name)
     previous = get_session(previous_session_id)
     if previous and previous.user_id != user.id:
@@ -833,7 +961,22 @@ def signup(payload: SignupRequest, request: Request, response: Response, db: Ses
         _discard_empty_guest(previous_user, db)
     session = rotate_session(previous_session_id, user.id)
     _set_session_cookie(response, session.session_id, persistent=True)
-    return {"message": "Signed up."}
+    return {"message": "Email verified."}
+
+
+@app.post("/auth/resend-verification")
+def resend_verification(
+    payload: ResendVerificationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    email = _normalize_email(payload.email)
+    _enforce_auth_rate_limit(request, email=email)
+    user = db.scalar(select(UserModel).where(UserModel.email == email))
+    if user and user.role != "guest" and user.email_verified_at is None:
+        _issue_email_verification(user, db)
+    # Same response whether or not an account needs verification (anti-enumeration).
+    return {"message": "If an account needs verification, we sent an email."}
 
 
 @app.post("/auth/guest")
@@ -852,10 +995,12 @@ def guest_login(request: Request, response: Response, db: Session = Depends(get_
         delete_session(previous_session_id)
         _discard_empty_guest(previous_user, db)
 
+    now = datetime.now(UTC)
     user = UserModel(
         email=f"guest-{token_urlsafe(12).lower()}@guest.example.com",
         password_hash=hash_password(token_urlsafe(32)),
         role="guest",
+        email_verified_at=now,
     )
     db.add(user)
     db.commit()
@@ -873,7 +1018,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
     user = db.get(UserModel, record.user_id) if record else None
     delete_session(session_id)
     _discard_empty_guest(user, db)
-    response.delete_cookie(key=settings.session_cookie_name)
+    _clear_session_cookie(response)
     return {"message": "Logged out."}
 
 
@@ -904,6 +1049,7 @@ def _me_response(
         "company": user.company,
         "role": user.role,
         "is_guest": user.role == "guest",
+        "email_verified": _user_email_verified(user),
         "has_avatar": bool(user.avatar_data),
         "billing_mode": user.billing_mode or BILLING_MODE_PER_ORDER,
         "auto_order_enabled": bool(user.auto_order_enabled),

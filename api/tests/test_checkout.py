@@ -160,16 +160,15 @@ def test_checkout_foreign_order_returns_404(client, prospect_id, stripe_stub):
 
     # Switch to a different user.
     client.post("/auth/logout")
-    resp = client.post(
-        "/auth/signup",
-        json={
-            "email": "other@example.com",
-            "password": "another-strong-pass-1",
-            "name": "Other User",
-            "company": "Other Co",
-        },
+    from conftest import signup
+
+    signup(
+        client,
+        "other@example.com",
+        "another-strong-pass-1",
+        name="Other User",
+        company="Other Co",
     )
-    assert resp.status_code == 200, resp.text
 
     resp = client.post(f"/gift-orders/{order['id']}/checkout")
     assert resp.status_code == 404

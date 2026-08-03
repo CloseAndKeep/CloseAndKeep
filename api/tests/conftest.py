@@ -269,6 +269,25 @@ def make_client():
         c.__exit__(None, None, None)
 
 
+def mark_email_verified(email: str) -> None:
+    """Mark a user verified in the DB (signup itself does not authenticate)."""
+    from datetime import UTC, datetime
+
+    from app.db import SessionLocal
+    from app.models import UserModel
+    from sqlalchemy import select
+
+    normalized = email.strip().lower()
+    with SessionLocal() as db:
+        user = db.scalar(select(UserModel).where(UserModel.email == normalized))
+        assert user is not None, f"no user for {normalized}"
+        user.email_verified_at = datetime.now(UTC)
+        user.email_verification_token_hash = None
+        user.email_verification_expires_at = None
+        db.add(user)
+        db.commit()
+
+
 def signup(
     client,
     email: str,
@@ -282,6 +301,13 @@ def signup(
         json={"email": email, "password": password, "name": name, "company": company},
     )
     assert resp.status_code == 200, resp.text
+    # Hard gate: signup does not issue a session until the email is verified.
+    mark_email_verified(email)
+    login = client.post(
+        "/auth/login",
+        json={"email": email, "password": password},
+    )
+    assert login.status_code == 200, login.text
     return client
 
 
@@ -338,16 +364,13 @@ def admin_client(make_client):
 @pytest.fixture
 def auth_client(client):
     """A TestClient authenticated as a freshly signed-up regular user."""
-    resp = client.post(
-        "/auth/signup",
-        json={
-            "email": "seller@example.com",
-            "password": "hunter2-correct-horse",
-            "name": "Test Seller",
-            "company": "CloseAndKeep Test",
-        },
+    signup(
+        client,
+        "seller@example.com",
+        "hunter2-correct-horse",
+        name="Test Seller",
+        company="CloseAndKeep Test",
     )
-    assert resp.status_code == 200, resp.text
     return client
 
 

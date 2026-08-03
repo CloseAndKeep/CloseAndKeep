@@ -99,6 +99,10 @@ class Settings(BaseModel):
     cron_secret: str = os.getenv("CRON_SECRET", "").strip()
     # Signup password policy (min length; must include a letter and a digit).
     password_min_length: int = int(os.getenv("PASSWORD_MIN_LENGTH", "12"))
+    # How long signup verification links remain valid.
+    email_verification_ttl_hours: int = int(
+        os.getenv("EMAIL_VERIFICATION_TTL_HOURS", "24")
+    )
     # Salesforce Connected App + cookie-reminder webhooks.
     salesforce_client_id: str = os.getenv("SALESFORCE_CLIENT_ID", "").strip()
     salesforce_client_secret: str = os.getenv("SALESFORCE_CLIENT_SECRET", "").strip()
