@@ -192,7 +192,6 @@ def test_cannot_checkout_again_after_authorization(
 def test_recipient_submit_captures_payment_and_emails(
     auth_client, prospect_id, stripe_stub, monkeypatch
 ):
-    import app.main as main
     import app.fulfillment as fulfillment
     import app.stripe_payments as sp
     from app.db import SessionLocal
@@ -201,7 +200,7 @@ def test_recipient_submit_captures_payment_and_emails(
     monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
     orderer_mail: dict = {}
     monkeypatch.setattr(
-        main, "send_orderer_address_received", lambda **kw: orderer_mail.update(kw)
+        sp, "send_orderer_receipt", lambda **kw: orderer_mail.update(kw)
     )
     ops_mail: dict = {}
     monkeypatch.setattr(
@@ -210,6 +209,7 @@ def test_recipient_submit_captures_payment_and_emails(
 
     order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
     _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+    assert orderer_mail == {}  # no receipt on authorize-only
 
     with SessionLocal() as db:
         token = db.get(GiftOrderModel, order["id"]).address_request_token
@@ -234,7 +234,8 @@ def test_recipient_submit_captures_payment_and_emails(
     assert refreshed["payment_status"] == "paid"
 
     assert orderer_mail["order_id"] == order["id"]
-    assert "456 Oak Ave" in orderer_mail["shipping_address"]
+    assert "456 Oak Ave" in (orderer_mail.get("shipping_address") or "")
+    assert orderer_mail["gift_label"]
     assert ops_mail["order_id"] == order["id"]  # ops email after capture
 
 
@@ -316,12 +317,11 @@ def test_resubmit_address_is_idempotent(
 ):
     import app.stripe_payments as sp
     import app.fulfillment as fulfillment
-    import app.main as main
     from app.db import SessionLocal
     from app.models import GiftOrderModel
 
     monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
-    monkeypatch.setattr(main, "send_orderer_address_received", lambda **kw: None)
+    monkeypatch.setattr(sp, "send_orderer_receipt", lambda **kw: None)
     monkeypatch.setattr(fulfillment, "send_new_order_notification", lambda **kw: None)
 
     order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
@@ -437,18 +437,18 @@ def test_public_redeem_by_code_submits_address(
 ):
     import app.stripe_payments as sp
     import app.fulfillment as fulfillment
-    import app.main as main
 
     monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
     monkeypatch.setattr(fulfillment, "send_new_order_notification", lambda **kw: None)
     orderer_mail: dict = {}
     monkeypatch.setattr(
-        main, "send_orderer_address_received", lambda **kw: orderer_mail.update(kw)
+        sp, "send_orderer_receipt", lambda **kw: orderer_mail.update(kw)
     )
 
     order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
     code = order["redeem_code"]
     _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+    assert orderer_mail == {}  # no receipt on authorize-only
 
     auth_client.post("/auth/logout")
     assert auth_client.get(f"/public/redeem/{code.lower()}").status_code == 200

@@ -59,7 +59,7 @@ services:
       - key: RESEND_FROM
         sync: false
       - key: ORDER_NOTIFICATION_TO
-        value: "agent@closeandkeep.com,thamilton@closeandkeep.com,cstewart@closeandkeep.com"
+        value: "agent@closeandkeep.com,thamilton@closeandkeep.com,cstewart@gmail.com"
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

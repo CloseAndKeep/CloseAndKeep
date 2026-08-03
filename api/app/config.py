@@ -44,7 +44,7 @@ class Settings(BaseModel):
         email.strip().lower()
         for email in os.getenv(
             "ORDER_NOTIFICATION_TO",
-            "agent@closeandkeep.com,thamilton@closeandkeep.com,cstewart@closeandkeep.com",
+            "agent@closeandkeep.com,thamilton@closeandkeep.com,cstewart@gmail.com",
         ).split(",")
         if email.strip()
     ]

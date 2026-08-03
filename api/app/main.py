@@ -41,7 +41,7 @@ from .models import (
     UserModel,
 )
 from .jobs.address_request_followups import send_due_address_request_followups
-from .order_email import send_orderer_address_received, send_orderer_gift_declined
+from .order_email import send_orderer_gift_declined
 from .rate_limit import client_ip, limiter
 from .session_store import (
     create_session,
@@ -1421,20 +1421,11 @@ def _submit_shipping_for_order(
         raise
 
     # One-time link: clear token/code after successful capture so PII is not re-fetchable.
+    # Buyer receipt is sent from mark_order_paid (via capture_authorized_order).
     _clear_address_request_token(order)
     db.add(order)
     db.commit()
     db.refresh(order)
-
-    owner = db.get(UserModel, order.owner_user_id)
-    if owner:
-        send_orderer_address_received(
-            order_id=order.id,
-            orderer_email=owner.email,
-            recipient_name=order.recipient_name,
-            shipping_address=address,
-            order_url=_order_detail_url(order.id),
-        )
 
     return AddressRequestPublicResponse(
         recipient_name=order.recipient_name,

@@ -224,7 +224,14 @@ def _post_completed_webhook(auth_client, order_id, monkeypatch, session_id="cs_t
 
 
 def test_webhook_marks_order_paid_and_queued(auth_client, prospect_id, stripe_stub, monkeypatch):
+    import app.stripe_payments as sp
+
     order = _create_order(auth_client, prospect_id)
+
+    receipts: list[dict] = []
+    monkeypatch.setattr(
+        sp, "send_orderer_receipt", lambda **kw: receipts.append(kw)
+    )
 
     resp = _post_completed_webhook(auth_client, order["id"], monkeypatch)
 
@@ -234,6 +241,11 @@ def test_webhook_marks_order_paid_and_queued(auth_client, prospect_id, stripe_st
     fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
     assert fetched["payment_status"] == "paid"
     assert fetched["status"] == "queued"
+
+    assert len(receipts) == 1
+    assert receipts[0]["order_id"] == order["id"]
+    assert receipts[0]["recipient_name"] == order["recipient_name"]
+    assert order["shipping_address"] in (receipts[0].get("shipping_address") or "")
 
 
 def test_webhook_invalid_signature_returns_400_and_no_change(
@@ -275,12 +287,19 @@ def test_webhook_replay_does_not_double_process(
     order = _create_order(auth_client, prospect_id)
 
     notifications: list[int] = []
+    receipts: list[int] = []
     import app.fulfillment as fulfillment
+    import app.stripe_payments as sp
 
     monkeypatch.setattr(
         fulfillment,
         "send_new_order_notification",
         lambda **kwargs: notifications.append(kwargs.get("order_id")),
+    )
+    monkeypatch.setattr(
+        sp,
+        "send_orderer_receipt",
+        lambda **kwargs: receipts.append(kwargs.get("order_id")),
     )
 
     first = _post_completed_webhook(auth_client, order["id"], monkeypatch)
@@ -290,6 +309,7 @@ def test_webhook_replay_does_not_double_process(
     assert second.status_code == 200
     # The order is fulfilled exactly once despite two deliveries.
     assert notifications == [order["id"]]
+    assert receipts == [order["id"]]
 
     fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
     assert fetched["payment_status"] == "paid"

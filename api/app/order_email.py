@@ -409,33 +409,53 @@ def send_orderer_gift_declined(
     )
 
 
-def send_orderer_address_received(
+def send_orderer_receipt(
     *,
     order_id: int,
     orderer_email: str,
+    gift_label: str,
     recipient_name: str,
-    shipping_address: str,
+    shipping_address: str | None,
     order_url: str,
 ) -> None:
-    """Confirm to the person who ordered that address was received and payment captured."""
+    """Send the buyer a receipt after payment is completed."""
     to = orderer_email.strip().lower()
     if not to:
-        logger.warning("Orderer email empty; skipping address-received confirmation.")
+        logger.warning("Orderer email empty; skipping receipt.")
         return
 
-    subject = f"Address received — order #{order_id} is confirmed"
-    text_body = (
-        f"Good news — {recipient_name} submitted a shipping address for order #{order_id}.\n\n"
-        f"Shipping address:\n{shipping_address}\n\n"
-        "Your payment has been completed and the order is queued for fulfillment.\n"
-        f"View order: {order_url}\n"
+    address = (shipping_address or "").strip()
+    subject = f"Receipt — order #{order_id}"
+    text_parts = [
+        f"Thanks for your order #{order_id}.",
+        "",
+        f"Gift: {gift_label}",
+        f"Recipient: {recipient_name}",
+    ]
+    if address:
+        text_parts.extend(["", f"Shipping address:\n{address}"])
+    text_parts.extend(
+        [
+            "",
+            "Your payment has been completed and the order is queued for fulfillment.",
+            f"View order: {order_url}",
+            "",
+        ]
     )
+    text_body = "\n".join(text_parts)
+
     esc = html.escape
+    address_html = (
+        f"<p style='white-space:pre-wrap'><strong>Shipping address:</strong><br/>{esc(address)}</p>"
+        if address
+        else ""
+    )
     html_body = (
         "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
-        f"<p>Good news — <strong>{esc(recipient_name)}</strong> submitted a shipping address "
-        f"for order #{order_id}.</p>"
-        f"<p style='white-space:pre-wrap'><strong>Shipping address:</strong><br/>{esc(shipping_address)}</p>"
+        f"<p>Thanks for your order <strong>#{order_id}</strong>.</p>"
+        f"<p><strong>Gift:</strong> {esc(gift_label)}<br/>"
+        f"<strong>Recipient:</strong> {esc(recipient_name)}</p>"
+        f"{address_html}"
         "<p>Your payment has been completed and the order is queued for fulfillment.</p>"
         f"<p><a href='{esc(order_url)}' style='display:inline-block;padding:10px 16px;"
         "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
@@ -447,7 +467,7 @@ def send_orderer_address_received(
         subject=subject,
         text_body=text_body,
         html_body=html_body,
-        context=f"orderer-address-received order_id={order_id}",
+        context=f"orderer-receipt order_id={order_id}",
     )
 
 
