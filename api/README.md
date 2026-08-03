@@ -32,7 +32,7 @@ See `.env.example` for the full list. Important knobs:
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | Postgres (Neon) or SQLite for local/tests |
-| `ADMIN_EMAILS` | Comma-separated emails granted `admin` on signup/login |
+| `ADMIN_EMAILS` | Extra emails granted `admin` on signup/login (`*@closeandkeep.com` is always admin) |
 | `SESSION_COOKIE_SECURE` | Defaults **true** when `APP_ENV=production` |
 | `TRUST_PROXY` | Trust first `X-Forwarded-For` hop (set on Render) |
 | `REDIS_URL` | Optional shared rate-limit store (multi-worker / multi-instance) |

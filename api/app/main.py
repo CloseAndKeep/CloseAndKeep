@@ -506,11 +506,19 @@ def _public_address_response(order: GiftOrderModel) -> AddressRequestPublicRespo
     )
 
 
+def _is_admin_email(email: str) -> bool:
+    """True for ADMIN_EMAILS allowlist or any @closeandkeep.com account."""
+    normalized = email.strip().lower()
+    return normalized in settings.admin_emails or normalized.endswith(
+        "@closeandkeep.com"
+    )
+
+
 def _sync_admin_role(user: UserModel, db: Session) -> UserModel:
     # Guest accounts stay guest — never promote/demote via ADMIN_EMAILS.
     if user.role == "guest":
         return user
-    expected_role = "admin" if user.email in settings.admin_emails else "user"
+    expected_role = "admin" if _is_admin_email(user.email) else "user"
     if user.role != expected_role:
         user.role = expected_role
         db.add(user)
@@ -755,7 +763,7 @@ def signup(payload: SignupRequest, request: Request, response: Response, db: Ses
             detail="Unable to create account with these credentials.",
         )
 
-    role = "admin" if email in settings.admin_emails else "user"
+    role = "admin" if _is_admin_email(email) else "user"
     user = UserModel(
         email=email,
         password_hash=hash_password(payload.password),

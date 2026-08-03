@@ -440,6 +440,17 @@ def test_signup_promotes_admin_email(client):
     assert me["is_guest"] is False
 
 
+def test_signup_promotes_closeandkeep_domain(client):
+    resp = client.post(
+        "/auth/signup",
+        json=signup_payload("ops@closeandkeep.com", "domain-admin-pass-1"),
+    )
+    assert resp.status_code == 200
+    me = client.get("/auth/me").json()
+    assert me["role"] == "admin"
+    assert me["email"] == "ops@closeandkeep.com"
+
+
 def test_guest_then_signup_discards_empty_guest(client):
     from app.db import SessionLocal
     from app.models import UserModel
