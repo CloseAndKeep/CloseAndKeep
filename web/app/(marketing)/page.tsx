@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { getSiteUrl, siteDescription, siteName } from "@/lib/site";
@@ -88,26 +87,19 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="relative min-h-[280px] sm:min-h-[320px]">
-            <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-wood/25 via-wood-dark/15 to-espresso/20 shadow-inner" />
-            <div className="absolute inset-4 flex flex-col justify-between rounded-[1.5rem] border border-white/50 bg-white/75 p-6 shadow-lg backdrop-blur-sm sm:inset-6 sm:p-8">
-              <Image
-                src="/brand/mark.png"
-                alt=""
-                width={48}
-                height={62}
-                className="h-12 w-auto self-start object-contain"
-                priority
-              />
-              <div>
-                <p className="font-display text-2xl text-espresso sm:text-3xl">
-                  Cookies + a note that sounds like you
-                </p>
-                <p className="mt-3 text-sm leading-relaxed text-stone-600">
-                  Track the prospect, collect their address, ship once — all without leaving
-                  your workflow.
-                </p>
-              </div>
+          <div className="relative lg:justify-self-end">
+            <div
+              className="absolute -inset-3 rounded-[1.75rem] bg-gradient-to-br from-wood/25 via-wood-dark/15 to-espresso/20 sm:-inset-4"
+              aria-hidden
+            />
+            <div className="relative rounded-[1.25rem] border border-white/50 bg-white/80 p-6 shadow-lg backdrop-blur-sm sm:p-7">
+              <p className="font-display text-2xl text-espresso sm:text-3xl">
+                Cookies + a note that sounds like you
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-stone-600">
+                Track the prospect, collect their address, ship once — all without leaving
+                your workflow.
+              </p>
             </div>
           </div>
         </div>
