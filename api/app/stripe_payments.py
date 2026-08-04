@@ -18,6 +18,7 @@ from .order_email import (
     send_monthly_charge_failed,
     send_orderer_receipt,
     send_recipient_address_request,
+    send_spending_limit_reached,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,8 +264,110 @@ def queue_owed_order_for_fulfillment(order: GiftOrderModel, db: Session) -> Gift
     return order
 
 
+def _gift_unit_amounts_cents(gift_ids: list[str]) -> tuple[int, str]:
+    """Sum catalog unit amounts for gift ids. Returns (cents, currency)."""
+    if not gift_ids:
+        return 0, "usd"
+    ensure_stripe_configured()
+    total = 0
+    currency: str | None = None
+    for gift_id in gift_ids:
+        price_id = resolve_stripe_price_id(gift_id)
+        try:
+            unit_amount, price_currency = _price_amount(price_id)
+        except Exception as exc:
+            logger.exception("Price lookup failed for gift_id=%s", gift_id)
+            raise HTTPException(
+                status_code=502,
+                detail="Unable to verify gift price against the catalog.",
+            ) from exc
+        if unit_amount is None or not price_currency:
+            raise HTTPException(
+                status_code=502,
+                detail="Unable to verify gift price against the catalog.",
+            )
+        if currency is None:
+            currency = str(price_currency).lower()
+        elif str(price_currency).lower() != currency:
+            raise HTTPException(
+                status_code=400,
+                detail="Checkout currency mismatch across gift catalog prices.",
+            )
+        total += int(unit_amount)
+    return total, currency or "usd"
+
+
+def clear_spending_limit_notification(user: UserModel, db: Session) -> None:
+    if user.spending_limit_notified_at is None:
+        return
+    user.spending_limit_notified_at = None
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+
+def assert_spending_limit_allows(
+    user: UserModel,
+    db: Session,
+    *,
+    additional_gift_ids: list[str],
+    blocked_recipient_names: list[str] | None = None,
+) -> None:
+    """Block when open owed balance + new gifts would exceed the user's max spending limit.
+
+    Emails the user once when the limit is hit until they pay down or change the limit.
+    """
+    limit = user.max_spending_cents
+    if limit is None or limit <= 0:
+        return
+
+    additional_cents, currency = _gift_unit_amounts_cents(additional_gift_ids)
+    balance_cents, balance_currency, _count = monthly_balance_for_user(user.id, db)
+    if balance_currency and currency and balance_currency != currency and balance_cents > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Checkout currency mismatch across gift catalog prices.",
+        )
+    projected = balance_cents + additional_cents
+    if projected <= limit:
+        if user.spending_limit_notified_at is not None and balance_cents < limit:
+            clear_spending_limit_notification(user, db)
+        return
+
+    if user.spending_limit_notified_at is None:
+        send_spending_limit_reached(
+            orderer_email=user.email,
+            limit_cents=limit,
+            balance_cents=max(balance_cents, projected),
+            currency=currency or balance_currency or "usd",
+            profile_url=_profile_billing_url(),
+            blocked_recipient_names=blocked_recipient_names,
+        )
+        user.spending_limit_notified_at = datetime.now(UTC)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    raise HTTPException(
+        status_code=402,
+        detail=(
+            "Max spending limit reached. Log in to pay your balance or raise "
+            "the limit on your profile."
+        ),
+    )
+
+
 def prepare_monthly_owed_order(order: GiftOrderModel, db: Session) -> GiftOrderModel:
     """Stamp an order as monthly owed and send the address request when needed."""
+    owner = db.get(UserModel, order.owner_user_id)
+    if owner is not None:
+        assert_spending_limit_allows(
+            owner,
+            db,
+            additional_gift_ids=[order.gift_id],
+            blocked_recipient_names=[order.recipient_name],
+        )
+
     order.payment_status = "owed"
     order.billing_period = order.billing_period or current_billing_period()
     order.stripe_price_id = order.stripe_price_id or resolve_stripe_price_id(order.gift_id)
@@ -1102,6 +1205,7 @@ def charge_owed_balance(
         currency=currency,
         profile_url=_profile_billing_url(),
     )
+    clear_spending_limit_notification(user, db)
 
     return {
         "status": "paid",

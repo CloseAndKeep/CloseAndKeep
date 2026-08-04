@@ -20,6 +20,7 @@ type MeResponse = {
   crm_connected?: boolean;
   monthly_balance_cents?: number;
   monthly_order_count?: number;
+  max_spending_cents?: number | null;
 };
 
 function initialsFor(name: string | null, email: string): string {
@@ -52,6 +53,7 @@ export default function ProfilePage() {
   const [billingError, setBillingError] = useState<string | null>(null);
   const [billingSuccess, setBillingSuccess] = useState<string | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [spendingLimitInput, setSpendingLimitInput] = useState("");
 
   useEffect(() => {
     return () => {
@@ -71,6 +73,11 @@ export default function ProfilePage() {
         });
         if (!active) return;
         setMe(data);
+        setSpendingLimitInput(
+          data.max_spending_cents != null
+            ? (data.max_spending_cents / 100).toFixed(2)
+            : "",
+        );
 
         if (data.has_avatar) {
           const blob = await apiFetch<Blob>("/auth/me/avatar", {
@@ -169,12 +176,32 @@ export default function ProfilePage() {
         errorMessage: "Unable to update billing preferences.",
       });
       setMe(updated);
+      setSpendingLimitInput(
+        updated.max_spending_cents != null
+          ? (updated.max_spending_cents / 100).toFixed(2)
+          : "",
+      );
       setBillingSuccess("Billing preferences saved.");
     } catch (err) {
       setBillingError(fetchErrorMessage(err, "Unable to update billing preferences."));
     } finally {
       setBillingLoading(false);
     }
+  }
+
+  async function saveSpendingLimit() {
+    const trimmed = spendingLimitInput.trim();
+    if (!trimmed) {
+      void patchBilling({ max_spending_cents: null });
+      return;
+    }
+    const dollars = Number(trimmed);
+    if (!Number.isFinite(dollars) || dollars < 1) {
+      setBillingError("Enter a max spending limit of at least $1.00, or clear the field to remove it.");
+      return;
+    }
+    const cents = Math.round(dollars * 100);
+    void patchBilling({ max_spending_cents: cents });
   }
 
   async function startCardSetup() {
@@ -457,6 +484,15 @@ export default function ProfilePage() {
                   </span>{" "}
                   across {me.monthly_order_count ?? 0} order
                   {(me.monthly_order_count ?? 0) === 1 ? "" : "s"}
+                  {me.max_spending_cents != null ? (
+                    <>
+                      {" "}
+                      · Limit:{" "}
+                      <span className="font-semibold text-espresso">
+                        ${(me.max_spending_cents / 100).toFixed(2)}
+                      </span>
+                    </>
+                  ) : null}
                 </p>
                 <button
                   type="button"
@@ -470,6 +506,41 @@ export default function ProfilePage() {
                 </button>
               </div>
             ) : null}
+
+            <div>
+              <p className="text-sm font-medium text-espresso">Max spending limit</p>
+              <p className="mt-1 text-sm text-stone-600">
+                Cap your open monthly balance. When the limit is reached, new
+                monthly-billed orders are blocked and you get an email to pay or
+                raise the limit. Leave blank for no limit.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-stone-500">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="No limit"
+                    disabled={billingLoading}
+                    className="w-40 rounded-xl border border-stone-300 bg-white py-2 pl-7 pr-3 text-sm text-espresso outline-none focus:border-wood disabled:opacity-60"
+                    value={spendingLimitInput}
+                    onChange={(event) => setSpendingLimitInput(event.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={billingLoading}
+                  onClick={() => void saveSpendingLimit()}
+                  className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-60"
+                >
+                  Save limit
+                </button>
+              </div>
+            </div>
 
             <div>
               <label className="flex items-start gap-3">

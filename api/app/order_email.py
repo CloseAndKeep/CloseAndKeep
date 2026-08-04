@@ -626,6 +626,78 @@ def send_monthly_balance_reminder(
     )
 
 
+def send_spending_limit_reached(
+    *,
+    orderer_email: str,
+    limit_cents: int,
+    balance_cents: int,
+    currency: str,
+    profile_url: str,
+    blocked_recipient_names: list[str] | None = None,
+) -> None:
+    """Notify the buyer that their max spending limit was hit."""
+    to = orderer_email.strip().lower()
+    if not to:
+        return
+    limit_dollars = f"{limit_cents / 100:.2f}"
+    balance_dollars = f"{balance_cents / 100:.2f}"
+    cur = (currency or "usd").upper()
+    names = [n.strip() for n in (blocked_recipient_names or []) if n and n.strip()]
+    esc = html.escape
+    if len(names) == 1:
+        pending_text = (
+            f"{names[0]} did not receive a cookie order because of this limit."
+        )
+        pending_html = (
+            f"<p><strong>{esc(names[0])}</strong> did not receive a cookie order "
+            "because of this limit.</p>"
+        )
+    elif len(names) > 1:
+        listed = ", ".join(names[:-1]) + f", and {names[-1]}"
+        pending_text = (
+            f"These people did not receive a cookie order because of this limit: {listed}."
+        )
+        listed_html = ", ".join(f"<strong>{esc(n)}</strong>" for n in names[:-1])
+        listed_html += f", and <strong>{esc(names[-1])}</strong>"
+        pending_html = (
+            "<p>These people did not receive a cookie order because of this limit: "
+            f"{listed_html}.</p>"
+        )
+    else:
+        pending_text = ""
+        pending_html = ""
+
+    subject = "Action needed — max spending limit reached"
+    pending_block = f"{pending_text}\n\n" if pending_text else ""
+    text_body = (
+        f"Your open cookie-order balance ({balance_dollars} {cur}) has reached "
+        f"your max spending limit of {limit_dollars} {cur}.\n\n"
+        f"{pending_block}"
+        "Log in to make a payment or raise your max spending limit on your profile "
+        "before placing more monthly-billed orders.\n"
+        f"{profile_url}\n"
+    )
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>Your open cookie-order balance (<strong>{esc(balance_dollars)} {esc(cur)}</strong>) "
+        f"has reached your max spending limit of <strong>{esc(limit_dollars)} {esc(cur)}</strong>.</p>"
+        f"{pending_html}"
+        "<p>Log in to make a payment or raise your max spending limit on your profile "
+        "before placing more monthly-billed orders.</p>"
+        f"<p><a href='{esc(profile_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "Open profile</a></p>"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context="spending-limit-reached",
+    )
+
+
 def send_auto_order_checkout(
     *,
     to_email: str,

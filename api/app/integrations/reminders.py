@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from secrets import randbelow, token_urlsafe
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -149,7 +150,21 @@ def _create_auto_order(
     monthly = user_uses_monthly_billing(owner) and user_has_saved_payment_method(owner)
 
     if monthly:
-        order = prepare_monthly_owed_order(order, db)
+        try:
+            order = prepare_monthly_owed_order(order, db)
+        except HTTPException as exc:
+            logger.warning(
+                "Auto-order blocked by spending limit order_id=%s detail=%s",
+                order.id,
+                exc.detail,
+            )
+            db.delete(order)
+            db.commit()
+            return {
+                "status": "error",
+                "reason": "spending_limit",
+                "detail": exc.detail,
+            }
         return {
             "status": "auto_ordered",
             "order_id": order.id,

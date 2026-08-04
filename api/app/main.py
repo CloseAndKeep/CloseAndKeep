@@ -59,6 +59,7 @@ from .stripe_payments import (
     AUTO_ORDER_GIFT_IDS,
     BILLING_MODE_MONTHLY,
     BILLING_MODE_PER_ORDER,
+    assert_spending_limit_allows,
     cancel_payment_authorization,
     capture_authorized_order,
     charge_owed_balance,
@@ -267,6 +268,8 @@ class BillingPrefsUpdateRequest(BaseModel):
     billing_mode: str | None = None
     auto_order_enabled: bool | None = None
     auto_order_gift_id: str | None = None
+    # Null clears the limit when the field is present in the PATCH body.
+    max_spending_cents: int | None = None
 
     @field_validator("billing_mode")
     @classmethod
@@ -287,6 +290,17 @@ class BillingPrefsUpdateRequest(BaseModel):
         if normalized not in AUTO_ORDER_GIFT_IDS:
             raise ValueError("auto_order_gift_id must be 'cookies-4' or 'cookies-12'")
         return normalized
+
+    @field_validator("max_spending_cents")
+    @classmethod
+    def _valid_max_spending(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 100:
+            raise ValueError("max_spending_cents must be at least 100 ($1.00)")
+        if value > 10_000_000:
+            raise ValueError("max_spending_cents must be at most 10000000 ($100,000.00)")
+        return value
 
 
 class AddressRequestPublicResponse(BaseModel):
@@ -1058,6 +1072,7 @@ def _me_response(
         "crm_connected": False,
         "monthly_balance_cents": 0,
         "monthly_order_count": 0,
+        "max_spending_cents": user.max_spending_cents,
     }
     if db is not None:
         payload["crm_connected"] = _user_has_crm_connection(user.id, db)
@@ -1099,10 +1114,16 @@ def update_billing_prefs(
         else bool(current_user.auto_order_enabled)
     )
 
+    updating_limit = "max_spending_cents" in payload.model_fields_set
     if (wants_monthly or wants_auto) and not crm_connected:
         raise HTTPException(
             status_code=400,
             detail="Connect Salesforce or HubSpot before enabling monthly billing or auto-order.",
+        )
+    if updating_limit and not crm_connected:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Salesforce or HubSpot before setting a max spending limit.",
         )
 
     if payload.billing_mode is not None:
@@ -1127,6 +1148,10 @@ def update_billing_prefs(
                     detail="Choose a 4-cookie or 12-cookie pack before enabling auto-order.",
                 )
         current_user.auto_order_enabled = payload.auto_order_enabled
+
+    if updating_limit:
+        current_user.max_spending_cents = payload.max_spending_cents
+        current_user.spending_limit_notified_at = None
 
     db.add(current_user)
     db.commit()
@@ -1681,6 +1706,14 @@ async def import_gift_orders_csv(
         checkout_by_id: dict[int, str | None] = {}
 
         if monthly:
+            assert_spending_limit_allows(
+                current_user,
+                db,
+                additional_gift_ids=[order.gift_id for order in staged_orders],
+                blocked_recipient_names=[
+                    order.recipient_name for order in staged_orders
+                ],
+            )
             for order in staged_orders:
                 order = prepare_monthly_owed_order(order, db)
                 checkout_by_id[order.id] = None

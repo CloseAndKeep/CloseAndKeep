@@ -24,6 +24,12 @@ class UserModel(Base):
     stripe_default_payment_method_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
+    # Cap on open monthly (owed) balance in cents; null means no limit.
+    max_spending_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Set when we email about a hit limit; cleared when limit changes or balance drops.
+    spending_limit_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Small profile photo stored in-DB (MVP; can move to object storage later).
     avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     avatar_content_type: Mapped[str | None] = mapped_column(String(64), nullable=True)

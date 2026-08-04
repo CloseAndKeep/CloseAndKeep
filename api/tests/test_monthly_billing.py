@@ -325,6 +325,7 @@ def test_me_includes_billing_fields_when_crm_connected(auth_client):
     me = auth_client.get("/auth/me").json()
     assert me["crm_connected"] is False
     assert me["billing_mode"] == "per_order"
+    assert me.get("max_spending_cents") is None
 
     _seed_crm(me["user_id"])
     _enable_monthly_with_pm(me["user_id"])
@@ -332,3 +333,135 @@ def test_me_includes_billing_fields_when_crm_connected(auth_client):
     assert me2["crm_connected"] is True
     assert me2["billing_mode"] == "monthly"
     assert me2["has_payment_method"] is True
+
+
+def test_spending_limit_requires_crm(auth_client):
+    resp = auth_client.patch(
+        "/auth/me/billing",
+        json={"max_spending_cents": 5000},
+    )
+    assert resp.status_code == 400
+    assert "Connect Salesforce or HubSpot" in resp.json()["detail"]
+
+
+def test_spending_limit_can_be_set_and_cleared(auth_client):
+    me = auth_client.get("/auth/me").json()
+    _seed_crm(me["user_id"])
+
+    set_resp = auth_client.patch(
+        "/auth/me/billing",
+        json={"max_spending_cents": 5000},
+    )
+    assert set_resp.status_code == 200
+    assert set_resp.json()["max_spending_cents"] == 5000
+
+    clear_resp = auth_client.patch(
+        "/auth/me/billing",
+        json={"max_spending_cents": None},
+    )
+    assert clear_resp.status_code == 200
+    assert clear_resp.json()["max_spending_cents"] is None
+
+
+def test_spending_limit_blocks_monthly_order_and_emails(
+    auth_client, stripe_stub, monkeypatch
+):
+    me = auth_client.get("/auth/me").json()
+    _seed_crm(me["user_id"])
+    _enable_monthly_with_pm(me["user_id"])
+
+    # Stub catalog prices are $1.00 (100 cents) — limit one open order.
+    limit_resp = auth_client.patch(
+        "/auth/me/billing",
+        json={"max_spending_cents": 100},
+    )
+    assert limit_resp.status_code == 200
+
+    prospect = create_prospect(auth_client)
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_order_notification",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.stripe_payments.send_recipient_address_request",
+        lambda **_kwargs: None,
+    )
+    limit_mails: list[dict] = []
+    monkeypatch.setattr(
+        "app.stripe_payments.send_spending_limit_reached",
+        lambda **kwargs: limit_mails.append(kwargs),
+    )
+
+    first = auth_client.post(
+        "/gift-orders",
+        json=make_order_payload(prospect["id"]),
+    )
+    assert first.status_code == 201, first.text
+    assert limit_mails == []
+
+    second_payload = make_order_payload(prospect["id"])
+    second_payload["recipient_name"] = "Alex Still Waiting"
+    second = auth_client.post("/gift-orders", json=second_payload)
+    assert second.status_code == 402
+    assert "spending limit" in second.json()["detail"].lower()
+    assert len(limit_mails) == 1
+    assert limit_mails[0]["limit_cents"] == 100
+    assert limit_mails[0]["blocked_recipient_names"] == ["Alex Still Waiting"]
+
+    # Do not re-email on every blocked attempt.
+    third = auth_client.post(
+        "/gift-orders",
+        json=make_order_payload(prospect["id"]),
+    )
+    assert third.status_code == 402
+    assert len(limit_mails) == 1
+
+
+def test_raising_spending_limit_allows_orders_again(
+    auth_client, stripe_stub, monkeypatch
+):
+    me = auth_client.get("/auth/me").json()
+    _seed_crm(me["user_id"])
+    _enable_monthly_with_pm(me["user_id"])
+    auth_client.patch("/auth/me/billing", json={"max_spending_cents": 100})
+
+    prospect = create_prospect(auth_client)
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_order_notification",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.stripe_payments.send_recipient_address_request",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.stripe_payments.send_spending_limit_reached",
+        lambda **_kwargs: None,
+    )
+
+    assert (
+        auth_client.post(
+            "/gift-orders",
+            json=make_order_payload(prospect["id"]),
+        ).status_code
+        == 201
+    )
+    assert (
+        auth_client.post(
+            "/gift-orders",
+            json=make_order_payload(prospect["id"]),
+        ).status_code
+        == 402
+    )
+
+    raised = auth_client.patch(
+        "/auth/me/billing",
+        json={"max_spending_cents": 500},
+    )
+    assert raised.status_code == 200
+
+    again = auth_client.post(
+        "/gift-orders",
+        json=make_order_payload(prospect["id"]),
+    )
+    assert again.status_code == 201, again.text
