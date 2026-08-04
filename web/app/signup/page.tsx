@@ -44,7 +44,7 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await apiFetch("/auth/signup", {
+      const result = await apiFetch<{ email_sent?: boolean }>("/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -56,9 +56,11 @@ export default function SignupPage() {
         errorMessage: "Sign up failed.",
       });
       const trimmedEmail = email.trim();
-      router.replace(
-        `/check-email?email=${encodeURIComponent(trimmedEmail)}`,
-      );
+      const params = new URLSearchParams({ email: trimmedEmail });
+      if (result.email_sent === false) {
+        params.set("sendFailed", "1");
+      }
+      router.replace(`/check-email?${params.toString()}`);
     } catch (submitError) {
       setError(fetchErrorMessage(submitError, "Sign up failed."));
     } finally {

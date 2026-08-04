@@ -2,7 +2,10 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import compare_digest, randbelow, token_urlsafe
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 import bcrypt
 from fastapi import Depends, FastAPI, File, HTTPException, Response, Request, UploadFile
@@ -496,17 +499,26 @@ def _verification_url(raw_token: str) -> str:
     return f"{base}/verify-email?token={raw_token}"
 
 
-def _issue_email_verification(user: UserModel, db: Session) -> None:
+def _issue_email_verification(user: UserModel, db: Session) -> bool:
+    """Mint a verification token and email it. Returns whether Resend accepted the send."""
     raw, token_hash, expires_at = _mint_email_verification_token()
     user.email_verification_token_hash = token_hash
     user.email_verification_expires_at = expires_at
     db.add(user)
     db.commit()
-    send_email_verification(
+    sent = send_email_verification(
         to_email=user.email,
         verify_url=_verification_url(raw),
         name=user.name,
     )
+    if not sent:
+        logger.error(
+            "Verification email was not sent for user_id=%s email=%s "
+            "(check RESEND_API_KEY, RESEND_FROM, and Resend domain status).",
+            user.id,
+            user.email,
+        )
+    return sent
 
 
 def _user_email_verified(user: UserModel) -> bool:
@@ -915,7 +927,7 @@ def signup(
     db.add(user)
     db.commit()
     db.refresh(user)
-    _issue_email_verification(user, db)
+    email_sent = _issue_email_verification(user, db)
 
     # Drop any prior guest session; do not authenticate until email is verified.
     previous_session_id = request.cookies.get(settings.session_cookie_name)
@@ -928,8 +940,13 @@ def signup(
         _clear_session_cookie(response)
 
     return {
-        "message": "Check your email to verify your account.",
+        "message": (
+            "Check your email to verify your account."
+            if email_sent
+            else "Account created, but we could not send the verification email. Use Resend on the next screen."
+        ),
         "verification_required": True,
+        "email_sent": email_sent,
     }
 
 
@@ -983,14 +1000,28 @@ def resend_verification(
     payload: ResendVerificationRequest,
     request: Request,
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
     email = _normalize_email(payload.email)
     _enforce_auth_rate_limit(request, email=email)
     user = db.scalar(select(UserModel).where(UserModel.email == email))
+    email_sent = False
     if user and user.role != "guest" and user.email_verified_at is None:
-        _issue_email_verification(user, db)
-    # Same response whether or not an account needs verification (anti-enumeration).
-    return {"message": "If an account needs verification, we sent an email."}
+        email_sent = _issue_email_verification(user, db)
+        if not email_sent:
+            # Account exists and needs verification, but mail failed — surface that
+            # so the user is not stuck on a silent no-op.
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "We could not send the verification email right now. "
+                    "Confirm RESEND_API_KEY / RESEND_FROM on the API, then try again."
+                ),
+            )
+    # Same success response whether or not an account needs verification (anti-enumeration).
+    return {
+        "message": "If an account needs verification, we sent an email.",
+        "email_sent": email_sent,
+    }
 
 
 @app.post("/auth/guest")

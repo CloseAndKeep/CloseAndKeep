@@ -18,8 +18,13 @@ export default function CheckEmailPage() {
 function CheckEmailContent() {
   const searchParams = useSearchParams();
   const initialEmail = searchParams.get("email")?.trim() ?? "";
+  const sendFailed = searchParams.get("sendFailed") === "1";
   const [email, setEmail] = useState(initialEmail);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    sendFailed
+      ? "We created your account but could not send the verification email. Tap resend below, or check that Resend is configured on the API."
+      : null,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -55,14 +60,29 @@ function CheckEmailContent() {
         </div>
         <h1 className="font-display text-3xl text-espresso">Check your email</h1>
         <p className="mt-2 text-sm text-stone-600">
-          We sent a verification link
-          {initialEmail ? (
+          {sendFailed ? (
             <>
-              {" "}
-              to <span className="font-medium text-stone-800">{initialEmail}</span>
+              Your account is ready, but the verification email did not go out
+              {initialEmail ? (
+                <>
+                  {" "}
+                  for <span className="font-medium text-stone-800">{initialEmail}</span>
+                </>
+              ) : null}
+              . Use resend below once email sending is working.
             </>
-          ) : null}
-          . Confirm your email to access your dashboard.
+          ) : (
+            <>
+              We sent a verification link
+              {initialEmail ? (
+                <>
+                  {" "}
+                  to <span className="font-medium text-stone-800">{initialEmail}</span>
+                </>
+              ) : null}
+              . Confirm your email to access your dashboard.
+            </>
+          )}
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={onResend}>

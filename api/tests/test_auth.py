@@ -498,10 +498,11 @@ def test_guest_then_signup_discards_empty_guest(client):
 def test_verify_email_token_logs_user_in(client, monkeypatch):
     captured: dict[str, str] = {}
 
-    def _capture(*, to_email: str, verify_url: str, name: str | None = None) -> None:
+    def _capture(*, to_email: str, verify_url: str, name: str | None = None) -> bool:
         captured["to"] = to_email
         captured["url"] = verify_url
         captured["name"] = name or ""
+        return True
 
     monkeypatch.setattr("app.main.send_email_verification", _capture)
 
@@ -532,8 +533,9 @@ def test_verify_email_rejects_invalid_token(client):
 def test_resend_verification_is_anti_enumeration(client, monkeypatch):
     sent: list[str] = []
 
-    def _capture(*, to_email: str, verify_url: str, name: str | None = None) -> None:
+    def _capture(*, to_email: str, verify_url: str, name: str | None = None) -> bool:
         sent.append(to_email)
+        return True
 
     monkeypatch.setattr("app.main.send_email_verification", _capture)
 

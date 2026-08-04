@@ -15,12 +15,12 @@ def send_email_verification(
     to_email: str,
     verify_url: str,
     name: str | None = None,
-) -> None:
-    """Send the signup email-verification link."""
+) -> bool:
+    """Send the signup email-verification link. Returns True if Resend accepted it."""
     to = (to_email or "").strip().lower()
     if not to:
         logger.warning("Verification email empty; skipping.")
-        return
+        return False
 
     first = (name or "").strip().split()[0] if (name or "").strip() else "there"
     subject = "Verify your Close & Keep email"
@@ -46,7 +46,7 @@ def send_email_verification(
         "did not create an account, you can ignore this message.</p>"
         "</body></html>"
     )
-    _send(
+    return _send(
         to=to,
         subject=subject,
         text_body=text_body,

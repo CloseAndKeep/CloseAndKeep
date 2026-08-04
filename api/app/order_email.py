@@ -73,10 +73,11 @@ def _send(
     html_body: str,
     context: str,
     attachments: list[dict[str, Any]] | None = None,
-) -> None:
+) -> bool:
+    """Send via Resend. Returns True when Resend accepts the message."""
     ready = _resend_ready()
     if not ready:
-        return
+        return False
     recipients = (
         [addr.strip().lower() for addr in to if addr and addr.strip()]
         if isinstance(to, list)
@@ -86,7 +87,7 @@ def _send(
     )
     if not recipients:
         logger.warning("No recipients; skipping email (%s).", context)
-        return
+        return False
     key, from_addr = ready
     resend.api_key = key
     payload: dict[str, Any] = {
@@ -101,8 +102,10 @@ def _send(
     try:
         resend.Emails.send(payload)
         logger.info("Email accepted by Resend (%s) to=%s", context, recipients)
+        return True
     except Exception:
         logger.exception("Failed to send email (%s) to=%s", context, recipients)
+        return False
 
 
 def send_new_order_notification(
