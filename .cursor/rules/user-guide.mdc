@@ -1,0 +1,27 @@
+---
+description: Keep USER_GUIDE.md in sync with user-facing product changes
+globs: web/app/**/*.{tsx,ts},web/components/**/*.{tsx,ts},api/app/csv_import.py,api/app/integrations/**/*,api/app/main.py
+alwaysApply: false
+---
+
+# User guide sync
+
+When you change behavior that end users see or follow, update `USER_GUIDE.md` in the same change.
+
+## Update when you touch
+
+- Signup, email verify, guest limits, or nav destinations
+- Gift order flow (pack sizes, notes, address request, checkout)
+- CSV import (`/orders/import`, template/example, columns, caps, payment after import)
+- Integrations (Salesforce/HubSpot connect, trigger stage, sync, disconnect)
+- CRM fields/stage requirements (what must exist or be populated in Salesforce/HubSpot)
+- Profile (photo upload, password, account fields shown)
+- Profile options unlocked by CRM (monthly billing, card, spending limit, auto-order)
+
+## How to edit
+
+- Keep the guide written for **new users** (steps and plain language)
+- Preserve separate sections for **CSV files** and **Connecting to CRM**
+- Match live product behavior — do not document planned/unimplemented features
+- Prefer the live catalog/API over stale UI copy if they disagree
+- Keep the maintainer note at the top of `USER_GUIDE.md`

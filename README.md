@@ -6,6 +6,7 @@ Post-pitch gifting for sales teams who want to stand out after the demo.
 
 - `web/` - Next.js 14 frontend deployed on Vercel
 - `api/` - FastAPI backend
+- `USER_GUIDE.md` - end-user instructions (getting started, CSV import, CRM)
 - `Architecture.MD`, `DECISIONS.md`, `SoftwareRequirements.MD`, `TaskList.MD`, `Test.MD` - project docs
 
 ## Local development
