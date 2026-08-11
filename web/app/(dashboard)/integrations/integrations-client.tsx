@@ -194,7 +194,7 @@ export function IntegrationsClient() {
     <>
       <PageHeader
         title="Integrations"
-        description="Connect Salesforce or HubSpot so Demo Completed deals trigger an immediate cookie-order reminder."
+        description="Connect Salesforce or HubSpot so Demo Completed deals create cookie orders from your CRM Cookie Note and Cookie Address fields (or send a reminder if auto-order is off)."
       />
 
       {error ? (
@@ -219,9 +219,10 @@ export function IntegrationsClient() {
               <h2 className="text-lg font-semibold text-espresso">{provider.label}</h2>
               <p className="mt-1 text-sm text-stone-600">
                 When a {provider.objectLabel} moves to your trigger stage (default{" "}
-                <strong>Demo Completed</strong>), Close&nbsp;&amp;&nbsp;Keep emails you a link to
-                order cookies with the prospect prefilled and reminds you to write a personal gift
-                note.
+                <strong>Demo Completed</strong>), Close&nbsp;&amp;&nbsp;Keep reads your CRM{" "}
+                <strong>Cookie Note</strong> and <strong>Cookie Address</strong> fields and
+                auto-creates an order (enabled when you first connect). If auto-order is off, you
+                get a reminder email instead.
               </p>
 
               {loading ? (

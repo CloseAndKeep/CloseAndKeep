@@ -18,7 +18,11 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models import IntegrationConnectionModel
 from .crypto import decrypt_token, encrypt_token
-from .reminders import PROVIDER_SALESFORCE, process_stage_completed_reminder
+from .reminders import (
+    PROVIDER_SALESFORCE,
+    ensure_crm_auto_order_defaults,
+    process_stage_completed_reminder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +144,7 @@ def upsert_connection_from_oauth(
             IntegrationConnectionModel.provider == PROVIDER_SALESFORCE,
         )
     )
+    created = existing is None
     if existing:
         connection = existing
     else:
@@ -161,6 +166,8 @@ def upsert_connection_from_oauth(
     connection.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(connection)
+    if created:
+        ensure_crm_auto_order_defaults(db, user_id)
     return connection
 
 
@@ -209,6 +216,30 @@ def soql_query(connection: IntegrationConnectionModel, db: Session, query: str) 
         return resp.json()
 
 
+def _cookie_field_names() -> tuple[str | None, str | None]:
+    note = settings.salesforce_cookie_note_field or None
+    address = settings.salesforce_cookie_address_field or None
+    return note, address
+
+
+def _opportunity_select_clause(*, include_cookie_fields: bool) -> str:
+    fields = [
+        "Id",
+        "Name",
+        "StageName",
+        "ContactId",
+        "Contact.Name",
+        "Contact.Email",
+    ]
+    if include_cookie_fields:
+        note_field, address_field = _cookie_field_names()
+        if note_field:
+            fields.append(note_field)
+        if address_field:
+            fields.append(address_field)
+    return ", ".join(fields)
+
+
 def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> list[dict]:
     """Poll Opportunities in the trigger stage modified since last poll; send reminders."""
     stage = (connection.trigger_stage_name or "Demo Completed").replace("'", "\\'")
@@ -217,19 +248,41 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         # First poll: only look back a short window to avoid flooding historical deals.
         since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     since_s = since.strftime("%Y-%m-%dT%H:%M:%SZ")
-    query = (
-        "SELECT Id, Name, StageName, "
-        "ContactId, Contact.Name, Contact.Email "
-        "FROM Opportunity "
+    where = (
         f"WHERE StageName = '{stage}' "
         f"AND SystemModstamp > {since_s} "
         "ORDER BY SystemModstamp ASC "
         "LIMIT 50"
     )
-    raw = soql_query(connection, db, query)
+    note_field, address_field = _cookie_field_names()
+    include_cookie_fields = bool(note_field or address_field)
+    try:
+        query = (
+            f"SELECT {_opportunity_select_clause(include_cookie_fields=include_cookie_fields)} "
+            f"FROM Opportunity {where}"
+        )
+        raw = soql_query(connection, db, query)
+    except httpx.HTTPStatusError as exc:
+        # Custom fields may not exist yet in the org — fall back to core fields.
+        body = (exc.response.text or "").lower()
+        if include_cookie_fields and exc.response.status_code == 400 and "invalid" in body:
+            logger.warning(
+                "Salesforce cookie fields missing; polling without note/address connection_id=%s",
+                connection.id,
+            )
+            query = (
+                f"SELECT {_opportunity_select_clause(include_cookie_fields=False)} "
+                f"FROM Opportunity {where}"
+            )
+            raw = soql_query(connection, db, query)
+            note_field, address_field = None, None
+        else:
+            raise
     results: list[dict] = []
     for record in raw.get("records") or []:
         contact = record.get("Contact") or {}
+        cookie_note = str(record.get(note_field) or "") if note_field else ""
+        cookie_address = str(record.get(address_field) or "") if address_field else ""
         results.append(
             process_stage_completed_reminder(
                 db,
@@ -238,6 +291,8 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 stage_name=str(record.get("StageName") or stage),
                 contact_name=str(contact.get("Name") or record.get("Name") or ""),
                 contact_email=str(contact.get("Email") or ""),
+                cookie_note=cookie_note or None,
+                cookie_address=cookie_address or None,
             )
         )
     connection.last_polled_at = datetime.now(UTC)

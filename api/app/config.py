@@ -114,11 +114,25 @@ class Settings(BaseModel):
         "SALESFORCE_LOGIN_URL", "https://login.salesforce.com"
     ).strip().rstrip("/")
     salesforce_webhook_secret: str = os.getenv("SALESFORCE_WEBHOOK_SECRET", "").strip()
+    # Opportunity custom fields for gift note + shipping (create in Salesforce).
+    salesforce_cookie_note_field: str = os.getenv(
+        "SALESFORCE_COOKIE_NOTE_FIELD", "Cookie_Note__c"
+    ).strip()
+    salesforce_cookie_address_field: str = os.getenv(
+        "SALESFORCE_COOKIE_ADDRESS_FIELD", "Cookie_Address__c"
+    ).strip()
     # HubSpot private app / OAuth app + cookie-reminder webhooks.
     hubspot_client_id: str = os.getenv("HUBSPOT_CLIENT_ID", "").strip()
     hubspot_client_secret: str = os.getenv("HUBSPOT_CLIENT_SECRET", "").strip()
     hubspot_redirect_uri: str = os.getenv("HUBSPOT_REDIRECT_URI", "").strip()
     hubspot_webhook_secret: str = os.getenv("HUBSPOT_WEBHOOK_SECRET", "").strip()
+    # Deal custom properties for gift note + shipping (create in HubSpot).
+    hubspot_cookie_note_property: str = os.getenv(
+        "HUBSPOT_COOKIE_NOTE_PROPERTY", "cookie_note"
+    ).strip()
+    hubspot_cookie_address_property: str = os.getenv(
+        "HUBSPOT_COOKIE_ADDRESS_PROPERTY", "cookie_address"
+    ).strip()
     # Fernet key for encrypting CRM OAuth tokens at rest.
     integration_token_fernet_key: str = os.getenv("INTEGRATION_TOKEN_FERNET_KEY", "").strip()
 

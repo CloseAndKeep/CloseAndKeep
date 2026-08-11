@@ -48,6 +48,23 @@ DEFAULT_AUTO_ORDER_NOTE = (
 )
 
 
+def ensure_crm_auto_order_defaults(db: Session, user_id: int) -> None:
+    """Turn on auto-order with a default pack when a user first connects a CRM."""
+    user = db.get(UserModel, user_id)
+    if user is None:
+        return
+    changed = False
+    if not user.auto_order_enabled:
+        user.auto_order_enabled = True
+        changed = True
+    if (user.auto_order_gift_id or "").strip() not in AUTO_ORDER_GIFT_IDS:
+        user.auto_order_gift_id = "cookies-4"
+        changed = True
+    if changed:
+        db.add(user)
+        db.commit()
+
+
 def upsert_prospect_from_crm(
     db: Session,
     *,
@@ -108,16 +125,32 @@ def _mint_redeem_code(db: Session) -> str:
     raise RuntimeError("Unable to mint redeem code")
 
 
+def _clean_note(note: str | None) -> str:
+    cleaned = (note or "").strip()
+    if not cleaned:
+        return DEFAULT_AUTO_ORDER_NOTE
+    return cleaned[:1000]
+
+
+def _clean_address(address: str | None) -> str | None:
+    cleaned = (address or "").strip()
+    if not cleaned:
+        return None
+    return cleaned[:1000]
+
+
 def _create_auto_order(
     db: Session,
     *,
     owner: UserModel,
     prospect: ProspectModel,
+    cookie_note: str | None = None,
+    cookie_address: str | None = None,
 ) -> dict:
-    """Create an address-request gift order for CRM auto-order."""
+    """Create a gift order from a CRM stage hit, using CRM note/address when present."""
     gift_id = (owner.auto_order_gift_id or "").strip()
     if gift_id not in AUTO_ORDER_GIFT_IDS:
-        return {"status": "error", "reason": "invalid_auto_order_gift"}
+        gift_id = "cookies-4"
 
     recipient_email = (prospect.email or "").strip().lower()
     if not recipient_email or recipient_email.endswith("@unknown.salesforce") or recipient_email.endswith(
@@ -126,22 +159,39 @@ def _create_auto_order(
         # Still create — redeem code works without email; skip email send later.
         pass
 
-    token, expires_at = _mint_address_token()
-    order = GiftOrderModel(
-        owner_user_id=owner.id,
-        prospect_id=prospect.id,
-        gift_id=gift_id,
-        recipient_name=prospect.name,
-        shipping_address=None,
-        recipient_email=recipient_email or None,
-        note=DEFAULT_AUTO_ORDER_NOTE,
-        status="no_address",
-        payment_status="pending",
-        address_request_token=token,
-        redeem_code=_mint_redeem_code(db),
-        address_request_expires_at=expires_at,
-        address_request_sent_at=None,
-    )
+    note = _clean_note(cookie_note)
+    shipping_address = _clean_address(cookie_address)
+    has_address = bool(shipping_address)
+
+    if has_address:
+        order = GiftOrderModel(
+            owner_user_id=owner.id,
+            prospect_id=prospect.id,
+            gift_id=gift_id,
+            recipient_name=prospect.name,
+            shipping_address=shipping_address,
+            recipient_email=recipient_email or None,
+            note=note,
+            status="pending_payment",
+            payment_status="pending",
+        )
+    else:
+        token, expires_at = _mint_address_token()
+        order = GiftOrderModel(
+            owner_user_id=owner.id,
+            prospect_id=prospect.id,
+            gift_id=gift_id,
+            recipient_name=prospect.name,
+            shipping_address=None,
+            recipient_email=recipient_email or None,
+            note=note,
+            status="no_address",
+            payment_status="pending",
+            address_request_token=token,
+            redeem_code=_mint_redeem_code(db),
+            address_request_expires_at=expires_at,
+            address_request_sent_at=None,
+        )
     db.add(order)
     db.commit()
     db.refresh(order)
@@ -170,6 +220,8 @@ def _create_auto_order(
             "order_id": order.id,
             "billing": "monthly",
             "payment_status": order.payment_status,
+            "order_status": order.status,
+            "has_shipping_address": has_address,
             "order_url": order_url,
         }
 
@@ -194,6 +246,8 @@ def _create_auto_order(
         "billing": "per_order",
         "checkout_url": checkout_url,
         "order_url": order_url,
+        "order_status": order.status,
+        "has_shipping_address": has_address,
     }
 
 
@@ -205,8 +259,13 @@ def process_stage_completed_reminder(
     stage_name: str,
     contact_name: str,
     contact_email: str,
+    cookie_note: str | None = None,
+    cookie_address: str | None = None,
 ) -> dict:
     """Upsert prospect, dedupe by opportunity, then auto-order or email reminder.
+
+    When auto-order is enabled, CRM cookie note / address fill the gift order
+    (address present → ready to pay/ship; blank address → request from recipient).
 
     Returns a small status dict for API/logging. Does not raise on email transport
     failure (Resend is best-effort, matching other order emails).
@@ -290,17 +349,24 @@ def process_stage_completed_reminder(
     db.refresh(event)
     db.refresh(prospect)
 
-    if owner.auto_order_enabled and (owner.auto_order_gift_id or "") in AUTO_ORDER_GIFT_IDS:
-        auto_result = _create_auto_order(db, owner=owner, prospect=prospect)
+    if owner.auto_order_enabled:
+        auto_result = _create_auto_order(
+            db,
+            owner=owner,
+            prospect=prospect,
+            cookie_note=cookie_note,
+            cookie_address=cookie_address,
+        )
         event.status = "auto_ordered" if auto_result.get("status") == "auto_ordered" else "error"
         db.add(event)
         db.commit()
         logger.info(
-            "CRM auto-order connection_id=%s opportunity=%s prospect_id=%s result=%s",
+            "CRM auto-order connection_id=%s opportunity=%s prospect_id=%s result=%s has_address=%s",
             connection.id,
             opportunity_id,
             prospect.id,
             auto_result.get("status"),
+            auto_result.get("has_shipping_address"),
         )
         return {
             **auto_result,

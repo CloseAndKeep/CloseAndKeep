@@ -290,6 +290,56 @@ def test_reminder_still_sent_when_auto_order_off(auth_client, monkeypatch):
     assert len(reminders) == 1
 
 
+def test_auto_order_uses_crm_note_and_address(auth_client, stripe_stub, monkeypatch):
+    me = auth_client.get("/auth/me").json()
+    connection_id = _seed_crm(me["user_id"])
+    _enable_monthly_with_pm(me["user_id"], gift_id="cookies-4")
+
+    db = SessionLocal()
+    try:
+        user = db.get(UserModel, me["user_id"])
+        assert user is not None
+        user.auto_order_enabled = True
+        db.add(user)
+        db.commit()
+    finally:
+        db.close()
+
+    address_mails: list[dict] = []
+    monkeypatch.setattr(
+        "app.stripe_payments.send_recipient_address_request",
+        lambda **kwargs: address_mails.append(kwargs),
+    )
+
+    with patch("app.main.sf.verify_webhook_secret", return_value=True):
+        resp = auth_client.post(
+            "/integrations/salesforce/events",
+            json={
+                "connection_id": connection_id,
+                "opportunity_id": "006CRMFIELDS1",
+                "stage_name": "Demo Completed",
+                "contact_name": "Alex Buyer",
+                "contact_email": "alex@acme.com",
+                "cookie_note": "Great demo — enjoy these!",
+                "cookie_address": "123 Main St\nSpringfield, IL 62704",
+            },
+            headers={"X-Webhook-Secret": "test-secret"},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "auto_ordered"
+    assert body.get("has_shipping_address") is True
+    assert address_mails == []
+
+    orders = auth_client.get("/gift-orders").json()
+    match = next(o for o in orders if o["id"] == body["order_id"])
+    assert match["note"] == "Great demo — enjoy these!"
+    assert "123 Main St" in (match["shipping_address"] or "")
+    assert match["status"] == "queued"
+    assert match["payment_status"] == "owed"
+
+
 def test_month_end_job_charges_owed(auth_client, stripe_stub, monkeypatch):
     me = auth_client.get("/auth/me").json()
     _seed_crm(me["user_id"])

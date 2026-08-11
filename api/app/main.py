@@ -437,6 +437,8 @@ class SalesforceEventRequest(BaseModel):
     stage_name: str = Field(default="Demo Completed", min_length=1, max_length=255)
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
+    cookie_note: str | None = Field(default=None, max_length=1000)
+    cookie_address: str | None = Field(default=None, max_length=1000)
     connection_id: int | None = None
     org_id: str | None = Field(default=None, max_length=64)
 
@@ -448,6 +450,8 @@ class HubSpotEventRequest(BaseModel):
     stage_name: str = Field(default="Demo Completed", min_length=1, max_length=255)
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
+    cookie_note: str | None = Field(default=None, max_length=1000)
+    cookie_address: str | None = Field(default=None, max_length=1000)
     connection_id: int | None = None
     portal_id: str | None = Field(default=None, max_length=64)
 
@@ -2238,6 +2242,8 @@ def salesforce_stage_event(
         stage_name=payload.stage_name,
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
+        cookie_note=payload.cookie_note,
+        cookie_address=payload.cookie_address,
     )
 
 
@@ -2350,6 +2356,8 @@ def hubspot_stage_event(
         stage_name=payload.stage_name,
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
+        cookie_note=payload.cookie_note,
+        cookie_address=payload.cookie_address,
     )
 
 

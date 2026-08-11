@@ -74,22 +74,23 @@ Bob Jones,bob@example.com,12,
 
 ## Connecting to CRM (and options after connect)
 
-Supported CRMs today: **Salesforce** and **HubSpot**.
+Supported CRMs today: **Salesforce** and **HubSpot**. Custom CRMs use the **API** (see below).
 
-When a deal/opportunity hits your configured stage (default **Demo Completed**), CloseAndKeep can email you a cookie-order reminder — or auto-create an order if you turn that on.
+When a deal/opportunity hits your configured stage (default **Demo Completed**), CloseAndKeep **auto-creates a cookie order** using **Cookie Note** and **Cookie Address** from the CRM (auto-order turns on when you first connect). If auto-order is later turned off on Profile, you get a reminder email instead.
 
-### Connect
+### Connect (Salesforce / HubSpot)
 
-1. Open **Integrations** in the nav.
-2. Click **Connect Salesforce** or **Connect HubSpot**.
-3. Approve access in the CRM OAuth screen.
-4. You’ll return to Integrations with a success message.
+1. In your CRM, add the **stage** and **Cookie Note / Cookie Address** fields (tables below).
+2. Open **Integrations** in CloseAndKeep.
+3. Click **Connect Salesforce** or **Connect HubSpot**.
+4. Approve access in the CRM OAuth screen.
+5. You’ll return to Integrations with a success message — auto-order is enabled (default pack: **4 cookies**; change on Profile).
+6. Confirm **Trigger stage name** matches your CRM stage → **Save stage**.
+7. Put the deal in **Demo Completed** with note + address filled, then click **Sync now** (or wait for your webhook/Flow).
 
 You can connect one org/portal per CRM per CloseAndKeep user.
 
 ### CRM fields you need
-
-CloseAndKeep does **not** require custom “CloseAndKeep” properties in your CRM today. You need one pipeline/opportunity **stage**, plus standard deal and contact fields filled in so we can create the prospect and email you (or auto-order).
 
 #### 1. Stage to add (if it doesn’t exist)
 
@@ -99,33 +100,47 @@ CloseAndKeep does **not** require custom “CloseAndKeep” properties in your C
 | **Salesforce** | Add it on the Opportunity sales path / stage picklist so `StageName` can equal that value |
 | **HubSpot** | Add it as a deal stage label in your deal pipeline (label must match exactly, ignoring case) |
 
-If the stage label is missing in HubSpot, **Sync now** won’t find matching deals.
+#### 2. Custom fields to add (gift details)
 
-#### 2. Salesforce — fields we read
+Create these on the **Opportunity** (Salesforce) or **Deal** (HubSpot). Reps fill them before/when moving to Demo Completed.
+
+| Purpose | Salesforce API name | HubSpot internal name | Type |
+|---------|---------------------|-----------------------|------|
+| Personal gift message | **Cookie_Note__c** | **cookie_note** | Long text / multi-line |
+| Shipping address | **Cookie_Address__c** | **cookie_address** | Long text / multi-line |
+
+- If **Cookie Address** is filled → order is created ready to pay (and can ship after payment / monthly queue).
+- If **Cookie Address** is blank → we still create the order and email the recipient for shipping after you authorize/pay.
+- If **Cookie Note** is blank → we use: *“Thanks for meeting with us — enjoy these cookies!”*
+
+Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`, `SALESFORCE_COOKIE_ADDRESS_FIELD`, `HUBSPOT_COOKIE_NOTE_PROPERTY`, `HUBSPOT_COOKIE_ADDRESS_PROPERTY`).
+
+#### 3. Standard fields we also read
+
+**Salesforce**
 
 | Object | Field | Required? | Why |
 |--------|-------|-----------|-----|
-| Opportunity | **Id** | Yes | Unique deal key (system field) |
-| Opportunity | **Name** | Fallback | Used if the contact name is blank |
+| Opportunity | **Id** | Yes | Unique deal key |
+| Opportunity | **Name** | Fallback | Used if contact name is blank |
 | Opportunity | **StageName** | Yes | Must match your trigger stage |
-| Opportunity | **ContactId** (primary contact) | Strongly recommended | Links to the person we gift |
-| Contact | **Name** | Strongly recommended | Prospect / recipient name |
-| Contact | **Email** | Strongly recommended | Needed to request shipping address; without it, reminder/auto-order quality suffers |
+| Opportunity | **ContactId** (primary contact) | Strongly recommended | Who we gift |
+| Contact | **Name** | Strongly recommended | Recipient name |
+| Contact | **Email** | Strongly recommended | Address-request email when address is blank |
 
-#### 3. HubSpot — fields we read
+**HubSpot**
 
 | Object | Property | Required? | Why |
 |--------|----------|-----------|-----|
-| Deal | **dealname** | Fallback | Used if the contact name is blank |
+| Deal | **dealname** | Fallback | Used if contact name is blank |
 | Deal | **dealstage** | Yes | Must be your trigger stage |
 | Deal | **Associated contact** | Strongly recommended | We take the first associated contact |
-| Contact | **firstname** | Strongly recommended | Combined into prospect name |
-| Contact | **lastname** | Strongly recommended | Combined into prospect name |
-| Contact | **email** | Strongly recommended | Needed to request shipping address |
+| Contact | **firstname** / **lastname** | Strongly recommended | Recipient name |
+| Contact | **email** | Strongly recommended | Address-request email when address is blank |
 
 #### 4. Webhook / Flow payload (optional admin setup)
 
-If your admin posts stage events to CloseAndKeep instead of relying only on **Sync now**, the payload must include:
+If your admin posts stage events to CloseAndKeep instead of relying only on **Sync now**, include:
 
 | Field | Salesforce event | HubSpot event |
 |-------|------------------|---------------|
@@ -133,23 +148,32 @@ If your admin posts stage events to CloseAndKeep instead of relying only on **Sy
 | Stage | `stage_name` | `stage_name` |
 | Contact name | `contact_name` | `contact_name` |
 | Contact email | `contact_email` | `contact_email` |
+| Gift note | `cookie_note` (optional) | `cookie_note` (optional) |
+| Shipping | `cookie_address` (optional) | `cookie_address` (optional) |
 
-These are values sent **to** CloseAndKeep; they are not new custom fields you create inside the CRM UI unless your Flow/workflow maps them from the standard fields above.
+Map `cookie_note` / `cookie_address` from the custom CRM fields above.
 
 ### Options on Integrations (after connect)
-
-For each connected CRM you can:
 
 | Option | What it does |
 |--------|----------------|
 | **Trigger stage name** | Stage that fires the cookie flow (default **Demo Completed**). Must match your CRM stage name. Click **Save stage**. |
-| **Sync now** | Manually poll recent matching opportunities/deals (useful if a webhook didn’t fire). |
+| **Sync now** | Manually poll recent matching opportunities/deals (reads Cookie Note / Cookie Address). |
 | **Disconnect** | Remove the CRM connection. |
 | Status / last poll / org or portal | Connection health info |
 
-**Default behavior (reminder):** when the stage matches, you get an email like *“Demo done — send cookies to {name}?”* with a link that opens a new order with the prospect prefilled so you can add a personal note.
+After you connect a CRM, billing and auto-order controls also appear on **Profile**.
 
-After you connect a CRM, extra billing and auto-order controls appear on **Profile** (see below).
+### Custom CRM (your own system)
+
+There is no OAuth “Connect” for a home-grown CRM. Use the API:
+
+1. **API keys** → create a `cak_…` key.
+2. See **/developers** for examples.
+3. When the rep marks the deal done in your CRM, call:
+   - `POST /prospects` with name + email
+   - `POST /gift-orders` with `gift_id`, `recipient_name`, **`note`**, and either **`shipping_address`** or `request_recipient_address: true`
+4. Open the returned `checkout_url` to pay (or use monthly billing on Profile if you also connect SF/HS — monthly is CRM-gated today).
 
 ---
 
@@ -193,7 +217,7 @@ After Salesforce or HubSpot is connected, Profile shows **Monthly billing & auto
 | **Add / Update card** | Save a payment method via Stripe (card is stored by Stripe, not on CloseAndKeep servers). |
 | **Open balance / Pay now** | See what’s owed for the month and pay early. |
 | **Max spending limit** | Cap open monthly balance; when hit, new monthly-billed orders are blocked and you’re emailed to pay or raise the limit. Leave blank for no limit. |
-| **Auto-order on CRM stage** | Instead of a reminder email, automatically create a cookie order and email the recipient for their address. |
+| **Auto-order on CRM stage** | Automatically create a cookie order from CRM Cookie Note / Cookie Address when the trigger stage hits (on by default after first CRM connect). |
 | **Auto-order pack size** | Choose **4 cookies** or **12 cookies** for those auto-orders. |
 
 Turn **Pay monthly** off anytime to go back to paying per order.

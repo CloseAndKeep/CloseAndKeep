@@ -17,7 +17,11 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models import IntegrationConnectionModel
 from .crypto import decrypt_token, encrypt_token
-from .reminders import PROVIDER_HUBSPOT, process_stage_completed_reminder
+from .reminders import (
+    PROVIDER_HUBSPOT,
+    ensure_crm_auto_order_defaults,
+    process_stage_completed_reminder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +123,7 @@ def upsert_connection_from_oauth(
             IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
         )
     )
+    created = existing is None
     if existing:
         connection = existing
     else:
@@ -140,6 +145,8 @@ def upsert_connection_from_oauth(
     connection.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(connection)
+    if created:
+        ensure_crm_auto_order_defaults(db, user_id)
     return connection
 
 
@@ -260,6 +267,14 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     since_ms = int(since.timestamp() * 1000)
 
+    note_prop = settings.hubspot_cookie_note_property or ""
+    address_prop = settings.hubspot_cookie_address_property or ""
+    deal_properties = ["dealname", "dealstage"]
+    if note_prop:
+        deal_properties.append(note_prop)
+    if address_prop:
+        deal_properties.append(address_prop)
+
     search_body = {
         "filterGroups": [
             {
@@ -277,7 +292,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 ]
             }
         ],
-        "properties": ["dealname", "dealstage"],
+        "properties": deal_properties,
         "sorts": [{"propertyName": "hs_lastmodifieddate", "direction": "ASCENDING"}],
         "limit": 50,
     }
@@ -292,6 +307,8 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         props = record.get("properties") or {}
         contact = _contact_for_deal(connection, db, deal_id)
         deal_name = str(props.get("dealname") or "")
+        cookie_note = str(props.get(note_prop) or "") if note_prop else ""
+        cookie_address = str(props.get(address_prop) or "") if address_prop else ""
         results.append(
             process_stage_completed_reminder(
                 db,
@@ -300,6 +317,8 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 stage_name=stage_label,
                 contact_name=contact["name"] or deal_name,
                 contact_email=contact["email"],
+                cookie_note=cookie_note or None,
+                cookie_address=cookie_address or None,
             )
         )
     connection.last_polled_at = datetime.now(UTC)

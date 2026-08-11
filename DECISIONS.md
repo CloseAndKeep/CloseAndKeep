@@ -89,3 +89,11 @@ Locked behaviors after medium-severity review:
 - **Intake:** `POST /integrations/{salesforce|hubspot}/events` (webhook secret) preferred; `POST /integrations/{salesforce|hubspot}/sync` polls as fallback.
 - OAuth tokens encrypted at rest with `INTEGRATION_TOKEN_FERNET_KEY`.
 - v1: one CRM org/portal connection per CloseAndKeep user (no shared team connections).
+
+## CRM cookie note + address → auto-order (2026-08)
+
+- **Custom fields:** Salesforce Opportunity `Cookie_Note__c` / `Cookie_Address__c`; HubSpot deal `cookie_note` / `cookie_address` (env-overridable).
+- **First OAuth connect** enables `auto_order_enabled` with default pack `cookies-4`.
+- **Auto-order:** uses CRM note (or default thank-you note); address present → `pending_payment` (or monthly queue); blank address → existing address-request flow.
+- Webhook payloads may include optional `cookie_note` / `cookie_address`.
+- Custom CRMs use API keys + `POST /gift-orders` with `note` and `shipping_address` (no OAuth adapter).
