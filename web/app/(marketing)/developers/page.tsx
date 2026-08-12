@@ -89,10 +89,20 @@ export default function DevelopersDocsPage() {
     "prospect_id": 123,
     "gift_id": "cookies-4",
     "recipient_name": "Dana Buyer",
-    "shipping_address": "123 Main St\\nSpringfield, IL 62704",
+    "shipping_street": "123 Main St",
+    "shipping_city": "Springfield",
+    "shipping_state": "IL",
+    "shipping_postal_code": "62704",
     "note": "Thanks for the great meeting!"
   }'`}
         </pre>
+        <p>
+          Send street, city, state, and ZIP as separate fields. You can still send a single
+          <code className="text-xs">shipping_address</code> string if your system only has a
+          combined address. Omit both and set{" "}
+          <code className="text-xs">request_recipient_address: true</code> to email the recipient
+          for shipping.
+        </p>
         <p>
           Response includes <code className="text-xs">checkout_url</code>. Open it in a browser to
           pay. Poll <code className="text-xs">GET /gift-orders/{"{id}"}</code> for{" "}

@@ -10,10 +10,18 @@ from dataclasses import dataclass
 from email_validator import EmailNotValidError, validate_email
 
 from .config import GIFT_CATALOG, settings
+from .shipping_address import ShippingAddressParts, parts_from_optional, shipping_address_values
 
-# Headers accepted (case-insensitive). Address is optional per row.
+# Headers accepted (case-insensitive). Address pieces are optional per row.
 REQUIRED_HEADERS = ("name", "email", "cookies")
-OPTIONAL_HEADERS = ("address",)
+OPTIONAL_HEADERS = (
+    "street",
+    "street2",
+    "city",
+    "state",
+    "postal_code",
+    "address",
+)
 ALL_HEADERS = REQUIRED_HEADERS + OPTIONAL_HEADERS
 
 COOKIE_COUNT_TO_GIFT_ID: dict[int, str] = {
@@ -21,14 +29,14 @@ COOKIE_COUNT_TO_GIFT_ID: dict[int, str] = {
 }
 ALLOWED_COOKIE_COUNTS = frozenset(COOKIE_COUNT_TO_GIFT_ID)
 
-CSV_TEMPLATE_HEADERS = "Name,Email,Cookies,Address\n"
+CSV_TEMPLATE_HEADERS = "Name,Email,Cookies,Street,Street2,City,State,Postal Code\n"
 
 # Filled example rows so users can see both known-address and request-address cases.
 CSV_EXAMPLE_BODY = (
-    'Jane Smith,jane@example.com,4,"123 Main St, Springfield, IL 62704"\n'
-    "Bob Jones,bob@example.com,4,\n"
-    "Casey NoEmail,,4,\n"
-    'Alex Rivera,alex@example.com,12,"456 Oak Ave Apt 2, Austin, TX 78701"\n'
+    "Jane Smith,jane@example.com,4,123 Main St,,Springfield,IL,62704\n"
+    "Bob Jones,bob@example.com,4,,,,,\n"
+    "Casey NoEmail,,4,,,,,\n"
+    "Alex Rivera,alex@example.com,12,456 Oak Ave,Apt 2,Austin,TX,78701\n"
 )
 
 DEFAULT_IMPORT_NOTE = "Enjoy these cookies — a small thank-you from us."
@@ -48,6 +56,30 @@ _HEADER_ALIASES: dict[str, str] = {
     "address": "address",
     "shipping_address": "address",
     "shipping address": "address",
+    "street": "street",
+    "street1": "street",
+    "street 1": "street",
+    "shipping_street": "street",
+    "address1": "street",
+    "address 1": "street",
+    "street2": "street2",
+    "street 2": "street2",
+    "shipping_street2": "street2",
+    "address2": "street2",
+    "address 2": "street2",
+    "apt": "street2",
+    "suite": "street2",
+    "city": "city",
+    "shipping_city": "city",
+    "state": "state",
+    "shipping_state": "state",
+    "province": "state",
+    "postal_code": "postal_code",
+    "postal code": "postal_code",
+    "zip": "postal_code",
+    "zip_code": "postal_code",
+    "zip code": "postal_code",
+    "shipping_postal_code": "postal_code",
 }
 
 
@@ -59,6 +91,7 @@ class ParsedOrderRow:
     gift_id: str
     cookie_count: int
     shipping_address: str | None
+    address_parts: ShippingAddressParts | None
     request_recipient_address: bool
 
 
@@ -152,7 +185,8 @@ def parse_gift_orders_csv(
                 message=(
                     "Missing required column(s): "
                     + ", ".join(missing)
-                    + ". Expected headers: Name, Email, Cookies, Address (Address optional)."
+                    + ". Expected headers: Name, Email, Cookies, Street, Street2, City, State, Postal Code "
+                    "(address columns optional)."
                 ),
             )
         )
@@ -187,6 +221,11 @@ def parse_gift_orders_csv(
         name = cell("name")
         email_raw = cell("email")
         cookies_raw = cell("cookies")
+        street_raw = cell("street")
+        street2_raw = cell("street2")
+        city_raw = cell("city")
+        state_raw = cell("state")
+        postal_raw = cell("postal_code")
         address_raw = cell("address")
 
         row_errors: list[str] = []
@@ -210,9 +249,29 @@ def parse_gift_orders_csv(
                 f"Cookies must be one of: {allowed} (got {cookie_count})."
             )
 
-        address = address_raw.strip() if address_raw else None
-        if address == "":
-            address = None
+        address_parts = parts_from_optional(
+            street=street_raw,
+            street2=street2_raw,
+            city=city_raw,
+            state=state_raw,
+            postal_code=postal_raw,
+        )
+        address_blob = address_raw.strip() if address_raw else None
+        if address_blob == "":
+            address_blob = None
+
+        if address_parts and not address_parts.is_complete():
+            row_errors.append(
+                "Street, City, State, and Postal Code are required together "
+                "(or leave them all blank to email the recipient)."
+            )
+
+        resolved = shipping_address_values(parts=address_parts, blob=address_blob)
+        address = resolved.get("shipping_address")
+        if address_parts and address_parts.is_complete():
+            stored_parts = address_parts
+        else:
+            stored_parts = None
 
         if address and not email:
             row_errors.append("Email is required when a shipping address is provided.")
@@ -233,6 +292,7 @@ def parse_gift_orders_csv(
                 gift_id=gift_id,
                 cookie_count=cookie_count,
                 shipping_address=address,
+                address_parts=stored_parts,
                 request_recipient_address=request_address,
             )
         )

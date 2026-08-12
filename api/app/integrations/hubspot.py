@@ -268,12 +268,24 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
     since_ms = int(since.timestamp() * 1000)
 
     note_prop = settings.hubspot_cookie_note_property or ""
+    street_prop = settings.hubspot_cookie_street_property or ""
+    street2_prop = settings.hubspot_cookie_street2_property or ""
+    city_prop = settings.hubspot_cookie_city_property or ""
+    state_prop = settings.hubspot_cookie_state_property or ""
+    postal_prop = settings.hubspot_cookie_postal_code_property or ""
     address_prop = settings.hubspot_cookie_address_property or ""
     deal_properties = ["dealname", "dealstage"]
-    if note_prop:
-        deal_properties.append(note_prop)
-    if address_prop:
-        deal_properties.append(address_prop)
+    for prop in (
+        note_prop,
+        street_prop,
+        street2_prop,
+        city_prop,
+        state_prop,
+        postal_prop,
+        address_prop,
+    ):
+        if prop and prop not in deal_properties:
+            deal_properties.append(prop)
 
     search_body = {
         "filterGroups": [
@@ -308,6 +320,11 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         contact = _contact_for_deal(connection, db, deal_id)
         deal_name = str(props.get("dealname") or "")
         cookie_note = str(props.get(note_prop) or "") if note_prop else ""
+        cookie_street = str(props.get(street_prop) or "") if street_prop else ""
+        cookie_street2 = str(props.get(street2_prop) or "") if street2_prop else ""
+        cookie_city = str(props.get(city_prop) or "") if city_prop else ""
+        cookie_state = str(props.get(state_prop) or "") if state_prop else ""
+        cookie_postal = str(props.get(postal_prop) or "") if postal_prop else ""
         cookie_address = str(props.get(address_prop) or "") if address_prop else ""
         results.append(
             process_stage_completed_reminder(
@@ -318,6 +335,11 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 contact_name=contact["name"] or deal_name,
                 contact_email=contact["email"],
                 cookie_note=cookie_note or None,
+                cookie_street=cookie_street or None,
+                cookie_street2=cookie_street2 or None,
+                cookie_city=cookie_city or None,
+                cookie_state=cookie_state or None,
+                cookie_postal_code=cookie_postal or None,
                 cookie_address=cookie_address or None,
             )
         )

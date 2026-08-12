@@ -58,6 +58,14 @@ from .session_store import (
     refresh_session_if_needed,
     rotate_session,
 )
+from .shipping_address import (
+    INCOMPLETE_STRUCTURED_ADDRESS_MESSAGE,
+    MISSING_ADDRESS_MESSAGE,
+    apply_shipping_address,
+    empty_shipping_address_values,
+    parts_from_shipping_payload,
+    shipping_address_values,
+)
 from .stripe_payments import (
     AUTO_ORDER_GIFT_IDS,
     BILLING_MODE_MONTHLY,
@@ -194,11 +202,24 @@ class DashboardSummaryResponse(BaseModel):
     total_prospects: int
 
 
+def _strip_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 class GiftOrderCreateRequest(BaseModel):
     prospect_id: int
     gift_id: str = Field(min_length=1, max_length=64)
     recipient_name: str = Field(min_length=1, max_length=255)
-    # Required unless request_recipient_address is true (recipient fills it in later).
+    shipping_street: str | None = Field(default=None, max_length=255)
+    shipping_street2: str | None = Field(default=None, max_length=255)
+    shipping_city: str | None = Field(default=None, max_length=100)
+    shipping_state: str | None = Field(default=None, max_length=64)
+    shipping_postal_code: str | None = Field(default=None, max_length=20)
+    shipping_country: str | None = Field(default=None, max_length=64)
+    # Legacy blob. Prefer structured street/city/state/postal fields.
     shipping_address: str | None = Field(default=None, max_length=1000)
     note: str = Field(min_length=1, max_length=1000)
     # When true, authorize payment at checkout, then collect shipping via email
@@ -215,20 +236,30 @@ class GiftOrderCreateRequest(BaseModel):
             raise ValueError("must not be blank")
         return value
 
-    @field_validator("shipping_address")
+    @field_validator(
+        "shipping_street",
+        "shipping_street2",
+        "shipping_city",
+        "shipping_state",
+        "shipping_postal_code",
+        "shipping_country",
+        "shipping_address",
+    )
     @classmethod
-    def _strip_address(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
+    def _strip_address_fields(cls, value: str | None) -> str | None:
+        return _strip_optional_text(value)
 
     @model_validator(mode="after")
     def _address_or_request(self) -> "GiftOrderCreateRequest":
         if self.request_recipient_address:
             return self
+        parts = parts_from_shipping_payload(self)
+        if parts:
+            if not parts.is_complete():
+                raise ValueError(INCOMPLETE_STRUCTURED_ADDRESS_MESSAGE)
+            return self
         if not self.shipping_address:
-            raise ValueError("shipping_address is required unless requesting an address from the recipient")
+            raise ValueError(MISSING_ADDRESS_MESSAGE)
         return self
 
 
@@ -237,6 +268,12 @@ class GiftOrderResponse(BaseModel):
     prospect_id: int
     gift_id: str
     recipient_name: str
+    shipping_street: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
     shipping_address: str | None = None
     recipient_email: str | None = None
     redeem_code: str | None = None
@@ -314,23 +351,39 @@ class AddressRequestPublicResponse(BaseModel):
 
 
 class AddressSubmitRequest(BaseModel):
-    shipping_address: str = Field(min_length=1, max_length=1000)
+    shipping_street: str | None = Field(default=None, max_length=255)
+    shipping_street2: str | None = Field(default=None, max_length=255)
+    shipping_city: str | None = Field(default=None, max_length=100)
+    shipping_state: str | None = Field(default=None, max_length=64)
+    shipping_postal_code: str | None = Field(default=None, max_length=20)
+    shipping_country: str | None = Field(default=None, max_length=64)
+    shipping_address: str | None = Field(default=None, max_length=1000)
     recipient_name: str | None = Field(default=None, max_length=255)
 
-    @field_validator("shipping_address")
+    @field_validator(
+        "shipping_street",
+        "shipping_street2",
+        "shipping_city",
+        "shipping_state",
+        "shipping_postal_code",
+        "shipping_country",
+        "shipping_address",
+        "recipient_name",
+    )
     @classmethod
-    def _reject_blank_address(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank")
-        return value
+    def _strip_optional(cls, value: str | None) -> str | None:
+        return _strip_optional_text(value)
 
-    @field_validator("recipient_name")
-    @classmethod
-    def _strip_name(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
+    @model_validator(mode="after")
+    def _require_address(self) -> "AddressSubmitRequest":
+        parts = parts_from_shipping_payload(self)
+        if parts:
+            if not parts.is_complete():
+                raise ValueError(INCOMPLETE_STRUCTURED_ADDRESS_MESSAGE)
+            return self
+        if not self.shipping_address:
+            raise ValueError("shipping address is required")
+        return self
 
 
 class GiftCatalogItem(BaseModel):
@@ -438,6 +491,12 @@ class SalesforceEventRequest(BaseModel):
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
     cookie_note: str | None = Field(default=None, max_length=1000)
+    cookie_street: str | None = Field(default=None, max_length=255)
+    cookie_street2: str | None = Field(default=None, max_length=255)
+    cookie_city: str | None = Field(default=None, max_length=100)
+    cookie_state: str | None = Field(default=None, max_length=64)
+    cookie_postal_code: str | None = Field(default=None, max_length=20)
+    cookie_country: str | None = Field(default=None, max_length=64)
     cookie_address: str | None = Field(default=None, max_length=1000)
     connection_id: int | None = None
     org_id: str | None = Field(default=None, max_length=64)
@@ -451,6 +510,12 @@ class HubSpotEventRequest(BaseModel):
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
     cookie_note: str | None = Field(default=None, max_length=1000)
+    cookie_street: str | None = Field(default=None, max_length=255)
+    cookie_street2: str | None = Field(default=None, max_length=255)
+    cookie_city: str | None = Field(default=None, max_length=100)
+    cookie_state: str | None = Field(default=None, max_length=64)
+    cookie_postal_code: str | None = Field(default=None, max_length=20)
+    cookie_country: str | None = Field(default=None, max_length=64)
     cookie_address: str | None = Field(default=None, max_length=1000)
     connection_id: int | None = None
     portal_id: str | None = Field(default=None, max_length=64)
@@ -673,6 +738,12 @@ def _gift_order_response(order: GiftOrderModel) -> GiftOrderResponse:
         prospect_id=order.prospect_id,
         gift_id=order.gift_id,
         recipient_name=order.recipient_name,
+        shipping_street=order.shipping_street,
+        shipping_street2=order.shipping_street2,
+        shipping_city=order.shipping_city,
+        shipping_state=order.shipping_state,
+        shipping_postal_code=order.shipping_postal_code,
+        shipping_country=order.shipping_country,
         shipping_address=order.shipping_address,
         recipient_email=order.recipient_email,
         redeem_code=order.redeem_code,
@@ -692,6 +763,12 @@ def _admin_gift_order_response(
         prospect_id=order.prospect_id,
         gift_id=order.gift_id,
         recipient_name=order.recipient_name,
+        shipping_street=order.shipping_street,
+        shipping_street2=order.shipping_street2,
+        shipping_city=order.shipping_city,
+        shipping_state=order.shipping_state,
+        shipping_postal_code=order.shipping_postal_code,
+        shipping_country=order.shipping_country,
         shipping_address=order.shipping_address,
         recipient_email=order.recipient_email,
         redeem_code=order.redeem_code,
@@ -1504,7 +1581,7 @@ def create_gift_order(
             prospect_id=payload.prospect_id,
             gift_id=payload.gift_id.strip(),
             recipient_name=payload.recipient_name.strip(),
-            shipping_address=None,
+            **empty_shipping_address_values(),
             recipient_email=(
                 str(payload.recipient_email).strip().lower()
                 if payload.recipient_email
@@ -1544,12 +1621,16 @@ def create_gift_order(
         response = _gift_order_response(order)
         return GiftOrderCreateResponse(**response.model_dump(), checkout_url=checkout_url)
 
+    address_values = shipping_address_values(
+        parts=parts_from_shipping_payload(payload),
+        blob=payload.shipping_address,
+    )
     order = GiftOrderModel(
         owner_user_id=current_user.id,
         prospect_id=payload.prospect_id,
         gift_id=payload.gift_id.strip(),
         recipient_name=payload.recipient_name.strip(),
-        shipping_address=payload.shipping_address.strip() if payload.shipping_address else None,
+        **address_values,
         note=payload.note.strip(),
         status="pending_payment",
         payment_status="pending",
@@ -1709,7 +1790,7 @@ async def import_gift_orders_csv(
                     prospect_id=prospect.id,
                     gift_id=row.gift_id,
                     recipient_name=row.recipient_name,
-                    shipping_address=None,
+                    **empty_shipping_address_values(),
                     recipient_email=row.recipient_email,
                     note=DEFAULT_IMPORT_NOTE,
                     status="no_address",
@@ -1725,7 +1806,10 @@ async def import_gift_orders_csv(
                     prospect_id=prospect.id,
                     gift_id=row.gift_id,
                     recipient_name=row.recipient_name,
-                    shipping_address=row.shipping_address,
+                    **shipping_address_values(
+                        parts=row.address_parts,
+                        blob=row.shipping_address,
+                    ),
                     recipient_email=row.recipient_email,
                     note=DEFAULT_IMPORT_NOTE,
                     status="pending_payment",
@@ -1813,8 +1897,11 @@ def _submit_shipping_for_order(
             detail="This gift is not ready for an address yet. Please try again later.",
         )
 
-    address = payload.shipping_address.strip()
-    values: dict[str, str] = {"shipping_address": address}
+    address_values = shipping_address_values(
+        parts=parts_from_shipping_payload(payload),
+        blob=payload.shipping_address,
+    )
+    values: dict[str, str | None] = {**address_values}
     if payload.recipient_name:
         values["recipient_name"] = payload.recipient_name.strip()
 
@@ -1864,7 +1951,7 @@ def _submit_shipping_for_order(
         order = capture_authorized_order(order, db)
     except HTTPException:
         # Keep the link usable if capture fails (e.g. expired auth hold).
-        order.shipping_address = None
+        apply_shipping_address(order, empty_shipping_address_values())
         db.add(order)
         db.commit()
         raise
@@ -2243,6 +2330,12 @@ def salesforce_stage_event(
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
         cookie_note=payload.cookie_note,
+        cookie_street=payload.cookie_street,
+        cookie_street2=payload.cookie_street2,
+        cookie_city=payload.cookie_city,
+        cookie_state=payload.cookie_state,
+        cookie_postal_code=payload.cookie_postal_code,
+        cookie_country=payload.cookie_country,
         cookie_address=payload.cookie_address,
     )
 
@@ -2357,6 +2450,12 @@ def hubspot_stage_event(
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
         cookie_note=payload.cookie_note,
+        cookie_street=payload.cookie_street,
+        cookie_street2=payload.cookie_street2,
+        cookie_city=payload.cookie_city,
+        cookie_state=payload.cookie_state,
+        cookie_postal_code=payload.cookie_postal_code,
+        cookie_country=payload.cookie_country,
         cookie_address=payload.cookie_address,
     )
 

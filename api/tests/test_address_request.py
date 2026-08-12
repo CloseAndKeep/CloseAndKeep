@@ -432,6 +432,44 @@ def test_blank_shipping_address_on_public_submit_rejected(
     assert len(stripe_stub.payment_intent_capture_calls) == 0
 
 
+def test_recipient_submit_accepts_structured_address(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    import app.fulfillment as fulfillment
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    monkeypatch.setattr(sp, "send_orderer_receipt", lambda **kw: None)
+    monkeypatch.setattr(fulfillment, "send_new_order_notification", lambda **kw: None)
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+    with SessionLocal() as db:
+        token = db.get(GiftOrderModel, order["id"]).address_request_token
+    assert token
+
+    submit = auth_client.post(
+        f"/public/address-requests/{token}",
+        json={
+            "shipping_street": "456 Oak Ave",
+            "shipping_city": "Austin",
+            "shipping_state": "TX",
+            "shipping_postal_code": "78701",
+            "recipient_name": "Dana Buyer",
+        },
+    )
+    assert submit.status_code == 200, submit.text
+    refreshed = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert refreshed["shipping_street"] == "456 Oak Ave"
+    assert refreshed["shipping_city"] == "Austin"
+    assert refreshed["shipping_state"] == "TX"
+    assert refreshed["shipping_postal_code"] == "78701"
+    assert refreshed["shipping_address"] == "456 Oak Ave\nAustin, TX 78701"
+    assert refreshed["status"] == "queued"
+
+
 def test_public_redeem_by_code_submits_address(
     auth_client, prospect_id, stripe_stub, monkeypatch
 ):

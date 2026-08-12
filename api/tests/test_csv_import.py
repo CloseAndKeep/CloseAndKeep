@@ -23,7 +23,7 @@ def test_template_and_example_downloads(auth_client):
     assert template.status_code == 200
     assert "text/csv" in template.headers["content-type"]
     assert "cookie-orders-template.csv" in template.headers["content-disposition"]
-    assert template.text.startswith("Name,Email,Cookies,Address")
+    assert template.text.startswith("Name,Email,Cookies,Street,Street2,City,State,Postal Code")
     # Template is headers only (no sample data rows).
     assert template.text.strip().count("\n") == 0 or template.text.count("\n") == 1
 
@@ -31,7 +31,7 @@ def test_template_and_example_downloads(auth_client):
     assert example.status_code == 200
     assert "cookie-orders-example.csv" in example.headers["content-disposition"]
     body = example.text
-    assert "Name,Email,Cookies,Address" in body
+    assert "Name,Email,Cookies,Street,Street2,City,State,Postal Code" in body
     assert "jane@example.com" in body
     assert "bob@example.com" in body
 

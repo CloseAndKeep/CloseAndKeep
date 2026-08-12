@@ -118,6 +118,22 @@ class Settings(BaseModel):
     salesforce_cookie_note_field: str = os.getenv(
         "SALESFORCE_COOKIE_NOTE_FIELD", "Cookie_Note__c"
     ).strip()
+    salesforce_cookie_street_field: str = os.getenv(
+        "SALESFORCE_COOKIE_STREET_FIELD", "Cookie_Street__c"
+    ).strip()
+    salesforce_cookie_street2_field: str = os.getenv(
+        "SALESFORCE_COOKIE_STREET2_FIELD", "Cookie_Street2__c"
+    ).strip()
+    salesforce_cookie_city_field: str = os.getenv(
+        "SALESFORCE_COOKIE_CITY_FIELD", "Cookie_City__c"
+    ).strip()
+    salesforce_cookie_state_field: str = os.getenv(
+        "SALESFORCE_COOKIE_STATE_FIELD", "Cookie_State__c"
+    ).strip()
+    salesforce_cookie_postal_code_field: str = os.getenv(
+        "SALESFORCE_COOKIE_POSTAL_CODE_FIELD", "Cookie_Postal_Code__c"
+    ).strip()
+    # Legacy single-blob field; used when structured street/city/state/zip are blank.
     salesforce_cookie_address_field: str = os.getenv(
         "SALESFORCE_COOKIE_ADDRESS_FIELD", "Cookie_Address__c"
     ).strip()
@@ -130,6 +146,22 @@ class Settings(BaseModel):
     hubspot_cookie_note_property: str = os.getenv(
         "HUBSPOT_COOKIE_NOTE_PROPERTY", "cookie_note"
     ).strip()
+    hubspot_cookie_street_property: str = os.getenv(
+        "HUBSPOT_COOKIE_STREET_PROPERTY", "cookie_street"
+    ).strip()
+    hubspot_cookie_street2_property: str = os.getenv(
+        "HUBSPOT_COOKIE_STREET2_PROPERTY", "cookie_street2"
+    ).strip()
+    hubspot_cookie_city_property: str = os.getenv(
+        "HUBSPOT_COOKIE_CITY_PROPERTY", "cookie_city"
+    ).strip()
+    hubspot_cookie_state_property: str = os.getenv(
+        "HUBSPOT_COOKIE_STATE_PROPERTY", "cookie_state"
+    ).strip()
+    hubspot_cookie_postal_code_property: str = os.getenv(
+        "HUBSPOT_COOKIE_POSTAL_CODE_PROPERTY", "cookie_postal_code"
+    ).strip()
+    # Legacy single-blob property; used when structured street/city/state/zip are blank.
     hubspot_cookie_address_property: str = os.getenv(
         "HUBSPOT_COOKIE_ADDRESS_PROPERTY", "cookie_address"
     ).strip()

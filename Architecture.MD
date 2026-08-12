@@ -347,7 +347,7 @@ Possible categories:
 Responsibilities:
 - Create gift order requests **linked to a prospect** (required FK)
 - Charge **one-time** via Stripe Checkout (no plan usage limits in MVP)
-- Store **recipient name** and **full shipping address** (or collect later via address-request token)
+- Store **recipient name** and **shipping street, city, state, and postal code** (or collect later via address-request token)
 - Store **note to leave on the gift** (required)
 - Store selected gift (must be in `GIFT_CATALOG`)
 - Track order + payment status

@@ -570,9 +570,9 @@ export default function ProfilePage() {
                   </span>
                   <span className="mt-1 block text-sm text-stone-600">
                     When a deal hits your trigger stage, create a cookie order
-                    using Cookie Note and Cookie Address from the CRM. If address
-                    is blank, we email the recipient for shipping; otherwise the
-                    order is ready to pay.
+                    using Cookie Note and street / city / state / ZIP from the CRM.
+                    If those address fields are blank, we email the recipient for
+                    shipping; otherwise the order is ready to pay.
                   </span>
                 </span>
               </label>

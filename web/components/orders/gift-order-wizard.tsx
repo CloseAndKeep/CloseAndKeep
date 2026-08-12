@@ -8,6 +8,14 @@ import { cookiePacks, labelForGiftId } from "@/lib/gift-catalog";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import {
+  EMPTY_SHIPPING_ADDRESS,
+  formatShippingAddress,
+  isCompleteShippingAddress,
+  shippingAddressPayload,
+  ShippingAddressFields,
+  type ShippingAddressValue,
+} from "@/components/orders/shipping-address-fields";
 
 const steps = ["Prospect & cookies", "Shipping & note", "Review"];
 
@@ -36,7 +44,7 @@ export function GiftOrderWizard() {
   const [recipientName, setRecipientName] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [addressMode, setAddressMode] = useState<AddressMode>("known");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState<ShippingAddressValue>(EMPTY_SHIPPING_ADDRESS);
   const [note, setNote] = useState("");
   const [isGuest, setIsGuest] = useState(false);
   const [loadingProspects, setLoadingProspects] = useState(true);
@@ -109,7 +117,7 @@ export function GiftOrderWizard() {
         ? Boolean(
             recipientName.trim() &&
               note.trim() &&
-              (requestAddress ? true : address.trim()),
+              (requestAddress ? true : isCompleteShippingAddress(address)),
           )
         : true;
 
@@ -173,7 +181,7 @@ export function GiftOrderWizard() {
           body.recipient_email = recipientEmail.trim();
         }
       } else {
-        body.shipping_address = address.trim();
+        Object.assign(body, shippingAddressPayload(address));
       }
 
       const data = await apiFetch<{ id: number; checkout_url?: string | null }>("/gift-orders", {
@@ -379,7 +387,7 @@ export function GiftOrderWizard() {
                     <span>
                       <span className="font-medium text-espresso">I know the address</span>
                       <span className="mt-0.5 block text-xs text-stone-500">
-                        Enter the full shipping address now and pay at checkout.
+                        Enter street, city, state, and ZIP now and pay at checkout.
                       </span>
                     </span>
                   </label>
@@ -421,17 +429,11 @@ export function GiftOrderWizard() {
                 </p>
               </div>
             ) : (
-              <div>
-                <label className="block text-sm font-medium text-espresso">
-                  Full shipping address
-                </label>
-                <textarea
-                  className="mt-2 field-input min-h-[100px]"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Street, city, state, ZIP / postal code"
-                />
-              </div>
+              <ShippingAddressFields
+                idPrefix="wizard-shipping"
+                value={address}
+                onChange={setAddress}
+              />
             )}
 
             <div>
@@ -480,7 +482,7 @@ export function GiftOrderWizard() {
                   </p>
                 </>
               ) : (
-                <p className="text-stone-600 whitespace-pre-line">{address}</p>
+                <p className="text-stone-600 whitespace-pre-line">{formatShippingAddress(address)}</p>
               )}
             </div>
             <div className="rounded-xl bg-cream/80 p-4">

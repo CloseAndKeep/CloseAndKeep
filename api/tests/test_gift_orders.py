@@ -72,6 +72,38 @@ def test_order_persists_all_fields_and_prospect_fk(auth_client, prospect_id, str
     assert order["payment_status"] == "pending"
 
 
+def test_order_accepts_structured_address_fields(auth_client, prospect_id, stripe_stub):
+    payload = make_order_payload(prospect_id)
+    del payload["shipping_address"]
+    payload.update(
+        {
+            "shipping_street": "123 Main St",
+            "shipping_street2": "Apt 2",
+            "shipping_city": "Springfield",
+            "shipping_state": "IL",
+            "shipping_postal_code": "62704",
+        }
+    )
+    resp = auth_client.post("/gift-orders", json=payload)
+    assert resp.status_code == 201, resp.text
+    order = resp.json()
+    assert order["shipping_street"] == "123 Main St"
+    assert order["shipping_street2"] == "Apt 2"
+    assert order["shipping_city"] == "Springfield"
+    assert order["shipping_state"] == "IL"
+    assert order["shipping_postal_code"] == "62704"
+    assert order["shipping_address"] == "123 Main St\nApt 2\nSpringfield, IL 62704"
+
+
+def test_incomplete_structured_address_rejected(auth_client, prospect_id, stripe_stub):
+    payload = make_order_payload(prospect_id)
+    del payload["shipping_address"]
+    payload["shipping_street"] = "123 Main St"
+    payload["shipping_city"] = "Springfield"
+    resp = auth_client.post("/gift-orders", json=payload)
+    assert resp.status_code == 422
+
+
 def test_order_trims_whitespace_on_store(auth_client, prospect_id, stripe_stub):
     payload = make_order_payload(prospect_id)
     payload["recipient_name"] = "  Dana Buyer  "

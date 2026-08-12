@@ -67,7 +67,7 @@ The person or company contact the user is working. The user may send gifts to th
 A small physical item sent to the prospect, such as chocolate, cookies, coffee, or another thoughtful item.
 
 ### Gift Order
-The record of a gift request, fulfillment status, and delivery status. Each gift order must include **recipient name** and **note to leave on the gift**. **Full shipping address** is required before fulfillment; it may be entered by the seller at create time or collected later via a time-limited recipient address-request link.
+The record of a gift request, fulfillment status, and delivery status. Each gift order must include **recipient name** and **note to leave on the gift**. **Shipping street, city, state, and postal code** are required before fulfillment; they may be entered by the seller at create time or collected later via a time-limited recipient address-request link.
 
 ### Follow-Up
 A reminder or email related to checking in with the **prospect** after a gift or touchpoint.

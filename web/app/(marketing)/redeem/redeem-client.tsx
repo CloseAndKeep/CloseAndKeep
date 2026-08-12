@@ -5,6 +5,13 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { labelForGiftId } from "@/lib/gift-catalog";
+import {
+  EMPTY_SHIPPING_ADDRESS,
+  isCompleteShippingAddress,
+  shippingAddressPayload,
+  ShippingAddressFields,
+  type ShippingAddressValue,
+} from "@/components/orders/shipping-address-fields";
 
 type GiftRequest = {
   recipient_name: string;
@@ -34,7 +41,7 @@ export function RedeemClient() {
   const [declined, setDeclined] = useState(false);
 
   const [recipientName, setRecipientName] = useState("");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState<ShippingAddressValue>(EMPTY_SHIPPING_ADDRESS);
 
   const loadRequest = useCallback(async (code: string) => {
     const normalized = normalizeCode(code);
@@ -75,7 +82,7 @@ export function RedeemClient() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!activeCode || !address.trim()) return;
+    if (!activeCode || !isCompleteShippingAddress(address)) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -86,7 +93,7 @@ export function RedeemClient() {
           credentials: "omit",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            shipping_address: address.trim(),
+            ...shippingAddressPayload(address),
             recipient_name: recipientName.trim() || undefined,
           }),
           errorMessage: "Unable to save address.",
@@ -202,19 +209,14 @@ export function RedeemClient() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-espresso">Full shipping address</label>
-            <textarea
-              className="mt-2 w-full min-h-[120px] rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Street, city, state, ZIP / postal code"
-              required
-            />
-          </div>
+          <ShippingAddressFields
+            idPrefix="redeem-address"
+            value={address}
+            onChange={setAddress}
+          />
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" variant="primary" disabled={submitting || !address.trim()}>
+            <Button type="submit" variant="primary" disabled={submitting || !isCompleteShippingAddress(address)}>
               {submitting ? "Saving…" : "Submit address"}
             </Button>
             <Button

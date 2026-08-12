@@ -20,6 +20,11 @@ from ..models import (
     UserModel,
 )
 from ..order_email import send_auto_order_checkout, send_cookie_reminder
+from ..shipping_address import (
+    empty_shipping_address_values,
+    parts_from_cookie_fields,
+    shipping_address_values,
+)
 from ..stripe_payments import (
     AUTO_ORDER_GIFT_IDS,
     create_checkout_session_for_order,
@@ -132,19 +137,18 @@ def _clean_note(note: str | None) -> str:
     return cleaned[:1000]
 
 
-def _clean_address(address: str | None) -> str | None:
-    cleaned = (address or "").strip()
-    if not cleaned:
-        return None
-    return cleaned[:1000]
-
-
 def _create_auto_order(
     db: Session,
     *,
     owner: UserModel,
     prospect: ProspectModel,
     cookie_note: str | None = None,
+    cookie_street: str | None = None,
+    cookie_street2: str | None = None,
+    cookie_city: str | None = None,
+    cookie_state: str | None = None,
+    cookie_postal_code: str | None = None,
+    cookie_country: str | None = None,
     cookie_address: str | None = None,
 ) -> dict:
     """Create a gift order from a CRM stage hit, using CRM note/address when present."""
@@ -160,8 +164,18 @@ def _create_auto_order(
         pass
 
     note = _clean_note(cookie_note)
-    shipping_address = _clean_address(cookie_address)
-    has_address = bool(shipping_address)
+    address_values = shipping_address_values(
+        parts=parts_from_cookie_fields(
+            street=cookie_street,
+            street2=cookie_street2,
+            city=cookie_city,
+            state=cookie_state,
+            postal_code=cookie_postal_code,
+            country=cookie_country,
+        ),
+        blob=cookie_address,
+    )
+    has_address = bool((address_values.get("shipping_address") or "").strip())
 
     if has_address:
         order = GiftOrderModel(
@@ -169,7 +183,7 @@ def _create_auto_order(
             prospect_id=prospect.id,
             gift_id=gift_id,
             recipient_name=prospect.name,
-            shipping_address=shipping_address,
+            **address_values,
             recipient_email=recipient_email or None,
             note=note,
             status="pending_payment",
@@ -182,7 +196,7 @@ def _create_auto_order(
             prospect_id=prospect.id,
             gift_id=gift_id,
             recipient_name=prospect.name,
-            shipping_address=None,
+            **empty_shipping_address_values(),
             recipient_email=recipient_email or None,
             note=note,
             status="no_address",
@@ -260,6 +274,12 @@ def process_stage_completed_reminder(
     contact_name: str,
     contact_email: str,
     cookie_note: str | None = None,
+    cookie_street: str | None = None,
+    cookie_street2: str | None = None,
+    cookie_city: str | None = None,
+    cookie_state: str | None = None,
+    cookie_postal_code: str | None = None,
+    cookie_country: str | None = None,
     cookie_address: str | None = None,
 ) -> dict:
     """Upsert prospect, dedupe by opportunity, then auto-order or email reminder.
@@ -355,6 +375,12 @@ def process_stage_completed_reminder(
             owner=owner,
             prospect=prospect,
             cookie_note=cookie_note,
+            cookie_street=cookie_street,
+            cookie_street2=cookie_street2,
+            cookie_city=cookie_city,
+            cookie_state=cookie_state,
+            cookie_postal_code=cookie_postal_code,
+            cookie_country=cookie_country,
             cookie_address=cookie_address,
         )
         event.status = "auto_ordered" if auto_result.get("status") == "auto_ordered" else "error"

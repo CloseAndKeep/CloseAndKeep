@@ -195,6 +195,13 @@ class GiftOrderModel(Base):
     gift_id: Mapped[str] = mapped_column(String(64), nullable=False)
     recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Null while status is no_address (recipient has not submitted a ship-to yet).
+    # Structured pieces are preferred; shipping_address is the formatted display string.
+    shipping_street: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    shipping_street2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    shipping_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    shipping_state: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    shipping_postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    shipping_country: Mapped[str | None] = mapped_column(String(64), nullable=True)
     shipping_address: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     recipient_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     note: Mapped[str] = mapped_column(String(1000), nullable=False)

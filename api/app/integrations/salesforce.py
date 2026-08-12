@@ -216,13 +216,30 @@ def soql_query(connection: IntegrationConnectionModel, db: Session, query: str) 
         return resp.json()
 
 
-def _cookie_field_names() -> tuple[str | None, str | None]:
-    note = settings.salesforce_cookie_note_field or None
-    address = settings.salesforce_cookie_address_field or None
-    return note, address
+def _cookie_field_map(*, include_structured: bool, include_legacy_address: bool) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    note = settings.salesforce_cookie_note_field
+    if note:
+        mapping["note"] = note
+    if include_structured:
+        structured = {
+            "street": settings.salesforce_cookie_street_field,
+            "street2": settings.salesforce_cookie_street2_field,
+            "city": settings.salesforce_cookie_city_field,
+            "state": settings.salesforce_cookie_state_field,
+            "postal_code": settings.salesforce_cookie_postal_code_field,
+        }
+        for key, field in structured.items():
+            if field:
+                mapping[key] = field
+    if include_legacy_address:
+        address = settings.salesforce_cookie_address_field
+        if address:
+            mapping["address"] = address
+    return mapping
 
 
-def _opportunity_select_clause(*, include_cookie_fields: bool) -> str:
+def _opportunity_select_clause(field_map: dict[str, str]) -> str:
     fields = [
         "Id",
         "Name",
@@ -230,14 +247,16 @@ def _opportunity_select_clause(*, include_cookie_fields: bool) -> str:
         "ContactId",
         "Contact.Name",
         "Contact.Email",
+        *field_map.values(),
     ]
-    if include_cookie_fields:
-        note_field, address_field = _cookie_field_names()
-        if note_field:
-            fields.append(note_field)
-        if address_field:
-            fields.append(address_field)
-    return ", ".join(fields)
+    # Preserve order while dropping duplicates (note + address might theoretically collide).
+    unique: list[str] = []
+    seen: set[str] = set()
+    for field in fields:
+        if field not in seen:
+            unique.append(field)
+            seen.add(field)
+    return ", ".join(unique)
 
 
 def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> list[dict]:
@@ -254,35 +273,48 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         "ORDER BY SystemModstamp ASC "
         "LIMIT 50"
     )
-    note_field, address_field = _cookie_field_names()
-    include_cookie_fields = bool(note_field or address_field)
+    field_map = _cookie_field_map(include_structured=True, include_legacy_address=True)
+    raw = None
     try:
-        query = (
-            f"SELECT {_opportunity_select_clause(include_cookie_fields=include_cookie_fields)} "
-            f"FROM Opportunity {where}"
-        )
+        query = f"SELECT {_opportunity_select_clause(field_map)} FROM Opportunity {where}"
         raw = soql_query(connection, db, query)
     except httpx.HTTPStatusError as exc:
-        # Custom fields may not exist yet in the org — fall back to core fields.
         body = (exc.response.text or "").lower()
-        if include_cookie_fields and exc.response.status_code == 400 and "invalid" in body:
+        if field_map and exc.response.status_code == 400 and "invalid" in body:
             logger.warning(
-                "Salesforce cookie fields missing; polling without note/address connection_id=%s",
+                "Salesforce structured cookie fields missing; retrying note/legacy address connection_id=%s",
                 connection.id,
             )
-            query = (
-                f"SELECT {_opportunity_select_clause(include_cookie_fields=False)} "
-                f"FROM Opportunity {where}"
-            )
-            raw = soql_query(connection, db, query)
-            note_field, address_field = None, None
+            field_map = _cookie_field_map(include_structured=False, include_legacy_address=True)
+            try:
+                query = f"SELECT {_opportunity_select_clause(field_map)} FROM Opportunity {where}"
+                raw = soql_query(connection, db, query)
+            except httpx.HTTPStatusError as nested:
+                nested_body = (nested.response.text or "").lower()
+                if field_map and nested.response.status_code == 400 and "invalid" in nested_body:
+                    logger.warning(
+                        "Salesforce cookie fields missing; polling without note/address connection_id=%s",
+                        connection.id,
+                    )
+                    field_map = {}
+                    query = f"SELECT {_opportunity_select_clause(field_map)} FROM Opportunity {where}"
+                    raw = soql_query(connection, db, query)
+                else:
+                    raise
         else:
             raise
+    if raw is None:
+        raise RuntimeError("Salesforce poll did not return a query result.")
     results: list[dict] = []
     for record in raw.get("records") or []:
         contact = record.get("Contact") or {}
-        cookie_note = str(record.get(note_field) or "") if note_field else ""
-        cookie_address = str(record.get(address_field) or "") if address_field else ""
+
+        def field(key: str) -> str:
+            name = field_map.get(key)
+            if not name:
+                return ""
+            return str(record.get(name) or "")
+
         results.append(
             process_stage_completed_reminder(
                 db,
@@ -291,8 +323,13 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 stage_name=str(record.get("StageName") or stage),
                 contact_name=str(contact.get("Name") or record.get("Name") or ""),
                 contact_email=str(contact.get("Email") or ""),
-                cookie_note=cookie_note or None,
-                cookie_address=cookie_address or None,
+                cookie_note=field("note") or None,
+                cookie_street=field("street") or None,
+                cookie_street2=field("street2") or None,
+                cookie_city=field("city") or None,
+                cookie_state=field("state") or None,
+                cookie_postal_code=field("postal_code") or None,
+                cookie_address=field("address") or None,
             )
         )
     connection.last_polled_at = datetime.now(UTC)

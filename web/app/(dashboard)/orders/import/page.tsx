@@ -111,7 +111,7 @@ export default function ImportOrdersPage() {
     <>
       <PageHeader
         title="Import cookie orders"
-        description="Upload a CSV to create multiple cookie orders at once. Leave Address blank to email the recipient for shipping after you authorize payment."
+        description="Upload a CSV to create multiple cookie orders at once. Leave street/city/state/ZIP blank to email the recipient for shipping after you authorize payment."
         action={
           <Link
             href="/orders"
@@ -126,13 +126,13 @@ export default function ImportOrdersPage() {
         <section className="rounded-2xl border border-stone-200/90 bg-white/90 p-5 shadow-sm">
           <h2 className="text-base font-semibold text-espresso">CSV format</h2>
           <p className="mt-1 text-sm text-stone-600">
-            Include a header row. Cookies must be <strong>1</strong>, <strong>4</strong>, or{" "}
-            <strong>12</strong>. Address is optional.
+            Include a header row. Cookies must be <strong>4</strong> or{" "}
+            <strong>12</strong>. Street, city, state, and ZIP are optional together.
           </p>
           <div className="mt-3 overflow-x-auto rounded-xl border border-stone-200 bg-cream/40">
-            <pre className="px-4 py-3 text-xs text-stone-700 sm:text-sm">{`Name,Email,Cookies,Address
-Jane Smith,jane@example.com,4,"123 Main St, Springfield, IL 62704"
-Bob Jones,bob@example.com,1,`}</pre>
+            <pre className="px-4 py-3 text-xs text-stone-700 sm:text-sm">{`Name,Email,Cookies,Street,Street2,City,State,Postal Code
+Jane Smith,jane@example.com,4,123 Main St,,Springfield,IL,62704
+Bob Jones,bob@example.com,4,,,,,`}</pre>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => void downloadCsv("template")}>
