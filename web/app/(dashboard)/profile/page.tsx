@@ -18,6 +18,7 @@ type MeResponse = {
   auto_order_gift_id?: string | null;
   has_payment_method?: boolean;
   crm_connected?: boolean;
+  has_api_key?: boolean;
   monthly_balance_cents?: number;
   monthly_order_count?: number;
   max_spending_cents?: number | null;
@@ -401,11 +402,15 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {!loading && me && !me.is_guest && me.crm_connected ? (
+      {!loading && me && !me.is_guest && (me.crm_connected || me.has_api_key) ? (
         <div className="mt-6 rounded-2xl border border-stone-200/90 bg-white/90 p-8 shadow-sm">
-          <h2 className="font-display text-xl text-espresso">Monthly billing &amp; auto-order</h2>
+          <h2 className="font-display text-xl text-espresso">
+            {me.crm_connected ? "Monthly billing & auto-order" : "Monthly billing"}
+          </h2>
           <p className="mt-1 text-sm text-stone-600">
-            Available because Salesforce or HubSpot is connected.
+            {me.crm_connected
+              ? "Available because Salesforce or HubSpot is connected."
+              : "Available because you have an API key. Custom CRM orders can be billed monthly."}
           </p>
 
           <div className="mt-6 space-y-6">
@@ -542,6 +547,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
+            {me.crm_connected ? (
             <div>
               <label className="flex items-start gap-3">
                 <input
@@ -604,6 +610,7 @@ export default function ProfilePage() {
                 ))}
               </fieldset>
             </div>
+            ) : null}
 
             {billingError ? (
               <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

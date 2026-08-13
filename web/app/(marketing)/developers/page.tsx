@@ -105,7 +105,9 @@ export default function DevelopersDocsPage() {
         </p>
         <p>
           Response includes <code className="text-xs">checkout_url</code>. Open it in a browser to
-          pay. Poll <code className="text-xs">GET /gift-orders/{"{id}"}</code> for{" "}
+          pay. If Pay monthly is on in Profile, <code className="text-xs">checkout_url</code> is
+          null and the order is billed at month end. Poll{" "}
+          <code className="text-xs">GET /gift-orders/{"{id}"}</code> for{" "}
           <code className="text-xs">payment_status</code> and <code className="text-xs">status</code>.
         </p>
       </section>
@@ -113,8 +115,11 @@ export default function DevelopersDocsPage() {
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
         <h2 className="font-display text-2xl text-espresso">What this API does not do</h2>
         <ul className="list-disc space-y-2 pl-5">
-          <li>It does not accept or store credit card numbers.</li>
-          <li>It does not charge a saved card without Checkout (that would be a later option).</li>
+          <li>
+            It does not accept card numbers. Per-order payment is Stripe Checkout. Monthly billing
+            (Profile, after an API key or CRM connect) charges a saved card at month end.
+          </li>
+          <li>It does not charge a saved card on the create-order call itself.</li>
           <li>
             It does not call the bakery yet paid orders queue for fulfillment so a vendor API can
             be added without changing how partners create orders.

@@ -87,7 +87,21 @@ In the left nav, click **API keys**.
 
 If you lose it, revoke the old key and create a new one.
 
-### Step 7. Skip the Salesforce / HubSpot buttons
+Creating an API key unlocks **Monthly billing** on **Profile**. You can still pay per order if you skip the next step.
+
+### Step 7. (Optional) Pay monthly instead of per order
+
+Open **Profile**. After Step 6 you should see **Monthly billing**.
+
+1. Click **Add card** and save a card on Stripe Checkout (card numbers stay with Stripe).
+2. Check **Pay monthly**.
+3. Optionally set a **Max spending limit**.
+
+When Pay monthly is on, **Send cookies** in your CRM will **not** return a Checkout link. Orders accrue and the saved card is charged at month end. You can still **Pay now** on Profile anytime.
+
+If you leave Pay monthly off, each Send cookies click returns a Stripe Checkout URL the rep opens to pay.
+
+### Step 8. Skip the Salesforce / HubSpot buttons
 
 **Integrations** is only for Salesforce and HubSpot OAuth. Your custom CRM should **not** click **Connect Salesforce** or **Connect HubSpot**.
 
@@ -95,7 +109,7 @@ If you lose it, revoke the old key and create a new one.
 
 Your connection is the API key from Step 6.
 
-### Step 8. (Optional) Send one test gift by hand
+### Step 9. (Optional) Send one test gift by hand
 
 Before wiring the CRM, confirm the account works:
 
@@ -134,7 +148,17 @@ Keep reps in your CRM. Do **not** add a CloseAndKeep deal stage — stages are a
 
 ### Button to add
 
-Add a **Send cookies** button (or equivalent action) on the deal, next to the cookie fields. When a rep clicks it, your CRM should call CloseAndKeep. Do not fire this from a stage change.
+Add a **Send cookies** button on the deal detail page, next to the cookie fields. This is the only trigger. Do not fire from a stage change, and do not add a Demo Completed stage.
+
+The button should:
+
+1. Sit on the deal (or opportunity) record so a rep can click it without leaving the CRM.
+2. Label: **Send cookies**. If this deal already created an order, label it **Send cookies again** and confirm before creating another.
+3. On click: disable the button, show “Sending…”, then call CloseAndKeep (prospect, then gift order).
+4. After success:
+   - If the response includes `checkout_url` → show a **Pay for cookies** link that opens that URL (new tab).
+   - If `checkout_url` is null → monthly billing is on. Show success such as “Cookies queued — billed monthly on CloseAndKeep.” Do **not** treat null as an error.
+5. If contact name or email is missing, show an error and do not call the API.
 
 Also make sure the deal has a **contact name** and **contact email**. Email is required to create a prospect, and it is how we request a shipping address when street/city/state/ZIP are blank.
 
@@ -142,10 +166,12 @@ Also make sure the deal has a **contact name** and **contact email**. Email is r
 
 1. Your CRM creates (or reuses) a CloseAndKeep **prospect**.
 2. Your CRM creates a **gift order** with the note and street/city/state/ZIP (or address-request).
-3. CloseAndKeep returns a **Stripe Checkout URL**.
-4. Zack (or the rep) opens that URL and pays. Card numbers never go through your CRM or the CloseAndKeep API.
+3. If Zack pays **per order**, CloseAndKeep returns a **Stripe Checkout URL**. The CRM shows **Pay for cookies**.
+4. If Zack turned on **Pay monthly** in CloseAndKeep Profile, `checkout_url` is null. The order is queued and billed at month end. The CRM should show success, not an error.
 
-Paid orders move to `queued` for fulfillment.
+Card numbers never go through your CRM or the CloseAndKeep API.
+
+Paid (or monthly-owed) orders move toward fulfillment (`queued` after payment, or after monthly authorization).
 
 ---
 
@@ -161,7 +187,7 @@ You are updating our custom CRM so that when a rep clicks a "Send cookies" butto
 - Base URL: https://api.closeandkeep.com
 - Auth: Authorization: Bearer <API_KEY>  (key starts with cak_)
 - Content-Type: application/json
-- Do NOT send or store credit card numbers. Payment is Stripe Checkout only.
+- Do NOT send or store credit card numbers. Payment is Stripe Checkout per order, or monthly billing on the CloseAndKeep Profile (saved card). Never charge a card from the CRM.
 - Do NOT use Salesforce/HubSpot OAuth. Custom CRMs use API keys only.
 - Live docs: https://www.closeandkeep.com/developers
 - Gift ids: cookies-4 (default) or cookies-12. Confirm prices with GET https://api.closeandkeep.com/gifts (public, no auth).
@@ -175,8 +201,27 @@ On Deal/Opportunity:
 - cookie_pack (cookies-4 | cookies-12, default cookies-4)
 - cak_prospect_id (store the integer id returned by CloseAndKeep)
 
-UI: add a "Send cookies" button on the deal. Do not add a CloseAndKeep deal stage.
-Trigger: that button (or "Send cookies again"). Do not fire on stage change.
+## UI: create a Send cookies button (required)
+
+This is the main product change. Add it even if the cookie fields already exist.
+
+On the deal/opportunity detail page, next to Cookie note / address:
+
+1. Add a primary button labeled **Send cookies**.
+2. Place it on the deal record. Do not hide it behind a stage change or a workflow that fires when stage changes.
+3. Do NOT add a "Demo Completed" (or any CloseAndKeep) deal stage.
+4. Optional: cookie_pack dropdown next to the button (4 cookies / 12 cookies). Default cookies-4.
+5. On click:
+   - If contact name or contact email is missing, show an error and stop.
+   - Disable the button and show "Sending…".
+   - Call POST /prospects (or reuse cak_prospect_id), then POST /gift-orders.
+   - Re-enable the button when the request finishes.
+6. After a successful create:
+   - If checkout_url is a string: show a **Pay for cookies** button/link that opens checkout_url in a new tab.
+   - If checkout_url is null: monthly billing is enabled on the CloseAndKeep account. Show a success message: "Cookies queued — billed monthly on CloseAndKeep." Do NOT treat null checkout_url as an error.
+7. If this deal already created a CloseAndKeep order, change the label to **Send cookies again** and confirm before creating another order.
+8. Surface API error bodies (400/401/404/429) next to the button.
+
 Need contact name + contact email on the deal.
 
 ## API flow
@@ -231,15 +276,14 @@ Default note if cookie_note is blank:
 note and recipient_name must not be blank/whitespace.
 gift_id must be cookies-4 or cookies-12.
 
-### 3) Show checkout to the human
+### 3) Show checkout or monthly success
 
-The create-order response includes checkout_url.
-- Open it, or show a "Pay for cookies" button/link in the CRM.
+The create-order response includes checkout_url (string or null).
+- If checkout_url is set: show a "Pay for cookies" button/link that opens it in a new tab.
+- If checkout_url is null: monthly billing is on. Show success ("Cookies queued — billed monthly"). Do not error.
 - Do not try to charge a card via the API.
 - Optionally poll GET /gift-orders/{id} for payment_status and status.
-- After payment succeeds, status becomes queued.
-
-If checkout_url is null, surface an error (do not assume monthly billing; that is currently for Salesforce/HubSpot connections).
+- After per-order payment succeeds, status becomes queued. Monthly orders use payment_status "owed" until the month-end charge.
 
 ## Implementation notes
 
@@ -252,10 +296,10 @@ If checkout_url is null, surface an error (do not assume monthly billing; that i
 
 ## Manual test
 
-1. Open a test deal with name, email, cookie_note, and either street/city/state/ZIP or blank address fields. Click Send cookies.
+1. Open a test deal with name, email, cookie_note, and either street/city/state/ZIP or blank address fields. Confirm a **Send cookies** button is visible on the deal (not a stage change). Click it.
 2. Confirm a prospect appears at https://www.closeandkeep.com/prospects
 3. Confirm an order appears under Orders.
-4. Open checkout_url and complete Stripe Checkout (use a test card only if CloseAndKeep has given you a test mode; otherwise use a real small order they approve).
+4. If checkout_url is set, open it and complete Stripe Checkout. If checkout_url is null, confirm the CRM shows monthly-queued success (not an error).
 ````
 
 Live request examples (same as [the API page](https://www.closeandkeep.com/developers)):
@@ -270,10 +314,10 @@ Live request examples (same as [the API page](https://www.closeandkeep.com/devel
 
 1. In your CRM, open a test deal with a real contact name and email you control.
 2. Fill **Cookie note**. Leave street / city / state / ZIP blank the first time (tests the “email them for shipping” path).
-3. Click **Send cookies**.
-4. Confirm your CRM shows a **Pay for cookies** / Checkout link.
-5. In CloseAndKeep, open **Prospects** and **Orders** and confirm the records exist.
-6. Complete Stripe Checkout.
+3. Click **Send cookies** (the button on the deal — not a stage change).
+4. If you are paying per order, confirm the CRM shows a **Pay for cookies** / Checkout link and complete Stripe Checkout.
+5. If you turned on **Pay monthly**, confirm the CRM shows queued/billed-monthly success (no Checkout link).
+6. In CloseAndKeep, open **Prospects** and **Orders** and confirm the records exist.
 7. Confirm the recipient gets the address-request email (if address was blank).
 
 If the CRM call fails, check:

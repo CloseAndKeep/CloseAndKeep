@@ -96,4 +96,4 @@ Locked behaviors after medium-severity review:
 - **First OAuth connect** enables `auto_order_enabled` with default pack `cookies-4`.
 - **Auto-order:** uses CRM note (or default thank-you note); street+city+state+ZIP present → `pending_payment` (or monthly queue); blank address → existing address-request flow.
 - Webhook payloads may include optional `cookie_note` and `cookie_street` / `cookie_city` / `cookie_state` / `cookie_postal_code` (or legacy `cookie_address`).
-- Custom CRMs use API keys + `POST /gift-orders` with `note` and structured shipping fields (no OAuth adapter).
+- Custom CRMs use API keys + `POST /gift-orders` with `note` and structured shipping fields (no OAuth adapter). Creating an API key unlocks **monthly billing** on Profile (same as Salesforce/HubSpot). Auto-order-on-stage remains OAuth-only; custom CRMs use a Send cookies button.

@@ -54,7 +54,71 @@ def test_billing_prefs_require_crm(auth_client):
         json={"billing_mode": "monthly"},
     )
     assert resp.status_code == 400
-    assert "Connect Salesforce or HubSpot" in resp.json()["detail"]
+    assert "API key" in resp.json()["detail"]
+
+
+def test_billing_prefs_monthly_allowed_with_api_key(auth_client):
+    me = auth_client.get("/auth/me").json()
+    assert me["has_api_key"] is False
+    created = auth_client.post("/api-keys", json={"name": "Zack CRM"})
+    assert created.status_code == 201, created.text
+    me2 = auth_client.get("/auth/me").json()
+    assert me2["has_api_key"] is True
+    assert me2["crm_connected"] is False
+
+    resp = auth_client.patch(
+        "/auth/me/billing",
+        json={"billing_mode": "monthly"},
+    )
+    assert resp.status_code == 400
+    assert "payment method" in resp.json()["detail"].lower()
+
+    limit = auth_client.patch(
+        "/auth/me/billing",
+        json={"max_spending_cents": 5000},
+    )
+    assert limit.status_code == 200
+    assert limit.json()["max_spending_cents"] == 5000
+
+    auto = auth_client.patch(
+        "/auth/me/billing",
+        json={"auto_order_enabled": True, "auto_order_gift_id": "cookies-4"},
+    )
+    assert auto.status_code == 400
+    assert "Salesforce or HubSpot" in auto.json()["detail"]
+
+
+def test_api_key_monthly_order_skips_checkout(make_client, stripe_stub):
+    browser = make_client()
+    signup(browser, "custom-crm-monthly@example.com")
+    created = browser.post("/api-keys", json={"name": "Zack CRM"})
+    assert created.status_code == 201, created.text
+    raw_key = created.json()["api_key"]
+    me = browser.get("/auth/me").json()
+    _enable_monthly_with_pm(me["user_id"])
+
+    api = make_client()
+    headers = {"Authorization": f"Bearer {raw_key}"}
+    prospect = api.post(
+        "/prospects",
+        headers=headers,
+        json={
+            "name": "Dana Buyer",
+            "email": "dana@example.com",
+            "deal_status": "open",
+        },
+    )
+    assert prospect.status_code == 201, prospect.text
+    order = api.post(
+        "/gift-orders",
+        headers=headers,
+        json=make_order_payload(prospect.json()["id"]),
+    )
+    assert order.status_code == 201, order.text
+    body = order.json()
+    assert body["checkout_url"] is None
+    assert body["payment_status"] == "owed"
+    assert not stripe_stub.session_create_calls
 
 
 def test_billing_prefs_monthly_requires_payment_method(auth_client):
@@ -440,7 +504,7 @@ def test_spending_limit_requires_crm(auth_client):
         json={"max_spending_cents": 5000},
     )
     assert resp.status_code == 400
-    assert "Connect Salesforce or HubSpot" in resp.json()["detail"]
+    assert "API key" in resp.json()["detail"]
 
 
 def test_spending_limit_can_be_set_and_cleared(auth_client):

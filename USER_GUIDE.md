@@ -188,13 +188,13 @@ There is no OAuth “Connect” for a home-grown CRM. Use the API:
 3. In your CRM, add a **Send cookies** button plus **Cookie note** and street / city / state / ZIP fields. Do not require a deal-stage change. When the rep clicks the button, call:
    - `POST /prospects` with name + email
    - `POST /gift-orders` with `gift_id`, `recipient_name`, **`note`**, and either **`shipping_street` + `shipping_city` + `shipping_state` + `shipping_postal_code`** or `request_recipient_address: true` (and `recipient_email` so we can ask for shipping)
-4. Open the returned `checkout_url` to pay. Monthly billing on Profile is Salesforce/HubSpot-gated today.
+4. If the response has `checkout_url`, open it to pay. If `checkout_url` is null, monthly billing is on (Profile → **Pay monthly** after you create an API key).
 
 ---
 
 ## Profile
 
-Open **Profile** from the nav to manage your account, photo, password, and (if CRM is connected) monthly billing.
+Open **Profile** from the nav to manage your account, photo, password, and (if a CRM or API key is connected) monthly billing.
 
 ### Account details
 
@@ -222,9 +222,9 @@ Guests do not use this full Profile flow the same way as registered accounts.
 2. Enter your current password and a new one.
 3. New password rules: at least **12 characters**, with at least **one letter** and **one number**, and different from the current password.
 
-### Monthly billing & auto-order (CRM must be connected)
+### Monthly billing & auto-order (CRM or API key)
 
-After Salesforce or HubSpot is connected, Profile shows **Monthly billing & auto-order**:
+After Salesforce or HubSpot is connected, **or** after you create an **API key**, Profile shows billing controls:
 
 | Option | What it does |
 |--------|----------------|
@@ -232,8 +232,8 @@ After Salesforce or HubSpot is connected, Profile shows **Monthly billing & auto
 | **Add / Update card** | Save a payment method via Stripe (card is stored by Stripe, not on CloseAndKeep servers). |
 | **Open balance / Pay now** | See what’s owed for the month and pay early. |
 | **Max spending limit** | Cap open monthly balance; when hit, new monthly-billed orders are blocked and you’re emailed to pay or raise the limit. Leave blank for no limit. |
-| **Auto-order on CRM stage** | Automatically create a cookie order from CRM Cookie Note and street/city/state/ZIP when the trigger stage hits (on by default after first CRM connect). |
-| **Auto-order pack size** | Choose **4 cookies** or **12 cookies** for those auto-orders. |
+| **Auto-order on CRM stage** | Salesforce/HubSpot only. Automatically create a cookie order from CRM Cookie Note and street/city/state/ZIP when the trigger stage hits (on by default after first CRM connect). Custom CRMs use a **Send cookies** button instead. |
+| **Auto-order pack size** | Choose **4 cookies** or **12 cookies** for those auto-orders (Salesforce/HubSpot). |
 
 Turn **Pay monthly** off anytime to go back to paying per order.
 
@@ -247,4 +247,4 @@ Turn **Pay monthly** off anytime to go back to paying per order.
 4. (Optional) Import a small CSV to learn batch checkout
 5. (Optional) Custom CRM: add a **Send cookies** button plus Cookie note and street/city/state/ZIP. Salesforce/HubSpot: add the **Demo Completed** stage (or your chosen name) and make sure deals have a contact with name + email
 6. (Optional) Connect Salesforce or HubSpot → set trigger stage → try **Sync now**
-7. (Optional) On Profile: add a card, enable monthly billing and/or auto-order
+7. (Optional) On Profile: add a card and enable monthly billing (after an API key or Salesforce/HubSpot connect). Auto-order is Salesforce/HubSpot only.

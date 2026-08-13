@@ -1151,7 +1151,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
 _AVATAR_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 
 
-def _user_has_crm_connection(user_id: int, db: Session) -> bool:
+def _user_has_oauth_crm_connection(user_id: int, db: Session) -> bool:
     row = db.scalar(
         select(IntegrationConnectionModel).where(
             IntegrationConnectionModel.owner_user_id == user_id,
@@ -1162,6 +1162,22 @@ def _user_has_crm_connection(user_id: int, db: Session) -> bool:
         )
     )
     return row is not None
+
+
+def _user_has_active_api_key(user_id: int, db: Session) -> bool:
+    row = db.scalar(
+        select(ApiKeyModel.id).where(
+            ApiKeyModel.owner_user_id == user_id,
+            ApiKeyModel.revoked_at.is_(None),
+        )
+    )
+    return row is not None
+
+
+def _user_eligible_for_monthly_billing(user_id: int, db: Session) -> bool:
+    return _user_has_oauth_crm_connection(user_id, db) or _user_has_active_api_key(
+        user_id, db
+    )
 
 
 def _me_response(
@@ -1182,12 +1198,14 @@ def _me_response(
         "auto_order_gift_id": user.auto_order_gift_id,
         "has_payment_method": user_has_saved_payment_method(user),
         "crm_connected": False,
+        "has_api_key": False,
         "monthly_balance_cents": 0,
         "monthly_order_count": 0,
         "max_spending_cents": user.max_spending_cents,
     }
     if db is not None:
-        payload["crm_connected"] = _user_has_crm_connection(user.id, db)
+        payload["crm_connected"] = _user_has_oauth_crm_connection(user.id, db)
+        payload["has_api_key"] = _user_has_active_api_key(user.id, db)
         amount, _currency, count = monthly_balance_for_user(user.id, db)
         payload["monthly_balance_cents"] = amount
         payload["monthly_order_count"] = count
@@ -1214,7 +1232,8 @@ def update_billing_prefs(
             detail="Guest accounts cannot change billing preferences.",
         )
 
-    crm_connected = _user_has_crm_connection(current_user.id, db)
+    oauth_crm = _user_has_oauth_crm_connection(current_user.id, db)
+    monthly_ok = oauth_crm or _user_has_active_api_key(current_user.id, db)
     wants_monthly = (
         payload.billing_mode == BILLING_MODE_MONTHLY
         if payload.billing_mode is not None
@@ -1227,15 +1246,20 @@ def update_billing_prefs(
     )
 
     updating_limit = "max_spending_cents" in payload.model_fields_set
-    if (wants_monthly or wants_auto) and not crm_connected:
+    if wants_monthly and not monthly_ok:
         raise HTTPException(
             status_code=400,
-            detail="Connect Salesforce or HubSpot before enabling monthly billing or auto-order.",
+            detail="Connect Salesforce or HubSpot, or create an API key, before enabling monthly billing.",
         )
-    if updating_limit and not crm_connected:
+    if wants_auto and not oauth_crm:
         raise HTTPException(
             status_code=400,
-            detail="Connect Salesforce or HubSpot before setting a max spending limit.",
+            detail="Connect Salesforce or HubSpot before enabling auto-order.",
+        )
+    if updating_limit and not monthly_ok:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Salesforce or HubSpot, or create an API key, before setting a max spending limit.",
         )
 
     if payload.billing_mode is not None:
@@ -1281,10 +1305,10 @@ def setup_billing_payment_method(
             status_code=403,
             detail="Guest accounts cannot save a payment method.",
         )
-    if not _user_has_crm_connection(current_user.id, db):
+    if not _user_eligible_for_monthly_billing(current_user.id, db):
         raise HTTPException(
             status_code=400,
-            detail="Connect Salesforce or HubSpot before saving a card for monthly billing.",
+            detail="Connect Salesforce or HubSpot, or create an API key, before saving a card for monthly billing.",
         )
     setup_url = create_setup_checkout_session(current_user, db)
     return {"setup_url": setup_url}
