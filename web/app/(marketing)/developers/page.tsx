@@ -89,6 +89,7 @@ export default function DevelopersDocsPage() {
     "prospect_id": 123,
     "gift_id": "cookies-4",
     "recipient_name": "Dana Buyer",
+    "shipping_company": "Acme Corp",
     "shipping_street": "123 Main St",
     "shipping_city": "Springfield",
     "shipping_state": "IL",
@@ -97,7 +98,9 @@ export default function DevelopersDocsPage() {
   }'`}
         </pre>
         <p>
-          Send street, city, state, and ZIP as separate fields. You can still send a single
+          Send street, city, state, and ZIP as separate fields. Optional{" "}
+          <code className="text-xs">shipping_company</code> helps building / office deliveries.
+          You can still send a single
           <code className="text-xs">shipping_address</code> string if your system only has a
           combined address. Omit both and set{" "}
           <code className="text-xs">request_recipient_address: true</code> to email the recipient

@@ -213,6 +213,7 @@ class GiftOrderCreateRequest(BaseModel):
     prospect_id: int
     gift_id: str = Field(min_length=1, max_length=64)
     recipient_name: str = Field(min_length=1, max_length=255)
+    shipping_company: str | None = Field(default=None, max_length=255)
     shipping_street: str | None = Field(default=None, max_length=255)
     shipping_street2: str | None = Field(default=None, max_length=255)
     shipping_city: str | None = Field(default=None, max_length=100)
@@ -237,6 +238,7 @@ class GiftOrderCreateRequest(BaseModel):
         return value
 
     @field_validator(
+        "shipping_company",
         "shipping_street",
         "shipping_street2",
         "shipping_city",
@@ -254,7 +256,7 @@ class GiftOrderCreateRequest(BaseModel):
         if self.request_recipient_address:
             return self
         parts = parts_from_shipping_payload(self)
-        if parts:
+        if parts and parts.has_location_fields():
             if not parts.is_complete():
                 raise ValueError(INCOMPLETE_STRUCTURED_ADDRESS_MESSAGE)
             return self
@@ -268,6 +270,7 @@ class GiftOrderResponse(BaseModel):
     prospect_id: int
     gift_id: str
     recipient_name: str
+    shipping_company: str | None = None
     shipping_street: str | None = None
     shipping_street2: str | None = None
     shipping_city: str | None = None
@@ -351,6 +354,7 @@ class AddressRequestPublicResponse(BaseModel):
 
 
 class AddressSubmitRequest(BaseModel):
+    shipping_company: str | None = Field(default=None, max_length=255)
     shipping_street: str | None = Field(default=None, max_length=255)
     shipping_street2: str | None = Field(default=None, max_length=255)
     shipping_city: str | None = Field(default=None, max_length=100)
@@ -361,6 +365,7 @@ class AddressSubmitRequest(BaseModel):
     recipient_name: str | None = Field(default=None, max_length=255)
 
     @field_validator(
+        "shipping_company",
         "shipping_street",
         "shipping_street2",
         "shipping_city",
@@ -377,7 +382,7 @@ class AddressSubmitRequest(BaseModel):
     @model_validator(mode="after")
     def _require_address(self) -> "AddressSubmitRequest":
         parts = parts_from_shipping_payload(self)
-        if parts:
+        if parts and parts.has_location_fields():
             if not parts.is_complete():
                 raise ValueError(INCOMPLETE_STRUCTURED_ADDRESS_MESSAGE)
             return self
@@ -491,6 +496,7 @@ class SalesforceEventRequest(BaseModel):
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
     cookie_note: str | None = Field(default=None, max_length=1000)
+    cookie_company: str | None = Field(default=None, max_length=255)
     cookie_street: str | None = Field(default=None, max_length=255)
     cookie_street2: str | None = Field(default=None, max_length=255)
     cookie_city: str | None = Field(default=None, max_length=100)
@@ -510,6 +516,7 @@ class HubSpotEventRequest(BaseModel):
     contact_name: str = Field(min_length=1, max_length=255)
     contact_email: EmailStr
     cookie_note: str | None = Field(default=None, max_length=1000)
+    cookie_company: str | None = Field(default=None, max_length=255)
     cookie_street: str | None = Field(default=None, max_length=255)
     cookie_street2: str | None = Field(default=None, max_length=255)
     cookie_city: str | None = Field(default=None, max_length=100)
@@ -738,6 +745,7 @@ def _gift_order_response(order: GiftOrderModel) -> GiftOrderResponse:
         prospect_id=order.prospect_id,
         gift_id=order.gift_id,
         recipient_name=order.recipient_name,
+        shipping_company=order.shipping_company,
         shipping_street=order.shipping_street,
         shipping_street2=order.shipping_street2,
         shipping_city=order.shipping_city,
@@ -763,6 +771,7 @@ def _admin_gift_order_response(
         prospect_id=order.prospect_id,
         gift_id=order.gift_id,
         recipient_name=order.recipient_name,
+        shipping_company=order.shipping_company,
         shipping_street=order.shipping_street,
         shipping_street2=order.shipping_street2,
         shipping_city=order.shipping_city,
@@ -2354,6 +2363,7 @@ def salesforce_stage_event(
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
         cookie_note=payload.cookie_note,
+        cookie_company=payload.cookie_company,
         cookie_street=payload.cookie_street,
         cookie_street2=payload.cookie_street2,
         cookie_city=payload.cookie_city,
@@ -2474,6 +2484,7 @@ def hubspot_stage_event(
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email),
         cookie_note=payload.cookie_note,
+        cookie_company=payload.cookie_company,
         cookie_street=payload.cookie_street,
         cookie_street2=payload.cookie_street2,
         cookie_city=payload.cookie_city,

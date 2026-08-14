@@ -1,6 +1,7 @@
 "use client";
 
 export type ShippingAddressValue = {
+  company: string;
   street: string;
   street2: string;
   city: string;
@@ -9,6 +10,7 @@ export type ShippingAddressValue = {
 };
 
 export const EMPTY_SHIPPING_ADDRESS: ShippingAddressValue = {
+  company: "",
   street: "",
   street2: "",
   city: "",
@@ -77,7 +79,13 @@ export function isCompleteShippingAddress(value: ShippingAddressValue): boolean 
 }
 
 export function formatShippingAddress(value: ShippingAddressValue): string {
-  const lines = [value.street.trim()];
+  const lines: string[] = [];
+  if (value.company.trim()) {
+    lines.push(value.company.trim());
+  }
+  if (value.street.trim()) {
+    lines.push(value.street.trim());
+  }
   if (value.street2.trim()) {
     lines.push(value.street2.trim());
   }
@@ -91,6 +99,7 @@ export function formatShippingAddress(value: ShippingAddressValue): string {
 
 export function shippingAddressPayload(value: ShippingAddressValue) {
   return {
+    shipping_company: value.company.trim() || undefined,
     shipping_street: value.street.trim(),
     shipping_street2: value.street2.trim() || undefined,
     shipping_city: value.city.trim(),
@@ -118,6 +127,19 @@ export function ShippingAddressFields({
 
   return (
     <div className="space-y-3">
+      <div>
+        <label className="block text-sm font-medium text-espresso" htmlFor={`${idPrefix}-company`}>
+          Company <span className="font-normal text-stone-500">(optional)</span>
+        </label>
+        <input
+          id={`${idPrefix}-company`}
+          className="mt-2 field-input"
+          value={value.company}
+          onChange={(event) => patch({ company: event.target.value })}
+          placeholder="Acme Corp — needed for office / building delivery"
+          autoComplete="organization"
+        />
+      </div>
       <div>
         <label className="block text-sm font-medium text-espresso" htmlFor={`${idPrefix}-street`}>
           Street address

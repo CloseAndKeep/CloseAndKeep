@@ -6,7 +6,9 @@ from app.csv_import import parse_gift_orders_csv, template_csv, example_csv
 
 
 def test_template_and_example_helpers():
-    assert template_csv().startswith("Name,Email,Cookies,Street,Street2,City,State,Postal Code")
+    assert template_csv().startswith(
+        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code"
+    )
     example = example_csv()
     assert "jane@example.com" in example
     assert "bob@example.com" in example
@@ -29,13 +31,14 @@ def test_parse_accepts_header_aliases():
 
 def test_parse_structured_address_columns():
     csv_text = (
-        "Name,Email,Cookies,Street,Street2,City,State,Postal Code\n"
-        "Jane,jane@example.com,4,123 Main St,Apt 2,Springfield,IL,62704\n"
+        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code\n"
+        "Jane,jane@example.com,4,Acme Corp,123 Main St,Apt 2,Springfield,IL,62704\n"
     )
     rows, errors = parse_gift_orders_csv(csv_text)
     assert errors == []
-    assert rows[0].shipping_address == "123 Main St\nApt 2\nSpringfield, IL 62704"
+    assert rows[0].shipping_address == "Acme Corp\n123 Main St\nApt 2\nSpringfield, IL 62704"
     assert rows[0].address_parts is not None
+    assert rows[0].address_parts.company == "Acme Corp"
     assert rows[0].address_parts.city == "Springfield"
     assert rows[0].request_recipient_address is False
 

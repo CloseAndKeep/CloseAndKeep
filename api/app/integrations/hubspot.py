@@ -268,6 +268,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
     since_ms = int(since.timestamp() * 1000)
 
     note_prop = settings.hubspot_cookie_note_property or ""
+    company_prop = settings.hubspot_cookie_company_property or ""
     street_prop = settings.hubspot_cookie_street_property or ""
     street2_prop = settings.hubspot_cookie_street2_property or ""
     city_prop = settings.hubspot_cookie_city_property or ""
@@ -277,6 +278,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
     deal_properties = ["dealname", "dealstage"]
     for prop in (
         note_prop,
+        company_prop,
         street_prop,
         street2_prop,
         city_prop,
@@ -320,6 +322,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         contact = _contact_for_deal(connection, db, deal_id)
         deal_name = str(props.get("dealname") or "")
         cookie_note = str(props.get(note_prop) or "") if note_prop else ""
+        cookie_company = str(props.get(company_prop) or "") if company_prop else ""
         cookie_street = str(props.get(street_prop) or "") if street_prop else ""
         cookie_street2 = str(props.get(street2_prop) or "") if street2_prop else ""
         cookie_city = str(props.get(city_prop) or "") if city_prop else ""
@@ -335,6 +338,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 contact_name=contact["name"] or deal_name,
                 contact_email=contact["email"],
                 cookie_note=cookie_note or None,
+                cookie_company=cookie_company or None,
                 cookie_street=cookie_street or None,
                 cookie_street2=cookie_street2 or None,
                 cookie_city=cookie_city or None,

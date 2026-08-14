@@ -196,6 +196,7 @@ class GiftOrderModel(Base):
     recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Null while status is no_address (recipient has not submitted a ship-to yet).
     # Structured pieces are preferred; shipping_address is the formatted display string.
+    shipping_company: Mapped[str | None] = mapped_column(String(255), nullable=True)
     shipping_street: Mapped[str | None] = mapped_column(String(255), nullable=True)
     shipping_street2: Mapped[str | None] = mapped_column(String(255), nullable=True)
     shipping_city: Mapped[str | None] = mapped_column(String(100), nullable=True)

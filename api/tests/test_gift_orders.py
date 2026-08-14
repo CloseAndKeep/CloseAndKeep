@@ -77,6 +77,7 @@ def test_order_accepts_structured_address_fields(auth_client, prospect_id, strip
     del payload["shipping_address"]
     payload.update(
         {
+            "shipping_company": "Acme Corp",
             "shipping_street": "123 Main St",
             "shipping_street2": "Apt 2",
             "shipping_city": "Springfield",
@@ -87,12 +88,13 @@ def test_order_accepts_structured_address_fields(auth_client, prospect_id, strip
     resp = auth_client.post("/gift-orders", json=payload)
     assert resp.status_code == 201, resp.text
     order = resp.json()
+    assert order["shipping_company"] == "Acme Corp"
     assert order["shipping_street"] == "123 Main St"
     assert order["shipping_street2"] == "Apt 2"
     assert order["shipping_city"] == "Springfield"
     assert order["shipping_state"] == "IL"
     assert order["shipping_postal_code"] == "62704"
-    assert order["shipping_address"] == "123 Main St\nApt 2\nSpringfield, IL 62704"
+    assert order["shipping_address"] == "Acme Corp\n123 Main St\nApt 2\nSpringfield, IL 62704"
 
 
 def test_incomplete_structured_address_rejected(auth_client, prospect_id, stripe_stub):

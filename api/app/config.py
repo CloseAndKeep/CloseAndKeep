@@ -118,6 +118,9 @@ class Settings(BaseModel):
     salesforce_cookie_note_field: str = os.getenv(
         "SALESFORCE_COOKIE_NOTE_FIELD", "Cookie_Note__c"
     ).strip()
+    salesforce_cookie_company_field: str = os.getenv(
+        "SALESFORCE_COOKIE_COMPANY_FIELD", "Cookie_Company__c"
+    ).strip()
     salesforce_cookie_street_field: str = os.getenv(
         "SALESFORCE_COOKIE_STREET_FIELD", "Cookie_Street__c"
     ).strip()
@@ -145,6 +148,9 @@ class Settings(BaseModel):
     # Deal custom properties for gift note + shipping (create in HubSpot).
     hubspot_cookie_note_property: str = os.getenv(
         "HUBSPOT_COOKIE_NOTE_PROPERTY", "cookie_note"
+    ).strip()
+    hubspot_cookie_company_property: str = os.getenv(
+        "HUBSPOT_COOKIE_COMPANY_PROPERTY", "cookie_company"
     ).strip()
     hubspot_cookie_street_property: str = os.getenv(
         "HUBSPOT_COOKIE_STREET_PROPERTY", "cookie_street"

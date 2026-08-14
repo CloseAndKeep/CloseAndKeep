@@ -1,8 +1,9 @@
-"""Structured shipping address helpers (street / city / state / postal).
+"""Structured shipping address helpers (company / street / city / state / postal).
 
 Orders still store a formatted ``shipping_address`` string for email, admin
 display, and older API clients. Structured columns are the source of truth
-when the caller sends traditional address pieces.
+when the caller sends traditional address pieces. Company is optional and is
+used for office / skyscraper deliveries.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ DEFAULT_COUNTRY = "US"
 _US_COUNTRY_ALIASES = {"US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"}
 
 ADDRESS_COLUMN_NAMES = (
+    "shipping_company",
     "shipping_street",
     "shipping_street2",
     "shipping_city",
@@ -41,8 +43,9 @@ class ShippingAddressParts:
     postal_code: str
     street2: str | None = None
     country: str | None = None
+    company: str | None = None
 
-    def any_set(self) -> bool:
+    def has_location_fields(self) -> bool:
         return bool(
             self.street
             or self.street2
@@ -51,6 +54,9 @@ class ShippingAddressParts:
             or self.postal_code
             or self.country
         )
+
+    def any_set(self) -> bool:
+        return self.has_location_fields() or bool(self.company)
 
     def is_complete(self) -> bool:
         return bool(self.street and self.city and self.state and self.postal_code)
@@ -68,6 +74,7 @@ def parts_from_optional(
     state: str | None = None,
     postal_code: str | None = None,
     country: str | None = None,
+    company: str | None = None,
 ) -> ShippingAddressParts | None:
     parts = ShippingAddressParts(
         street=_clean(street),
@@ -76,6 +83,7 @@ def parts_from_optional(
         state=_clean(state),
         postal_code=_clean(postal_code),
         country=_clean(country) or None,
+        company=_clean(company) or None,
     )
     if not parts.any_set():
         return None
@@ -84,7 +92,11 @@ def parts_from_optional(
 
 def format_shipping_address(parts: ShippingAddressParts) -> str:
     """US-style multiline address for display, email, and legacy clients."""
-    lines = [parts.street.strip()]
+    lines: list[str] = []
+    if (parts.company or "").strip():
+        lines.append(parts.company.strip())
+    if parts.street.strip():
+        lines.append(parts.street.strip())
     if (parts.street2 or "").strip():
         lines.append(parts.street2.strip())
     city = parts.city.strip()
@@ -114,6 +126,7 @@ def shipping_address_values(
     Complete structured parts win. Otherwise the legacy ``shipping_address``
     blob is stored and structured columns stay empty.
     """
+    company = _clean(parts.company if parts else None) or None
     if parts and parts.is_complete():
         country = (parts.country or "").strip() or DEFAULT_COUNTRY
         complete = ShippingAddressParts(
@@ -123,9 +136,11 @@ def shipping_address_values(
             state=parts.state.strip(),
             postal_code=parts.postal_code.strip(),
             country=country,
+            company=company,
         )
         formatted = format_shipping_address(complete)[:1000]
         return {
+            "shipping_company": (complete.company[:255] if complete.company else None),
             "shipping_street": complete.street[:255],
             "shipping_street2": (complete.street2[:255] if complete.street2 else None),
             "shipping_city": complete.city[:100],
@@ -139,9 +154,13 @@ def shipping_address_values(
     if cleaned:
         values = empty_shipping_address_values()
         values["shipping_address"] = cleaned[:1000]
+        values["shipping_company"] = company[:255] if company else None
         return values
 
-    return empty_shipping_address_values()
+    values = empty_shipping_address_values()
+    if company:
+        values["shipping_company"] = company[:255]
+    return values
 
 
 def apply_shipping_address(target: Any, values: dict[str, str | None]) -> None:
@@ -151,6 +170,7 @@ def apply_shipping_address(target: Any, values: dict[str, str | None]) -> None:
 
 def parts_from_shipping_payload(payload: Any) -> ShippingAddressParts | None:
     return parts_from_optional(
+        company=getattr(payload, "shipping_company", None),
         street=getattr(payload, "shipping_street", None),
         street2=getattr(payload, "shipping_street2", None),
         city=getattr(payload, "shipping_city", None),
@@ -168,8 +188,10 @@ def parts_from_cookie_fields(
     state: str | None = None,
     postal_code: str | None = None,
     country: str | None = None,
+    company: str | None = None,
 ) -> ShippingAddressParts | None:
     return parts_from_optional(
+        company=company,
         street=street,
         street2=street2,
         city=city,

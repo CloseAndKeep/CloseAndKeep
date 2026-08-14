@@ -431,6 +431,7 @@ def test_crm_auto_order_uses_structured_cookie_address(
                 "contact_name": "Alex Buyer",
                 "contact_email": "alex@acme.com",
                 "cookie_note": "Great demo — enjoy these!",
+                "cookie_company": "Acme Corp",
                 "cookie_street": "123 Main St",
                 "cookie_city": "Springfield",
                 "cookie_state": "IL",
@@ -446,11 +447,12 @@ def test_crm_auto_order_uses_structured_cookie_address(
 
     orders = auth_client.get("/gift-orders").json()
     match = next(o for o in orders if o["id"] == body["order_id"])
+    assert match["shipping_company"] == "Acme Corp"
     assert match["shipping_street"] == "123 Main St"
     assert match["shipping_city"] == "Springfield"
     assert match["shipping_state"] == "IL"
     assert match["shipping_postal_code"] == "62704"
-    assert match["shipping_address"] == "123 Main St\nSpringfield, IL 62704"
+    assert match["shipping_address"] == "Acme Corp\n123 Main St\nSpringfield, IL 62704"
 
 
 def test_month_end_job_charges_owed(auth_client, stripe_stub, monkeypatch):

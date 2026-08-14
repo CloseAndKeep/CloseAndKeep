@@ -118,7 +118,7 @@ Before wiring the CRM, confirm the account works:
 ![Prospects page](images/08-prospects.png)
 
 2. **Orders** → **Send cookies** (or **New cookie order**).
-3. Choose **4 cookies** or **12 cookies**, add a note, and either enter street / city / state / ZIP or leave them blank so CloseAndKeep emails the recipient for it.
+3. Choose **4 cookies** or **12 cookies**, add a note, and either enter company (optional) plus street / city / state / ZIP or leave them blank so CloseAndKeep emails the recipient for it.
 4. Pay on Stripe Checkout.
 
 ![New cookie order](images/11-new-order.png)
@@ -136,6 +136,7 @@ Keep reps in your CRM. Do **not** add a CloseAndKeep deal stage — stages are a
 | Field (label in the CRM) | Suggested internal name | Type | Required? | Used for |
 |--------------------------|-------------------------|------|-----------|----------|
 | Cookie note | `cookie_note` | Long text | Strongly recommended | Personal message on the gift. If blank, use: `Thanks for meeting with us — enjoy these cookies!` |
+| Cookie company | `cookie_company` | Text | Optional | Workplace / building name for office deliveries |
 | Cookie street | `cookie_street` | Text | Optional* | Street address |
 | Cookie street 2 | `cookie_street2` | Text | Optional | Apt, suite, unit |
 | Cookie city | `cookie_city` | Text | Optional* | City |
@@ -165,7 +166,7 @@ Also make sure the deal has a **contact name** and **contact email**. Email is r
 ### What happens when they click Send cookies
 
 1. Your CRM creates (or reuses) a CloseAndKeep **prospect**.
-2. Your CRM creates a **gift order** with the note and street/city/state/ZIP (or address-request).
+2. Your CRM creates a **gift order** with the note, optional company, and street/city/state/ZIP (or address-request).
 3. If Zack pays **per order**, CloseAndKeep returns a **Stripe Checkout URL**. The CRM shows **Pay for cookies**.
 4. If Zack turned on **Pay monthly** in CloseAndKeep Profile, `checkout_url` is null. The order is queued and billed at month end. The CRM should show success, not an error.
 
@@ -196,6 +197,7 @@ You are updating our custom CRM so that when a rep clicks a "Send cookies" butto
 
 On Deal/Opportunity:
 - cookie_note (long text)
+- cookie_company (text, optional workplace / building name)
 - cookie_street, cookie_city, cookie_state, cookie_postal_code (text; optional together)
 - cookie_street2 (text, optional apt/suite)
 - cookie_pack (cookies-4 | cookies-12, default cookies-4)
@@ -251,6 +253,7 @@ If cookie_street, cookie_city, cookie_state, and cookie_postal_code are all fill
   "prospect_id": <cak_prospect_id>,
   "gift_id": "cookies-4",
   "recipient_name": "<contact full name>",
+  "shipping_company": "<cookie_company or omit>",
   "shipping_street": "<cookie_street>",
   "shipping_street2": "<cookie_street2 or omit>",
   "shipping_city": "<cookie_city>",
@@ -313,7 +316,7 @@ Live request examples (same as [the API page](https://www.closeandkeep.com/devel
 ## Part 4 — Test the connection
 
 1. In your CRM, open a test deal with a real contact name and email you control.
-2. Fill **Cookie note**. Leave street / city / state / ZIP blank the first time (tests the “email them for shipping” path).
+2. Fill **Cookie note**. Optional: fill **Cookie company** for office / building delivery. Leave street / city / state / ZIP blank the first time (tests the “email them for shipping” path).
 3. Click **Send cookies** (the button on the deal — not a stage change).
 4. If you are paying per order, confirm the CRM shows a **Pay for cookies** / Checkout link and complete Stripe Checkout.
 5. If you turned on **Pay monthly**, confirm the CRM shows queued/billed-monthly success (no Checkout link).
@@ -333,4 +336,4 @@ If the CRM call fails, check:
 ## Help
 
 - In-app API examples: [https://www.closeandkeep.com/developers](https://www.closeandkeep.com/developers)
-- Support: [https://www.closeandkeep.com/support](https://www.closeandkeep.com/support) or closeandkeep@gmail.com
+- Support: [https://www.closeandkeep.com/support](https://www.closeandkeep.com/support) or agent@closeandkeep.com

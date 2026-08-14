@@ -143,6 +143,7 @@ def _create_auto_order(
     owner: UserModel,
     prospect: ProspectModel,
     cookie_note: str | None = None,
+    cookie_company: str | None = None,
     cookie_street: str | None = None,
     cookie_street2: str | None = None,
     cookie_city: str | None = None,
@@ -166,6 +167,7 @@ def _create_auto_order(
     note = _clean_note(cookie_note)
     address_values = shipping_address_values(
         parts=parts_from_cookie_fields(
+            company=cookie_company,
             street=cookie_street,
             street2=cookie_street2,
             city=cookie_city,
@@ -274,6 +276,7 @@ def process_stage_completed_reminder(
     contact_name: str,
     contact_email: str,
     cookie_note: str | None = None,
+    cookie_company: str | None = None,
     cookie_street: str | None = None,
     cookie_street2: str | None = None,
     cookie_city: str | None = None,
@@ -375,6 +378,7 @@ def process_stage_completed_reminder(
             owner=owner,
             prospect=prospect,
             cookie_note=cookie_note,
+            cookie_company=cookie_company,
             cookie_street=cookie_street,
             cookie_street2=cookie_street2,
             cookie_city=cookie_city,

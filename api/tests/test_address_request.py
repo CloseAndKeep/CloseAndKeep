@@ -453,6 +453,7 @@ def test_recipient_submit_accepts_structured_address(
     submit = auth_client.post(
         f"/public/address-requests/{token}",
         json={
+            "shipping_company": "Acme Corp",
             "shipping_street": "456 Oak Ave",
             "shipping_city": "Austin",
             "shipping_state": "TX",
@@ -462,11 +463,12 @@ def test_recipient_submit_accepts_structured_address(
     )
     assert submit.status_code == 200, submit.text
     refreshed = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert refreshed["shipping_company"] == "Acme Corp"
     assert refreshed["shipping_street"] == "456 Oak Ave"
     assert refreshed["shipping_city"] == "Austin"
     assert refreshed["shipping_state"] == "TX"
     assert refreshed["shipping_postal_code"] == "78701"
-    assert refreshed["shipping_address"] == "456 Oak Ave\nAustin, TX 78701"
+    assert refreshed["shipping_address"] == "Acme Corp\n456 Oak Ave\nAustin, TX 78701"
     assert refreshed["status"] == "queued"
 
 

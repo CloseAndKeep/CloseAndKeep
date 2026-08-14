@@ -17,7 +17,7 @@ CloseAndKeep helps sales teams send cookie gifts after a pitch, track prospects,
 
 1. **Prospects** → add someone you’re working.
 2. **Orders** → **Send cookies** (or start from the prospect).
-3. Choose pack size (**4** or **12** cookies), add a note, enter shipping (or skip address so we email them for it).
+3. Choose pack size (**4** or **12** cookies), add a note, enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it.
 4. Pay at Stripe Checkout.
 
 Guest mode exists for a quick look, but guests can’t import CSVs or connect a CRM.
@@ -44,6 +44,7 @@ Use CSV when you want to create many cookie orders at once.
 | **Name** | Yes | Recipient name |
 | **Email** | Recommended | Needed if you leave shipping blank (we email them for shipping) |
 | **Cookies** | Yes | Pack size: **4** or **12** |
+| **Company** | Optional | Workplace / building name (helps office deliveries) |
 | **Street** | Optional* | Street address |
 | **Street2** | Optional | Apt, suite, unit |
 | **City** | Optional* | City |
@@ -55,9 +56,9 @@ Use CSV when you want to create many cookie orders at once.
 Example:
 
 ```csv
-Name,Email,Cookies,Street,Street2,City,State,Postal Code
-Jane Smith,jane@example.com,4,123 Main St,,Springfield,IL,62704
-Bob Jones,bob@example.com,12,,,,,
+Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code
+Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704
+Bob Jones,bob@example.com,12,,,,,,
 ```
 
 ### Import steps
@@ -82,11 +83,11 @@ Bob Jones,bob@example.com,12,,,,,
 
 Supported CRMs today: **Salesforce** and **HubSpot**. Custom CRMs use the **API** (see below).
 
-When a deal/opportunity hits your configured stage (default **Demo Completed**), CloseAndKeep **auto-creates a cookie order** using **Cookie Note** and the cookie street/city/state/ZIP fields from the CRM (auto-order turns on when you first connect). If auto-order is later turned off on Profile, you get a reminder email instead.
+When a deal/opportunity hits your configured stage (default **Demo Completed**), CloseAndKeep **auto-creates a cookie order** using **Cookie Note** and the cookie company/street/city/state/ZIP fields from the CRM (auto-order turns on when you first connect). If auto-order is later turned off on Profile, you get a reminder email instead.
 
 ### Connect (Salesforce / HubSpot)
 
-1. In your CRM, add the **stage** and **Cookie Note / street / city / state / ZIP** fields (tables below).
+1. In your CRM, add the **stage** and **Cookie Note / company / street / city / state / ZIP** fields (tables below).
 2. Open **Integrations** in CloseAndKeep.
 3. Click **Connect Salesforce** or **Connect HubSpot**.
 4. Approve access in the CRM OAuth screen.
@@ -113,6 +114,7 @@ Create these on the **Opportunity** (Salesforce) or **Deal** (HubSpot). Reps fil
 | Purpose | Salesforce API name | HubSpot internal name | Type |
 |---------|---------------------|-----------------------|------|
 | Personal gift message | **Cookie_Note__c** | **cookie_note** | Long text / multi-line |
+| Company (optional) | **Cookie_Company__c** | **cookie_company** | Text |
 | Street | **Cookie_Street__c** | **cookie_street** | Text |
 | Apt / suite (optional) | **Cookie_Street2__c** | **cookie_street2** | Text |
 | City | **Cookie_City__c** | **cookie_city** | Text |
@@ -123,7 +125,7 @@ Create these on the **Opportunity** (Salesforce) or **Deal** (HubSpot). Reps fil
 - If those fields are blank → we still create the order and email the recipient for shipping after you authorize/pay. A legacy **Cookie_Address__c** / **cookie_address** long-text field is still read if the split fields are empty.
 - If **Cookie Note** is blank → we use: *“Thanks for meeting with us — enjoy these cookies!”*
 
-Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`, `SALESFORCE_COOKIE_STREET_FIELD`, `SALESFORCE_COOKIE_CITY_FIELD`, `SALESFORCE_COOKIE_STATE_FIELD`, `SALESFORCE_COOKIE_POSTAL_CODE_FIELD`, and the HubSpot `HUBSPOT_COOKIE_*_PROPERTY` equivalents).
+Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`, `SALESFORCE_COOKIE_COMPANY_FIELD`, `SALESFORCE_COOKIE_STREET_FIELD`, `SALESFORCE_COOKIE_CITY_FIELD`, `SALESFORCE_COOKIE_STATE_FIELD`, `SALESFORCE_COOKIE_POSTAL_CODE_FIELD`, and the HubSpot `HUBSPOT_COOKIE_*_PROPERTY` equivalents).
 
 #### 3. Standard fields we also read
 
@@ -159,6 +161,7 @@ If your admin posts stage events to CloseAndKeep instead of relying only on **Sy
 | Contact name | `contact_name` | `contact_name` |
 | Contact email | `contact_email` | `contact_email` |
 | Gift note | `cookie_note` (optional) | `cookie_note` (optional) |
+| Company | `cookie_company` (optional) | `cookie_company` (optional) |
 | Street | `cookie_street` (optional) | `cookie_street` (optional) |
 | Apt / suite | `cookie_street2` (optional) | `cookie_street2` (optional) |
 | City | `cookie_city` (optional) | `cookie_city` (optional) |
@@ -173,7 +176,7 @@ Map these from the custom CRM fields above. Split street/city/state/ZIP is prefe
 | Option | What it does |
 |--------|----------------|
 | **Trigger stage name** | Stage that fires the cookie flow (default **Demo Completed**). Must match your CRM stage name. Click **Save stage**. |
-| **Sync now** | Manually poll recent matching opportunities/deals (reads Cookie Note and street/city/state/ZIP). |
+| **Sync now** | Manually poll recent matching opportunities/deals (reads Cookie Note and company/street/city/state/ZIP). |
 | **Disconnect** | Remove the CRM connection. |
 | Status / last poll / org or portal | Connection health info |
 
@@ -185,9 +188,9 @@ There is no OAuth “Connect” for a home-grown CRM. Use the API:
 
 1. Sign up at closeandkeep.com (not guest), verify email, then **API keys** → create a `cak_…` key (shown once).
 2. See **/developers** for examples. Full walkthrough with screenshots: `docs/custom-crm-setup.md`.
-3. In your CRM, add a **Send cookies** button plus **Cookie note** and street / city / state / ZIP fields. Do not require a deal-stage change. When the rep clicks the button, call:
+3. In your CRM, add a **Send cookies** button plus **Cookie note**, optional **company**, and street / city / state / ZIP fields. Do not require a deal-stage change. When the rep clicks the button, call:
    - `POST /prospects` with name + email
-   - `POST /gift-orders` with `gift_id`, `recipient_name`, **`note`**, and either **`shipping_street` + `shipping_city` + `shipping_state` + `shipping_postal_code`** or `request_recipient_address: true` (and `recipient_email` so we can ask for shipping)
+   - `POST /gift-orders` with `gift_id`, `recipient_name`, **`note`**, and either **`shipping_street` + `shipping_city` + `shipping_state` + `shipping_postal_code`** (optional **`shipping_company`**) or `request_recipient_address: true` (and `recipient_email` so we can ask for shipping)
 4. If the response has `checkout_url`, open it to pay. If `checkout_url` is null, monthly billing is on (Profile → **Pay monthly** after you create an API key).
 
 ---

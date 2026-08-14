@@ -387,7 +387,7 @@ export function GiftOrderWizard() {
                     <span>
                       <span className="font-medium text-espresso">I know the address</span>
                       <span className="mt-0.5 block text-xs text-stone-500">
-                        Enter street, city, state, and ZIP now and pay at checkout.
+                        Enter company (if needed), street, city, state, and ZIP now and pay at checkout.
                       </span>
                     </span>
                   </label>

@@ -216,7 +216,12 @@ def soql_query(connection: IntegrationConnectionModel, db: Session, query: str) 
         return resp.json()
 
 
-def _cookie_field_map(*, include_structured: bool, include_legacy_address: bool) -> dict[str, str]:
+def _cookie_field_map(
+    *,
+    include_structured: bool,
+    include_legacy_address: bool,
+    include_company: bool = True,
+) -> dict[str, str]:
     mapping: dict[str, str] = {}
     note = settings.salesforce_cookie_note_field
     if note:
@@ -229,6 +234,8 @@ def _cookie_field_map(*, include_structured: bool, include_legacy_address: bool)
             "state": settings.salesforce_cookie_state_field,
             "postal_code": settings.salesforce_cookie_postal_code_field,
         }
+        if include_company:
+            structured["company"] = settings.salesforce_cookie_company_field
         for key, field in structured.items():
             if field:
                 mapping[key] = field
@@ -273,35 +280,37 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
         "ORDER BY SystemModstamp ASC "
         "LIMIT 50"
     )
-    field_map = _cookie_field_map(include_structured=True, include_legacy_address=True)
+    field_attempts = (
+        _cookie_field_map(
+            include_structured=True, include_legacy_address=True, include_company=True
+        ),
+        _cookie_field_map(
+            include_structured=True, include_legacy_address=True, include_company=False
+        ),
+        _cookie_field_map(include_structured=False, include_legacy_address=True),
+        {},
+    )
+    field_map: dict[str, str] = {}
     raw = None
-    try:
-        query = f"SELECT {_opportunity_select_clause(field_map)} FROM Opportunity {where}"
-        raw = soql_query(connection, db, query)
-    except httpx.HTTPStatusError as exc:
-        body = (exc.response.text or "").lower()
-        if field_map and exc.response.status_code == 400 and "invalid" in body:
-            logger.warning(
-                "Salesforce structured cookie fields missing; retrying note/legacy address connection_id=%s",
-                connection.id,
-            )
-            field_map = _cookie_field_map(include_structured=False, include_legacy_address=True)
-            try:
-                query = f"SELECT {_opportunity_select_clause(field_map)} FROM Opportunity {where}"
-                raw = soql_query(connection, db, query)
-            except httpx.HTTPStatusError as nested:
-                nested_body = (nested.response.text or "").lower()
-                if field_map and nested.response.status_code == 400 and "invalid" in nested_body:
-                    logger.warning(
-                        "Salesforce cookie fields missing; polling without note/address connection_id=%s",
-                        connection.id,
-                    )
-                    field_map = {}
-                    query = f"SELECT {_opportunity_select_clause(field_map)} FROM Opportunity {where}"
-                    raw = soql_query(connection, db, query)
-                else:
-                    raise
-        else:
+    for attempt_index, candidate in enumerate(field_attempts):
+        field_map = candidate
+        try:
+            query = f"SELECT {_opportunity_select_clause(field_map)} FROM Opportunity {where}"
+            raw = soql_query(connection, db, query)
+            break
+        except httpx.HTTPStatusError as exc:
+            body = (exc.response.text or "").lower()
+            if (
+                field_map
+                and exc.response.status_code == 400
+                and "invalid" in body
+                and attempt_index < len(field_attempts) - 1
+            ):
+                logger.warning(
+                    "Salesforce cookie fields missing; retrying with fewer fields connection_id=%s",
+                    connection.id,
+                )
+                continue
             raise
     if raw is None:
         raise RuntimeError("Salesforce poll did not return a query result.")
@@ -324,6 +333,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 contact_name=str(contact.get("Name") or record.get("Name") or ""),
                 contact_email=str(contact.get("Email") or ""),
                 cookie_note=field("note") or None,
+                cookie_company=field("company") or None,
                 cookie_street=field("street") or None,
                 cookie_street2=field("street2") or None,
                 cookie_city=field("city") or None,

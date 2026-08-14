@@ -92,8 +92,8 @@ Locked behaviors after medium-severity review:
 
 ## CRM cookie note + address → auto-order (2026-08)
 
-- **Custom fields:** Salesforce Opportunity `Cookie_Note__c` / `Cookie_Street__c` / `Cookie_City__c` / `Cookie_State__c` / `Cookie_Postal_Code__c` (optional `Cookie_Street2__c`); HubSpot deal `cookie_note` / `cookie_street` / `cookie_city` / `cookie_state` / `cookie_postal_code` (optional `cookie_street2`). Env-overridable. Legacy `Cookie_Address__c` / `cookie_address` is still read if the split fields are blank.
+- **Custom fields:** Salesforce Opportunity `Cookie_Note__c` / `Cookie_Company__c` / `Cookie_Street__c` / `Cookie_City__c` / `Cookie_State__c` / `Cookie_Postal_Code__c` (optional `Cookie_Street2__c`); HubSpot deal `cookie_note` / `cookie_company` / `cookie_street` / `cookie_city` / `cookie_state` / `cookie_postal_code` (optional `cookie_street2`). Env-overridable. Legacy `Cookie_Address__c` / `cookie_address` is still read if the split fields are blank.
 - **First OAuth connect** enables `auto_order_enabled` with default pack `cookies-4`.
 - **Auto-order:** uses CRM note (or default thank-you note); street+city+state+ZIP present → `pending_payment` (or monthly queue); blank address → existing address-request flow.
-- Webhook payloads may include optional `cookie_note` and `cookie_street` / `cookie_city` / `cookie_state` / `cookie_postal_code` (or legacy `cookie_address`).
+- Webhook payloads may include optional `cookie_note`, `cookie_company`, and `cookie_street` / `cookie_city` / `cookie_state` / `cookie_postal_code` (or legacy `cookie_address`).
 - Custom CRMs use API keys + `POST /gift-orders` with `note` and structured shipping fields (no OAuth adapter). Creating an API key unlocks **monthly billing** on Profile (same as Salesforce/HubSpot). Auto-order-on-stage remains OAuth-only; custom CRMs use a Send cookies button.
