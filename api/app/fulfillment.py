@@ -20,7 +20,11 @@ from typing import Protocol
 from sqlalchemy.orm import Session
 
 from .models import GiftOrderModel, ProspectModel, UserModel
-from .order_email import send_new_order_notification
+from .order_email import (
+    send_new_order_notification,
+    send_seller_order_delivered,
+    send_seller_order_shipped,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,3 +94,38 @@ def dispatch_queued_fulfillment(
     except Exception:
         # Never roll back payment because fulfillment notify failed.
         logger.exception("Fulfillment provider failed for order %s", order.id)
+
+
+def notify_seller_status_change(
+    *,
+    previous_status: str,
+    new_status: str,
+    order_id: int,
+    seller_email: str,
+    recipient_name: str,
+    gift_label: str,
+    tracking_number: str | None,
+    order_url: str,
+) -> None:
+    """Email the AE when admin first marks an order shipped or delivered."""
+    try:
+        if previous_status != "shipped" and new_status == "shipped":
+            send_seller_order_shipped(
+                order_id=order_id,
+                seller_email=seller_email,
+                recipient_name=recipient_name,
+                gift_label=gift_label,
+                tracking_number=tracking_number,
+                order_url=order_url,
+            )
+        elif previous_status != "delivered" and new_status == "delivered":
+            send_seller_order_delivered(
+                order_id=order_id,
+                seller_email=seller_email,
+                recipient_name=recipient_name,
+                gift_label=gift_label,
+                tracking_number=tracking_number,
+                order_url=order_url,
+            )
+    except Exception:
+        logger.exception("Seller status email failed for order %s", order_id)

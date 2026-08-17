@@ -2,7 +2,7 @@
 
 CloseAndKeep helps sales teams send cookie gifts after a pitch, track prospects, and (optionally) trigger those gifts from Salesforce or HubSpot.
 
-> Maintainers: when you change signup, orders, CSV import, Integrations, Profile (photo, password, billing), or CRM-related settings, update this file in the same change. See `.cursor/rules/user-guide.mdc`.
+> Maintainers: when you change signup, orders, order status emails, CSV import, Integrations, Profile (photo, password, billing), or CRM-related settings, update this file in the same change. See `.cursor/rules/user-guide.mdc`.
 
 ---
 
@@ -17,8 +17,14 @@ CloseAndKeep helps sales teams send cookie gifts after a pitch, track prospects,
 
 1. **Prospects** → add someone you’re working.
 2. **Orders** → **Send cookies** (or start from the prospect).
-3. Choose pack size (**4** or **12** cookies), add a note, enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it.
+3. Choose pack size (**4** or **12** cookies), add a note, enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
 4. Pay at Stripe Checkout.
+
+**After you send a gift:**
+
+We email **you** (the person who sent the gift), not the prospect, when the order **ships** and again when it is **delivered**.
+
+If you skipped the address and the recipient never sends one, the shipping link and card hold expire after about **7 days**. We email you that the link expired and the order was canceled. Place a new order if you still want to send cookies.
 
 Guest mode exists for a quick look, but guests can’t import CSVs or connect a CRM.
 
@@ -68,7 +74,7 @@ Bob Jones,bob@example.com,12,,,,,,
 3. If validation fails, **no orders are created** — fix the listed row errors and try again.
 4. If it succeeds:
    - **Rows with an address** → one shared “pay together” Stripe checkout.
-   - **Rows without street/city/state/ZIP** → authorize payment **per order**, then we email the recipient a shipping link.
+   - **Rows without street/city/state/ZIP** → authorize payment **per order**, then we email the recipient a shipping link. If they do not reply within about **7 days**, we email you that the hold expired and that order was canceled.
 
 ### Limits & notes
 

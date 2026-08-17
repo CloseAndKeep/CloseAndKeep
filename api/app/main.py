@@ -45,6 +45,7 @@ from .models import (
     ProspectModel,
     UserModel,
 )
+from .fulfillment import notify_seller_status_change
 from .jobs.address_request_followups import send_due_address_request_followups
 from .jobs.monthly_billing import run_monthly_billing_job
 from .order_email import send_orderer_gift_declined
@@ -70,6 +71,7 @@ from .stripe_payments import (
     AUTO_ORDER_GIFT_IDS,
     BILLING_MODE_MONTHLY,
     BILLING_MODE_PER_ORDER,
+    _gift_label,
     assert_spending_limit_allows,
     cancel_payment_authorization,
     capture_authorized_order,
@@ -78,8 +80,10 @@ from .stripe_payments import (
     create_checkout_session_for_orders,
     create_setup_checkout_session,
     ensure_stripe_webhook_configured,
+    expire_address_request_hold,
     expire_authorization_for_payment_intent,
     fulfill_order_from_checkout_session,
+    notify_seller_address_hold_expired,
     list_gift_prices,
     monthly_balance_for_user,
     prepare_monthly_owed_order,
@@ -646,22 +650,9 @@ def _address_request_is_expired(order: GiftOrderModel) -> bool:
 
 
 def _expire_address_request_order(order: GiftOrderModel, db: Session) -> None:
-    _clear_address_request_token(order)
-    if order.payment_status == "authorized":
-        # Best-effort release; ignore Stripe failures so the link still dies.
-        try:
-            cancel_payment_authorization(order)
-        except HTTPException:
-            pass
-        order.payment_status = "canceled"
-        if order.status == "no_address":
-            order.status = "canceled"
-    elif order.payment_status == "owed" and order.status == "no_address":
-        # Monthly order never collected an address — drop it from the balance.
-        order.payment_status = "canceled"
-        order.status = "canceled"
-    db.add(order)
-    db.commit()
+    canceled = expire_address_request_hold(order, db)
+    if canceled:
+        notify_seller_address_hold_expired(order, db)
 
 
 def _get_order_by_address_token(token: str, db: Session) -> GiftOrderModel:
@@ -2169,6 +2160,8 @@ def admin_update_gift_order(
     if not order:
         raise HTTPException(status_code=404, detail="Gift order not found.")
 
+    previous_status = order.status
+
     if payload.status is not None:
         # Unpaid orders stay in pre-pay statuses (or can be canceled). Paid
         # orders — and monthly owed orders — move through fulfillment statuses.
@@ -2200,6 +2193,17 @@ def admin_update_gift_order(
 
     owner = db.get(UserModel, order.owner_user_id)
     prospect = db.get(ProspectModel, order.prospect_id)
+    if owner is not None:
+        notify_seller_status_change(
+            previous_status=previous_status,
+            new_status=order.status,
+            order_id=order.id,
+            seller_email=owner.email,
+            recipient_name=order.recipient_name,
+            gift_label=_gift_label(order.gift_id),
+            tracking_number=order.tracking_number,
+            order_url=_order_detail_url(order.id),
+        )
     return _admin_gift_order_response(order, owner, prospect)
 
 

@@ -156,3 +156,121 @@ def test_clearing_tracking_number_sets_null(admin_client, make_client, stripe_st
     )
     assert cleared.status_code == 200
     assert cleared.json()["tracking_number"] is None
+
+
+# --- Seller status emails (shipped / delivered) ------------------------------
+
+
+def _capture_seller_emails(monkeypatch):
+    shipped: list[dict] = []
+    delivered: list[dict] = []
+    monkeypatch.setattr(
+        "app.fulfillment.send_seller_order_shipped",
+        lambda **kw: shipped.append(kw),
+    )
+    monkeypatch.setattr(
+        "app.fulfillment.send_seller_order_delivered",
+        lambda **kw: delivered.append(kw),
+    )
+    return shipped, delivered
+
+
+def test_admin_shipped_emails_seller(admin_client, make_client, stripe_stub, monkeypatch):
+    shipped, delivered = _capture_seller_emails(monkeypatch)
+    _, order = _paid_order(make_client)
+
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "shipped", "tracking_number": "1Z999AA10123456784"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert len(shipped) == 1
+    assert delivered == []
+    mail = shipped[0]
+    assert mail["seller_email"] == "owner@example.com"
+    assert mail["order_id"] == order["id"]
+    assert mail["tracking_number"] == "1Z999AA10123456784"
+    assert mail["recipient_name"] == order["recipient_name"]
+    assert mail["gift_label"]
+    assert str(order["id"]) in mail["order_url"]
+
+
+def test_admin_delivered_emails_seller(admin_client, make_client, stripe_stub, monkeypatch):
+    shipped, delivered = _capture_seller_emails(monkeypatch)
+    _, order = _paid_order(make_client)
+
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "delivered"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert shipped == []
+    assert len(delivered) == 1
+    assert delivered[0]["seller_email"] == "owner@example.com"
+    assert delivered[0]["order_id"] == order["id"]
+
+
+def test_admin_tracking_only_does_not_resend_seller_email(
+    admin_client, make_client, stripe_stub, monkeypatch
+):
+    shipped, delivered = _capture_seller_emails(monkeypatch)
+    _, order = _paid_order(make_client)
+
+    first = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "shipped", "tracking_number": "AAA"},
+    )
+    assert first.status_code == 200, first.text
+    assert len(shipped) == 1
+
+    tracking_only = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"tracking_number": "BBB"},
+    )
+    assert tracking_only.status_code == 200, tracking_only.text
+    assert len(shipped) == 1
+
+    already_shipped = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "shipped", "tracking_number": "CCC"},
+    )
+    assert already_shipped.status_code == 200, already_shipped.text
+    assert len(shipped) == 1
+    assert delivered == []
+
+
+def test_admin_ordered_does_not_send_seller_status_emails(
+    admin_client, make_client, stripe_stub, monkeypatch
+):
+    shipped, delivered = _capture_seller_emails(monkeypatch)
+    _, order = _paid_order(make_client)
+
+    ordered = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "ordered"},
+    )
+    assert ordered.status_code == 200, ordered.text
+    canceled = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "canceled"},
+    )
+    assert canceled.status_code == 200, canceled.text
+    assert shipped == []
+    assert delivered == []
+
+
+def test_seller_status_email_failure_does_not_fail_patch(
+    admin_client, make_client, stripe_stub, monkeypatch
+):
+    def _boom(**_kw):
+        raise RuntimeError("resend down")
+
+    monkeypatch.setattr("app.fulfillment.send_seller_order_shipped", _boom)
+    _, order = _paid_order(make_client)
+
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"status": "shipped"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "shipped"

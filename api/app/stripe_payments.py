@@ -18,6 +18,7 @@ from .order_email import (
     send_monthly_charge_failed,
     send_orderer_receipt,
     send_recipient_address_request,
+    send_seller_address_hold_expired,
     send_spending_limit_reached,
 )
 
@@ -507,6 +508,64 @@ def cancel_payment_authorization(order: GiftOrderModel) -> None:
         ) from exc
 
 
+def expire_address_request_hold(order: GiftOrderModel, db: Session) -> bool:
+    """Cancel an expired deferred-address hold and clear the public links.
+
+    Approach B (no schema): returns True only when this call transitions
+    ``no_address`` + (``authorized`` | ``owed``) → ``canceled``. Later expire
+    paths see an already-canceled order and skip the seller email.
+    """
+    active_hold = (
+        order.status == "no_address"
+        and order.payment_status in {"authorized", "owed"}
+    )
+    order.address_request_token = None
+    order.address_request_expires_at = None
+    order.redeem_code = None
+    if order.payment_status == "authorized":
+        # Best-effort release; ignore Stripe failures so the link still dies.
+        try:
+            cancel_payment_authorization(order)
+        except HTTPException:
+            pass
+        order.payment_status = "canceled"
+        if order.status == "no_address":
+            order.status = "canceled"
+    elif order.payment_status == "owed" and order.status == "no_address":
+        order.payment_status = "canceled"
+        order.status = "canceled"
+    db.add(order)
+    db.commit()
+    return active_hold
+
+
+def notify_seller_address_hold_expired(order: GiftOrderModel, db: Session) -> None:
+    """Email the AE after a deferred-address hold is canceled. Never the prospect.
+
+    Email failure is logged and does not raise, so cancel stays committed.
+    """
+    owner = db.get(UserModel, order.owner_user_id)
+    seller_email = (owner.email if owner else "") or ""
+    if not seller_email.strip():
+        logger.warning(
+            "No seller email for order_id=%s; skipping hold-expiry notice.",
+            order.id,
+        )
+        return
+    try:
+        send_seller_address_hold_expired(
+            order_id=order.id,
+            seller_email=seller_email,
+            recipient_name=order.recipient_name,
+            gift_label=_gift_label(order.gift_id),
+            order_url=f"{settings.web_base_url.rstrip('/')}/orders/{order.id}",
+        )
+    except Exception:
+        logger.exception(
+            "Seller address-hold expiry email failed for order_id=%s", order.id
+        )
+
+
 def expire_authorization_for_payment_intent(
     payment_intent: dict | object,
     db: Session,
@@ -527,9 +586,14 @@ def expire_authorization_for_payment_intent(
     if not orders:
         return
 
+    to_notify: list[GiftOrderModel] = []
     for order in orders:
         if order.payment_status not in {"authorized", "pending"}:
             continue
+        # Approach B: only the no_address authorized → canceled transition emails.
+        should_notify = (
+            order.status == "no_address" and order.payment_status == "authorized"
+        )
         order.payment_status = "canceled"
         if order.status == "no_address":
             order.status = "canceled"
@@ -538,7 +602,11 @@ def expire_authorization_for_payment_intent(
         order.address_request_expires_at = None
         order.redeem_code = None
         db.add(order)
+        if should_notify:
+            to_notify.append(order)
     db.commit()
+    for order in to_notify:
+        notify_seller_address_hold_expired(order, db)
 
 
 def _expected_amount_for_orders(orders: list[GiftOrderModel]) -> tuple[int, str]:

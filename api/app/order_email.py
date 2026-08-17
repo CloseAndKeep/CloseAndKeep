@@ -784,3 +784,152 @@ def send_cookie_reminder(
         html_body=html_body,
         context=f"cookie-reminder-{crm.casefold().replace(' ', '-')}",
     )
+
+
+def _seller_view_order_html(order_url: str) -> str:
+    esc = html.escape
+    return (
+        f"<p><a href='{esc(order_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "View order</a></p>"
+    )
+
+
+def send_seller_order_shipped(
+    *,
+    order_id: int,
+    seller_email: str,
+    recipient_name: str,
+    gift_label: str,
+    tracking_number: str | None,
+    order_url: str,
+) -> None:
+    """Notify the AE that admin marked the gift shipped."""
+    to = seller_email.strip().lower()
+    if not to:
+        logger.warning("Seller email empty; skipping shipped notice.")
+        return
+
+    tracking = (tracking_number or "").strip()
+    subject = f"Cookies shipped — order #{order_id}"
+    text_parts = [
+        f"Your cookie gift for {recipient_name} ({gift_label}) has shipped.",
+        "",
+        f"Order #{order_id}",
+    ]
+    if tracking:
+        text_parts.extend(["", f"Tracking number: {tracking}"])
+    text_parts.extend(["", f"View order: {order_url}", ""])
+    text_body = "\n".join(text_parts)
+
+    esc = html.escape
+    tracking_html = (
+        f"<p><strong>Tracking number:</strong> {esc(tracking)}</p>" if tracking else ""
+    )
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>Your cookie gift for <strong>{esc(recipient_name)}</strong> "
+        f"({esc(gift_label)}) has shipped.</p>"
+        f"<p>Order <strong>#{order_id}</strong>.</p>"
+        f"{tracking_html}"
+        f"{_seller_view_order_html(order_url)}"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"seller-order-shipped order_id={order_id}",
+    )
+
+
+def send_seller_order_delivered(
+    *,
+    order_id: int,
+    seller_email: str,
+    recipient_name: str,
+    gift_label: str,
+    tracking_number: str | None,
+    order_url: str,
+) -> None:
+    """Notify the AE that admin marked the gift delivered."""
+    to = seller_email.strip().lower()
+    if not to:
+        logger.warning("Seller email empty; skipping delivered notice.")
+        return
+
+    tracking = (tracking_number or "").strip()
+    subject = f"Cookies delivered — order #{order_id}"
+    text_parts = [
+        f"Your cookie gift for {recipient_name} ({gift_label}) was delivered.",
+        "",
+        f"Order #{order_id}",
+    ]
+    if tracking:
+        text_parts.extend(["", f"Tracking number: {tracking}"])
+    text_parts.extend(["", f"View order: {order_url}", ""])
+    text_body = "\n".join(text_parts)
+
+    esc = html.escape
+    tracking_html = (
+        f"<p><strong>Tracking number:</strong> {esc(tracking)}</p>" if tracking else ""
+    )
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>Your cookie gift for <strong>{esc(recipient_name)}</strong> "
+        f"({esc(gift_label)}) was delivered.</p>"
+        f"<p>Order <strong>#{order_id}</strong>.</p>"
+        f"{tracking_html}"
+        f"{_seller_view_order_html(order_url)}"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"seller-order-delivered order_id={order_id}",
+    )
+
+
+def send_seller_address_hold_expired(
+    *,
+    order_id: int,
+    seller_email: str,
+    recipient_name: str,
+    gift_label: str,
+    order_url: str,
+) -> None:
+    """Notify the AE that the /ship/[token] address hold expired (~7 days)."""
+    to = seller_email.strip().lower()
+    if not to:
+        logger.warning("Seller email empty; skipping address-hold-expired notice.")
+        return
+
+    subject = f"Address link expired — order #{order_id}"
+    text_body = (
+        f"The shipping link and card hold for order #{order_id} have expired.\n\n"
+        f"The cookie gift for {recipient_name} ({gift_label}) was canceled because "
+        "the recipient did not share a delivery address in time.\n\n"
+        "If you still want to send cookies, you can place a new order.\n"
+        f"View order: {order_url}\n"
+    )
+    esc = html.escape
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>The shipping link and card hold for order <strong>#{order_id}</strong> have expired.</p>"
+        f"<p>The cookie gift for <strong>{esc(recipient_name)}</strong> "
+        f"({esc(gift_label)}) was canceled because the recipient did not share a "
+        "delivery address in time.</p>"
+        "<p>If you still want to send cookies, you can place a new order.</p>"
+        f"{_seller_view_order_html(order_url)}"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"seller-address-hold-expired order_id={order_id}",
+    )

@@ -1,4 +1,7 @@
-"""Send a follow-up when an address-request order still has no ship-to after N hours.
+"""Address-request follow-ups and expired-hold sweep.
+
+Sends a recipient reminder after N hours, then cancels holds past
+``address_request_expires_at`` and emails the AE (seller) once.
 
 Run via cron:
   python -m app.jobs.address_request_followups
@@ -18,7 +21,13 @@ from ..config import settings
 from ..db import SessionLocal
 from ..models import GiftOrderModel, UserModel
 from ..order_email import send_recipient_address_followup
-from ..stripe_payments import _address_form_url, _gift_label, _redeem_page_url
+from ..stripe_payments import (
+    _address_form_url,
+    _gift_label,
+    _redeem_page_url,
+    expire_address_request_hold,
+    notify_seller_address_hold_expired,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +109,49 @@ def send_due_address_request_followups(db: Session) -> dict[str, int]:
             )
             skipped += 1
 
-    return {"sent": sent, "skipped": skipped, "candidates": len(candidates)}
+    expiry = expire_due_address_request_holds(db)
+    return {"sent": sent, "skipped": skipped, "candidates": len(candidates), **expiry}
+
+
+def expire_due_address_request_holds(db: Session) -> dict[str, int]:
+    """Cancel holds past address_request_expires_at and email the AE once.
+
+    Approach B: expire_address_request_hold returns True only on the
+    no_address+(authorized|owed) → canceled transition, so a later webhook
+    or public-token hit will not send a second seller email.
+    """
+    now = datetime.now(UTC)
+    candidates = db.scalars(
+        select(GiftOrderModel).where(
+            GiftOrderModel.status == "no_address",
+            GiftOrderModel.payment_status.in_(["authorized", "owed"]),
+            GiftOrderModel.address_request_expires_at.is_not(None),
+            GiftOrderModel.address_request_expires_at <= now,
+        )
+    ).all()
+
+    expired = 0
+    expired_notified = 0
+    for order in candidates:
+        try:
+            canceled = expire_address_request_hold(order, db)
+        except Exception:
+            logger.exception(
+                "Failed to expire address-request hold for order_id=%s", order.id
+            )
+            continue
+        if not canceled:
+            continue
+        expired += 1
+        try:
+            notify_seller_address_hold_expired(order, db)
+            expired_notified += 1
+        except Exception:
+            logger.exception(
+                "Seller address-hold expiry email failed for order_id=%s", order.id
+            )
+
+    return {"expired": expired, "expired_notified": expired_notified}
 
 
 def main() -> None:

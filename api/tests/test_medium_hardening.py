@@ -144,6 +144,10 @@ def test_payment_intent_canceled_webhook_expires_authorization(
     from app.models import GiftOrderModel
 
     monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    seller_mails: list[dict] = []
+    monkeypatch.setattr(
+        sp, "send_seller_address_hold_expired", lambda **kw: seller_mails.append(dict(kw))
+    )
     order = auth_client.post(
         "/gift-orders",
         json={
@@ -193,6 +197,9 @@ def test_payment_intent_canceled_webhook_expires_authorization(
     assert refreshed["payment_status"] == "canceled"
     assert refreshed["status"] == "canceled"
     assert auth_client.get(f"/public/address-requests/{token}").status_code == 404
+    assert len(seller_mails) == 1
+    assert seller_mails[0]["order_id"] == order["id"]
+    assert seller_mails[0]["seller_email"] == "seller@example.com"
 
 
 def test_address_token_expires(auth_client, prospect_id, stripe_stub, monkeypatch):

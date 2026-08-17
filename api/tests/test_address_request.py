@@ -632,6 +632,181 @@ def test_address_request_followup_skips_expired_link(
     assert followup_mail == {}
 
 
+def test_expired_public_token_emails_seller_once(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    seller_mails: list[dict] = []
+    monkeypatch.setattr(
+        sp, "send_seller_address_hold_expired", lambda **kw: seller_mails.append(dict(kw))
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        token = row.address_request_token
+        row.address_request_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+        db.add(row)
+        db.commit()
+
+    assert auth_client.get(f"/public/address-requests/{token}").status_code == 404
+    assert len(seller_mails) == 1
+    assert seller_mails[0]["order_id"] == order["id"]
+    assert seller_mails[0]["seller_email"] == "seller@example.com"
+    assert seller_mails[0]["recipient_name"] == "Dana Buyer"
+    assert seller_mails[0]["gift_label"] == "4 cookies"
+    assert seller_mails[0]["order_url"].endswith(f"/orders/{order['id']}")
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        assert row.status == "canceled"
+        assert row.payment_status == "canceled"
+        assert row.address_request_token is None
+
+    # Hitting the dead link again must not re-send.
+    assert auth_client.get(f"/public/address-requests/{token}").status_code == 404
+    assert len(seller_mails) == 1
+
+
+def test_followups_cron_expires_hold_emails_seller_not_recipient(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    import app.jobs.address_request_followups as followups
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    followup_mail: dict = {}
+    monkeypatch.setattr(
+        followups, "send_recipient_address_followup", lambda **kw: followup_mail.update(kw)
+    )
+    seller_mails: list[dict] = []
+    monkeypatch.setattr(
+        sp, "send_seller_address_hold_expired", lambda **kw: seller_mails.append(dict(kw))
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        row.address_request_sent_at = datetime.now(UTC) - timedelta(hours=73)
+        row.address_request_expires_at = datetime.now(UTC) - timedelta(hours=1)
+        db.add(row)
+        db.commit()
+
+    result = auth_client.post("/internal/jobs/address-request-followups")
+    assert result.status_code == 200, result.text
+    body = result.json()
+    assert body["sent"] == 0
+    assert body["expired"] == 1
+    assert body["expired_notified"] == 1
+    assert followup_mail == {}
+    assert len(seller_mails) == 1
+    assert seller_mails[0]["seller_email"] == "seller@example.com"
+    assert seller_mails[0]["order_id"] == order["id"]
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        assert row.status == "canceled"
+        assert row.payment_status == "canceled"
+        assert row.address_request_token is None
+
+
+def test_seller_expiry_email_failure_keeps_order_canceled(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+
+    def _boom(**_kw):
+        raise RuntimeError("resend down")
+
+    monkeypatch.setattr(sp, "send_seller_address_hold_expired", _boom)
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        token = row.address_request_token
+        row.address_request_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+        db.add(row)
+        db.commit()
+
+    assert auth_client.get(f"/public/address-requests/{token}").status_code == 404
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        assert row.status == "canceled"
+        assert row.payment_status == "canceled"
+
+
+def test_second_expire_path_does_not_resend_seller_email(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    import stripe
+
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    seller_mails: list[dict] = []
+    monkeypatch.setattr(
+        sp, "send_seller_address_hold_expired", lambda **kw: seller_mails.append(dict(kw))
+    )
+
+    order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
+    _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        token = row.address_request_token
+        row.address_request_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+        db.add(row)
+        db.commit()
+
+    assert auth_client.get(f"/public/address-requests/{token}").status_code == 404
+    assert len(seller_mails) == 1
+
+    event = {
+        "type": "payment_intent.canceled",
+        "data": {"object": {"id": "pi_test_123", "status": "canceled"}},
+    }
+    monkeypatch.setattr(
+        stripe.Webhook,
+        "construct_event",
+        staticmethod(lambda payload, sig, secret: event),
+    )
+    assert (
+        auth_client.post(
+            "/billing/webhook",
+            content=b"{}",
+            headers={"Stripe-Signature": "t=1,v1=validsig"},
+        ).status_code
+        == 200
+    )
+    assert len(seller_mails) == 1
+
+
 def test_address_request_followup_requires_secret_in_production(client, monkeypatch):
     from app.config import settings
 
