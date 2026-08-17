@@ -1,0 +1,39 @@
+---
+description: Salesforce and HubSpot CRM integrations — OAuth, stage trigger, auto-order
+globs: api/app/integrations/**
+alwaysApply: false
+---
+
+# CRM integrations
+
+## Knowledge
+
+**Owns:** `api/app/integrations/` (Salesforce + HubSpot OAuth, webhooks, sync, reminders, token encryption). Custom CRM is API keys (`api/app/api_keys.py`), not this package.
+
+- Trigger: Opportunity/Deal stage (default **Demo Completed**) → reminder immediately → `/orders/new?prospect_id=…&from=sf_reminder|hs_reminder`.
+- Intake: `POST /integrations/{salesforce|hubspot}/events` preferred; `POST .../sync` polls as fallback.
+- Tokens encrypted at rest with `INTEGRATION_TOKEN_FERNET_KEY`. v1: one CRM org/portal per user.
+- Auto-order-on-stage is OAuth-only. Custom CRMs use API keys + Send cookies; creating an API key unlocks monthly billing on Profile.
+- Cookie fields: SF `Cookie_Note__c` / `Cookie_Company__c` / `Cookie_Street__c` / city/state/postal (optional street2). HubSpot `cookie_*` snake_case. Legacy single address still read if split fields are blank.
+- Pointers: `DECISIONS.md` CRM sections, `docs/custom-crm-setup.md`.
+
+## Preferences
+
+- Keep Salesforce and HubSpot on the same trigger pattern; do not fork business logic per CRM.
+- First OAuth connect enables `auto_order_enabled` with default pack `cookies-4`.
+- After a durable pitfall, append to Lab notes (cap 8, newest first).
+
+## Capabilities
+
+- Needs `SALESFORCE_*` / `HUBSPOT_*` client id/secret or Connect returns 503. Webhook secrets on events endpoints.
+- Do not log raw OAuth tokens. Do not store card data.
+
+## Lab notes
+
+### Successes
+- Same stage-trigger pattern for Salesforce and HubSpot kept the adapter thin.
+- Structured shipping fields replaced a single address blob for auto-order.
+
+### Failures
+- Auto-order-on-stage does not apply to custom CRM API keys; those use Send cookies.
+- Connect without client id/secret must 503, not a broken OAuth URL.

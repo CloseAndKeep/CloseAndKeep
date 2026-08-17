@@ -1,0 +1,38 @@
+---
+description: Next.js frontend operating manual — route groups, apiFetch, catalog
+globs: web/**
+alwaysApply: false
+---
+
+# Web
+
+## Knowledge
+
+**Owns:** Next.js 14 App Router in `web/` (marketing, dashboard, admin, auth pages). Backend behavior is defined in `api/`.
+
+- `(marketing)/` public site + `/ship/[token]`. `(dashboard)/` authenticated app. `(admin)/` fulfillment. Auth: `/login`, `/signup`, `/verify-email`.
+- Dashboard calls go through `lib/api.ts` (`apiFetch`, credentials). Pack ids/labels: `lib/gift-catalog.ts`; live prices from `GET /gifts`.
+- Local: `NEXT_PUBLIC_API_BASE_URL`. Production: Vercel `BACKEND_URL` enables `/__cak_api` proxy.
+- Pointers: `web/README.md`, `web/.env.example`. User-facing copy: keep `USER_GUIDE.md` in sync.
+
+## Preferences
+
+- Use `apiFetch`; do not ad-hoc `fetch` for authenticated API calls.
+- Do not hardcode pack prices in the UI.
+- Typography: DM Sans + Fraunces; warm cream / wood palette.
+- After a durable pitfall, append to Lab notes (cap 8, newest first).
+
+## Capabilities
+
+- From `web/`: `npm install`, `npm run dev` (http://localhost:3000). Needs the API on :8000 for dashboard work.
+- Browser automation is fine for clicking through the app. Do not commit `.env.local`.
+
+## Lab notes
+
+### Successes
+- Shared `apiFetch` kept credentials and error handling consistent.
+- Catalog labels on the web, prices from the API, so Stripe is source of truth for money.
+
+### Failures
+- Hardcoding pack prices in the UI drifted from Stripe.
+- Follow-ups page is a UI scaffold; do not document it as a live reminder job.

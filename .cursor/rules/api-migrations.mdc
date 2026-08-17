@@ -1,0 +1,35 @@
+---
+description: Alembic migrations — add revisions, never edit applied ones
+globs: api/alembic/**
+alwaysApply: false
+---
+
+# Alembic
+
+## Knowledge
+
+**Owns:** `api/alembic/` schema migrations. Models live in `api/app/models.py`; new tables/columns need both a model change and a revision.
+
+- Numbered files in `alembic/versions/` (through `0022_shipping_company` as of this note).
+- Run from `api/`: `python -m alembic upgrade head`. New file: `python -m alembic revision --autogenerate -m "..."`.
+- Pointers: `api/alembic/env.py`. `DECISIONS.md` schema bullets lag; `alembic/versions/` is source of truth.
+
+## Preferences
+
+- **Never edit a revision that may already be applied** in Neon/production. Add a new file.
+- Keep `down_revision` chained. Match existing naming `NNNN_short_slug.py`.
+- After a durable pitfall, append to Lab notes (cap 8, newest first).
+
+## Capabilities
+
+- `python -m alembic current` / `upgrade head` / `revision --autogenerate`. Needs `DATABASE_URL`.
+- Tests often create schema from models, not by replaying every migration.
+
+## Lab notes
+
+### Successes
+- Dropping unused subscription columns (`0007`) matched the locked one-time billing model.
+
+### Failures
+- Editing an already-applied revision desyncs Neon. Always add the next number.
+- `DECISIONS.md` schema bullets lag the versions folder; trust `alembic/versions/`.

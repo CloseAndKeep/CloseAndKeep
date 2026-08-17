@@ -1,0 +1,37 @@
+---
+description: Pytest suite — isolated DB, Stripe stub, no live network payments
+globs: api/tests/**
+alwaysApply: false
+---
+
+# API tests
+
+## Knowledge
+
+**Owns:** `api/tests/` pytest suite. `conftest.py` sets throwaway SQLite and stubs Stripe before `app.*` is imported.
+
+- Run from `api/`: `pip install -r requirements-dev.txt` then `python -m pytest tests/ -q`.
+- Stripe SDK is stubbed (`stripe_stub`). Resend key left empty so email is a no-op.
+- Master catalog of gates: `Test.MD` (do not duplicate it here).
+- Pointers: `api/tests/conftest.py`, `api/README.md`.
+
+## Preferences
+
+- Add fixtures in `conftest.py` rather than calling live Stripe/Resend.
+- Keep tests independent of the developer Neon database.
+- After a durable pitfall, append to Lab notes (cap 8, newest first).
+
+## Capabilities
+
+- Isolated SQLite per session; schema via `Base.metadata.create_all`. Dummy `sk_test_dummy` / `whsec_test_dummy` never leave the process.
+- **Forbidden:** live Stripe, live Resend, writing to the shared Neon URL.
+
+## Lab notes
+
+### Successes
+- Stubbing Stripe in conftest let payment paths run without network or charges.
+- Session-scoped throwaway SQLite kept tests off the dev database.
+
+### Failures
+- Importing `app.*` before conftest env setup hits the real `DATABASE_URL`.
+- Hitting live Stripe from tests is a hard fail; use the stub.

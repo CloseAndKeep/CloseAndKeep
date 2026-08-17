@@ -1,0 +1,41 @@
+---
+description: FastAPI backend operating manual — auth, orders, Stripe, env knobs
+globs: api/**
+alwaysApply: false
+---
+
+# API
+
+## Knowledge
+
+**Owns:** FastAPI app in `api/app/` (auth, prospects, gift orders, CSV import, address-request, admin fulfillment, API keys, billing webhook). CRM adapters and Alembic have their own rules.
+
+- Gift ids: `app/config.py` `GIFT_CATALOG`. Routes: `app/main.py`. Payments: `app/stripe_payments.py`.
+- Sessions are DB-backed (`sessions` table), HttpOnly cookie. `ADMIN_EMAILS` plus `*@closeandkeep.com` → admin.
+- Billing: one-time Checkout (`mode: payment`). Deferred address: authorize/hold → `/public/address-requests/{token}` → capture → `queued`.
+- Reject Checkout `amount_total` **above** catalog sum (below catalog allowed). Admin cancel of `requires_capture` fails closed (502, local state unchanged).
+- Pointers: `api/README.md`, `api/.env.example`, `DECISIONS.md`.
+
+## Preferences
+
+- Change schema with a new Alembic revision; do not edit applied migrations.
+- Keep catalog ids in `GIFT_CATALOG`; web labels live in `web/lib/gift-catalog.ts`.
+- Rate limits: in-process is fine for one worker; set `REDIS_URL` for multi-worker.
+- After a durable pitfall, append to Lab notes (cap 8, newest first).
+
+## Capabilities
+
+- From `api/`: `python -m uvicorn app.main:app --reload --port 8000`; `python -m alembic upgrade head`; `python -m pytest tests/ -q`.
+- Stripe CLI: `tools/stripe-cli/`. Stripe skills under `api/.agents/skills/` when changing payments.
+- Tests stub Stripe and use throwaway SQLite. Never hit live Stripe/Resend from pytest. Never commit `.env`. Never store PAN.
+
+## Lab notes
+
+### Successes
+- Amount check vs catalog before paid/capture stopped local state diverging from Stripe.
+- Fail-closed admin cancel avoided marking canceled when Stripe still held funds.
+- Duplicate signup returns generic 400 (no email enumeration).
+
+### Failures
+- Subscriptions are not in MVP; do not reintroduce `subscription_status` or a billing portal.
+- In-process rate limits do not share across workers without `REDIS_URL`.
