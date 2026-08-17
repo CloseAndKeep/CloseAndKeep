@@ -2,7 +2,7 @@
 
 # CloseAndKeep - Technical decisions
 
-Last updated: 2026-07-21
+Last updated: 2026-08-17
 
 ## Architecture direction
 
@@ -44,6 +44,7 @@ Locked behaviors after medium-severity review:
 |------|----------|
 | CSV import | Cap upload size (`CSV_IMPORT_MAX_BYTES`, default 256 KiB) and data rows (`CSV_IMPORT_MAX_ROWS`, default 100). |
 | Fulfill amounts | Before marking paid / capturing, reject Checkout `amount_total` that **exceeds** the sum of catalog Stripe prices for linked orders (amounts below catalog are allowed for promos). Over-amount → do not advance payment state (webhook still returns 200 so Stripe does not retry forever). |
+| Promo / test codes | Checkout already has `allow_promotion_codes`. Create the 1¢ test promotion code `TEST1C` in the Stripe Dashboard **test mode only** (coupon is fixed **Discount amount** = catalog price − 1¢; Stripe has no “set charge to $0.01” field). No app env var. Keep live/customer coupons as a **separate** coupon + code; never reuse `TEST1C` in live mode. Runbook: `api/README.md` Payments behavior. |
 | Admin cancel | Fail closed: if Stripe cannot cancel an open `requires_capture` PaymentIntent, return 502 and leave local `payment_status` / status unchanged. |
 | Auth expiry | Handle `payment_intent.canceled` (and equivalent terminal cancels): mark order payment/status canceled and clear address-request tokens. |
 | Rate limits | Prefer shared store via `REDIS_URL` when scaling workers/instances; in-process limiter is fine for single-worker Render. |

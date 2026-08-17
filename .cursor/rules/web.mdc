@@ -34,5 +34,6 @@ alwaysApply: false
 - Catalog labels on the web, prices from the API, so Stripe is source of truth for money.
 
 ### Failures
+- Promo-code hints belong next to Stripe pay CTAs only — never beside recipient redeem-code copy (address collection, not a discount).
 - Hardcoding pack prices in the UI drifted from Stripe.
 - Follow-ups page is a UI scaffold; do not document it as a live reminder job.

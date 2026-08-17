@@ -32,11 +32,11 @@ The AE is not emailed when admin marks shipped/delivered, or when the `/ship/[to
 
 ## Liked, later (not this build)
 
-**D — Discount / 1¢ test code**
+**D — Discount / 1¢ test code** — App/docs/tests done; Dashboard remaining (`TEST1C` amount-off = catalog − 1¢, test mode).
 
-Checkout already accepts Stripe promotion codes. A `TEST1C` (or similar) code that makes the charge **$0.01** can be created in the **Stripe Dashboard** (Stripe usually will not charge $0). Restrict it to test mode / your email if possible. Keep a real customer coupon separate so the 1¢ code cannot leak into production volume.
+Checkout already accepts Stripe promotion codes. A `TEST1C` (or similar) code that leaves **$0.01** on the charge is created in the **Stripe Dashboard** as a fixed amount-off (catalog − 1¢; Stripe has no “set charge to $0.01” type). Restrict it to test mode / a specific customer if possible. Keep a real customer coupon separate so the 1¢ code cannot leak into production volume.
 
-App UI (“Have a code?”) only if the Stripe Checkout box is not enough.
+App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to pay CTAs only — no in-app code field.
 
 ## Still in play (later)
 
@@ -68,5 +68,5 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 ## Owner calls
 
 - Next: **#1 seller status emails**
-- Like: discount / 1¢ test code (Dashboard first)
+- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
 - Do not like: 2, 9, 13, 16, 17, 18, 20

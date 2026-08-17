@@ -105,6 +105,23 @@ See `.env.example` for the full list. Important knobs:
 - Deferred address: authorize hold → recipient link → capture → `queued`.
 - Admin cancel of an authorized order **fails closed** if Stripe cancel fails (local state unchanged, HTTP 502).
 - `payment_intent.canceled` marks the order canceled and clears address tokens.
+- Checkout already sets `allow_promotion_codes: True`. The app does **not** store a coupon code or env var; the seller types it in Stripe Checkout’s promo box.
+
+### Test promotion code `TEST1C` (Dashboard, test mode only)
+
+Stripe coupons are **amount off** or **percentage off**. There is no Dashboard field that sets the charge to $0.01. Percentage-off is wrong here because the 4- and 12-cookie packs have different prices and will not land on 1¢. Use a fixed **Discount amount** of `catalog_price − $0.01` (look up the live Price under **Product catalog** / **Products**). Stripe usually will not charge $0, so do not set amount-off ≥ the pack price.
+
+One amount-off coupon cannot leave 1¢ on both packs. Prefer **Apply to specific products** = the 4-cookie product, and test with a 4-cookie order. Create a second test coupon if you also need 1¢ on the 12-pack.
+
+1. In the Stripe Dashboard, turn on **Test mode** (toggle). Never create `TEST1C` in live mode.
+2. Open **Product catalog → Coupons** (same page as **Products → Coupons**).
+3. Click **+ New** / **Create a coupon**.
+4. **Type:** Discount amount (fixed). **Discount amount:** pack price minus $0.01 (USD). **Duration:** once. Optionally limit with **Apply to specific products**.
+5. Enable **Use customer-facing promotion codes** and set the **Code** to `TEST1C`.
+6. Restrict if the Dashboard offers it: **Limit to a specific customer** (pick your existing Stripe Customer — there is no free-text email field), **Eligible for first-time order only**, and a low redemption limit.
+7. Create any **live / customer** coupon as a **separate** coupon + promotion code. Never reuse `TEST1C` in live mode.
+
+Webhooks already accept totals below catalog. See `DECISIONS.md` (promo / test codes row).
 
 ## Notes
 

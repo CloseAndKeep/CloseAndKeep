@@ -164,6 +164,9 @@ export default function OrderDetailPage() {
             Complete Stripe checkout to authorize payment. We will email the recipient for their
             address afterward you are charged only when they submit it.
           </p>
+          <p className="mt-2 text-xs text-stone-500">
+            Have a code? Enter it on the Stripe checkout page.
+          </p>
           <Button
             type="button"
             variant="primary"
@@ -217,6 +220,9 @@ export default function OrderDetailPage() {
           <h2 className="font-medium text-espresso">Payment required</h2>
           <p className="mt-2 text-sm text-stone-600">
             This order is saved but not queued until you pay once via Stripe.
+          </p>
+          <p className="mt-2 text-xs text-stone-500">
+            Have a code? Enter it on the Stripe checkout page.
           </p>
           <Button
             type="button"

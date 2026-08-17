@@ -147,6 +147,7 @@ Confirm signup/login, one-time Checkout, **prospect → gift** flows (including 
 - [x] (I) Checkout session created with correct price id for gift pack
 - [x] (I) Successful checkout webhook / fulfill marks order paid (or authorized when deferring address)
 - [x] (I) Amount above catalog price is rejected (order stays unpaid / not advanced)
+- [x] (I) Below-catalog / promo amounts (including 1¢) are accepted (order advances to paid/queued or authorized)
 - [ ] (E) User completes test checkout in browser
 
 ### 3.2 Webhooks

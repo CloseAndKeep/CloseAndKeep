@@ -85,6 +85,132 @@ def test_webhook_rejects_amount_above_catalog(
     assert fetched["payment_status"] == "pending"
 
 
+def test_webhook_accepts_amount_below_catalog(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    """Promo / 1¢ Checkout totals below catalog must still fulfill."""
+    order = auth_client.post(
+        "/gift-orders",
+        json={
+            "prospect_id": prospect_id,
+            "gift_id": "cookies-4",
+            "recipient_name": "Dana Buyer",
+            "shipping_address": "123 Main St",
+            "note": "Thanks!",
+        },
+    ).json()
+
+    event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_created",
+                "mode": "payment",
+                "metadata": {"gift_order_id": str(order["id"])},
+                "payment_status": "paid",
+                "amount_total": 1,
+                "currency": "usd",
+            }
+        },
+    }
+    monkeypatch.setattr(
+        stripe.Webhook,
+        "construct_event",
+        staticmethod(lambda payload, sig, secret: event),
+    )
+    resp = auth_client.post(
+        "/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "t=1,v1=validsig"},
+    )
+    assert resp.status_code == 200
+    fetched = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert fetched["payment_status"] == "paid"
+    assert fetched["status"] == "queued"
+
+
+def test_deferred_authorize_accepts_amount_below_catalog(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    """Promo / 1¢ authorize totals below catalog must still authorize."""
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+
+    order = auth_client.post(
+        "/gift-orders",
+        json={
+            "prospect_id": prospect_id,
+            "gift_id": "cookies-4",
+            "recipient_name": "Dana Buyer",
+            "note": "Thanks!",
+            "request_recipient_address": True,
+            "recipient_email": "dana@example.com",
+        },
+    ).json()
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        session = {
+            "id": row.stripe_checkout_session_id or "cs_test_created",
+            "mode": "payment",
+            "status": "complete",
+            "payment_status": "unpaid",
+            "payment_intent": "pi_test_123",
+            "amount_total": 1,
+            "currency": "usd",
+            "metadata": {"gift_order_id": str(order["id"]), "defer_capture": "true"},
+        }
+        sp.fulfill_order_from_checkout_session(session, db)
+
+    refreshed = auth_client.get(f"/gift-orders/{order['id']}").json()
+    assert refreshed["payment_status"] == "authorized"
+    assert refreshed["status"] == "no_address"
+
+
+def test_checkout_session_create_allows_promotion_codes(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    """Both Checkout session creators must enable Stripe promotion codes."""
+    import app.stripe_payments as sp
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+
+    known = auth_client.post(
+        "/gift-orders",
+        json={
+            "prospect_id": prospect_id,
+            "gift_id": "cookies-4",
+            "recipient_name": "Dana Buyer",
+            "shipping_address": "123 Main St",
+            "note": "Thanks!",
+        },
+    )
+    assert known.status_code == 201, known.text
+
+    deferred = auth_client.post(
+        "/gift-orders",
+        json={
+            "prospect_id": prospect_id,
+            "gift_id": "cookies-4",
+            "recipient_name": "Dana Buyer",
+            "note": "Thanks!",
+            "request_recipient_address": True,
+            "recipient_email": "dana@example.com",
+        },
+    )
+    assert deferred.status_code == 201, deferred.text
+
+    assert len(stripe_stub.session_create_calls) == 2
+    known_params, deferred_params = stripe_stub.session_create_calls
+    assert known_params["allow_promotion_codes"] is True
+    assert known_params["metadata"]["defer_capture"] == "false"
+    assert deferred_params["allow_promotion_codes"] is True
+    assert deferred_params["metadata"]["defer_capture"] == "true"
+
+
 def test_admin_cancel_fails_closed_when_stripe_cancel_fails(
     auth_client, admin_client, prospect_id, stripe_stub, monkeypatch
 ):

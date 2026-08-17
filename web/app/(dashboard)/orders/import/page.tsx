@@ -200,6 +200,9 @@ Bob Jones,bob@example.com,4,,,,,,`}</pre>
                   {withAddress.length} order{withAddress.length === 1 ? "" : "s"} with an address 
                   pay once for all of them.
                 </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Have a code? Enter it on the Stripe checkout page.
+                </p>
                 <a
                   href={batchCheckoutUrl}
                   className="mt-3 inline-flex rounded-full bg-wood px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
@@ -236,6 +239,9 @@ Bob Jones,bob@example.com,4,,,,,,`}</pre>
                 <p className="text-sm text-stone-600">
                   {needsAddress.length} order{needsAddress.length === 1 ? "" : "s"} need an address
                   from the recipient authorize each separately, then we email them for shipping.
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Have a code? Enter it on the Stripe checkout page.
                 </p>
                 <ul className="mt-3 divide-y divide-emerald-100/80 overflow-hidden rounded-xl border border-emerald-200/70 bg-white">
                   {needsAddress.map((order) => (

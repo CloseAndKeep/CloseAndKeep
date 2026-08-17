@@ -302,7 +302,8 @@ export function GiftOrderWizard() {
               <p className="mt-2 text-xs text-stone-500">
                 {requestAddress
                   ? "You authorize payment at checkout. We charge only after the recipient submits their address."
-                  : "You pay once at Stripe checkout when you submit."}
+                  : "You pay once at Stripe checkout when you submit."}{" "}
+                Have a code? Enter it on the Stripe checkout page.
               </p>
               {selectedPack ? (
                 <p className="mt-2 text-sm font-medium text-espresso">
@@ -492,7 +493,8 @@ export function GiftOrderWizard() {
             <p className="text-stone-500">
               {requestAddress
                 ? "Submitting opens Stripe to authorize payment. After that, we email the recipient for their address you are charged only when they submit it."
-                : "Submitting saves your order and opens Stripe to pay once. Fulfillment starts after payment."}
+                : "Submitting saves your order and opens Stripe to pay once. Fulfillment starts after payment."}{" "}
+              Have a code? Enter it on the Stripe checkout page.
             </p>
           </div>
         )}

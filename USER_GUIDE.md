@@ -2,7 +2,7 @@
 
 CloseAndKeep helps sales teams send cookie gifts after a pitch, track prospects, and (optionally) trigger those gifts from Salesforce or HubSpot.
 
-> Maintainers: when you change signup, orders, order status emails, CSV import, Integrations, Profile (photo, password, billing), or CRM-related settings, update this file in the same change. See `.cursor/rules/user-guide.mdc`.
+> Maintainers: when you change signup, orders, order status emails, CSV import, Integrations, Profile (photo, password, billing), promo codes at checkout, or CRM-related settings, update this file in the same change. See `.cursor/rules/user-guide.mdc`.
 
 ---
 
@@ -18,7 +18,7 @@ CloseAndKeep helps sales teams send cookie gifts after a pitch, track prospects,
 1. **Prospects** → add someone you’re working.
 2. **Orders** → **Send cookies** (or start from the prospect).
 3. Choose pack size (**4** or **12** cookies), add a note, enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
-4. Pay at Stripe Checkout.
+4. Pay at Stripe Checkout. Have a code? Enter it on the Stripe checkout page.
 
 **After you send a gift:**
 

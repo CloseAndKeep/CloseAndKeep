@@ -37,5 +37,6 @@ alwaysApply: false
 - Duplicate signup returns generic 400 (no email enumeration).
 
 ### Failures
+- Stripe coupons are amount-off (catalog − 1¢), not “set charge to $0.01”; one amount cannot leave 1¢ on both pack prices — keep TEST1C test-mode-only and size it to one pack.
 - Subscriptions are not in MVP; do not reintroduce `subscription_status` or a billing portal.
 - In-process rate limits do not share across workers without `REDIS_URL`.
