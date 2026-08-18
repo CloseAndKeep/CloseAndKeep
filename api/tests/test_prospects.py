@@ -74,6 +74,73 @@ def test_list_is_scoped_to_owner(make_client):
     assert other.get("/prospects").json() == []
 
 
+def test_list_search_matches_name_and_email_case_insensitive(auth_client):
+    create_prospect(auth_client, name="Alex Rivera", email="alex@acme.com")
+    create_prospect(auth_client, name="Pat Client", email="pat@example.com")
+
+    by_name = auth_client.get("/prospects", params={"q": "RIVERA"}).json()
+    assert [row["name"] for row in by_name] == ["Alex Rivera"]
+
+    by_email = auth_client.get("/prospects", params={"q": "EXAMPLE.COM"}).json()
+    assert [row["email"] for row in by_email] == ["pat@example.com"]
+
+
+def test_list_search_empty_or_omitted_returns_all(auth_client):
+    create_prospect(auth_client, name="Alex Rivera", email="alex@acme.com")
+    create_prospect(auth_client, name="Pat Client", email="pat@example.com")
+
+    omitted = auth_client.get("/prospects").json()
+    empty = auth_client.get("/prospects", params={"q": ""}).json()
+    whitespace = auth_client.get("/prospects", params={"q": "   "}).json()
+    assert len(omitted) == 2
+    assert {row["email"] for row in empty} == {row["email"] for row in omitted}
+    assert {row["email"] for row in whitespace} == {row["email"] for row in omitted}
+
+
+def test_list_filters_by_deal_status(auth_client):
+    create_prospect(auth_client, name="Open Deal", email="open@example.com", deal_status="open")
+    create_prospect(auth_client, name="Won Deal", email="won@example.com", deal_status="won")
+    create_prospect(auth_client, name="Lost Deal", email="lost@example.com", deal_status="lost")
+
+    won = auth_client.get("/prospects", params={"deal_status": "won"}).json()
+    assert [row["name"] for row in won] == ["Won Deal"]
+
+    empty_status = auth_client.get("/prospects", params={"deal_status": ""}).json()
+    assert len(empty_status) == 3
+
+
+def test_list_search_and_status_filter_combine(auth_client):
+    create_prospect(auth_client, name="Alex Rivera", email="alex@acme.com", deal_status="open")
+    create_prospect(auth_client, name="Alex Kim", email="alex.kim@acme.com", deal_status="won")
+    create_prospect(auth_client, name="Pat Client", email="pat@example.com", deal_status="won")
+
+    rows = auth_client.get("/prospects", params={"q": "alex", "deal_status": "won"}).json()
+    assert [row["name"] for row in rows] == ["Alex Kim"]
+
+
+def test_list_rejects_invalid_deal_status_filter(auth_client):
+    resp = auth_client.get("/prospects", params={"deal_status": "maybe"})
+    assert resp.status_code == 422
+
+
+def test_list_search_and_filter_are_scoped_to_owner(make_client):
+    owner = signup(make_client(), "owner@example.com")
+    other = signup(make_client(), "other@example.com")
+
+    create_prospect(owner, name="Alice Owner", email="alice.owner@example.com", deal_status="open")
+    create_prospect(other, name="Alice Other", email="alice.other@example.com", deal_status="open")
+    create_prospect(other, name="Bob Other", email="bob.other@example.com", deal_status="won")
+
+    owner_search = owner.get("/prospects", params={"q": "alice"}).json()
+    assert [row["name"] for row in owner_search] == ["Alice Owner"]
+
+    owner_won = owner.get("/prospects", params={"deal_status": "won"}).json()
+    assert owner_won == []
+
+    other_won = other.get("/prospects", params={"deal_status": "won"}).json()
+    assert [row["name"] for row in other_won] == ["Bob Other"]
+
+
 def test_update_own_prospect(auth_client):
     body = create_prospect(auth_client)
     resp = auth_client.patch(
@@ -93,12 +160,18 @@ def test_dashboard_summary_matches_prospect_outcomes(auth_client):
     create_prospect(auth_client, name="D", email="d@example.com", deal_status="open")
 
     summary = auth_client.get("/dashboard/summary").json()
-    assert summary == {"open_deals": 2, "won": 1, "lost": 1, "total_prospects": 4}
+    assert summary["open_deals"] == 2
+    assert summary["won"] == 1
+    assert summary["lost"] == 1
+    assert summary["total_prospects"] == 4
 
 
 def test_dashboard_summary_empty_for_new_user(auth_client):
     summary = auth_client.get("/dashboard/summary").json()
-    assert summary == {"open_deals": 0, "won": 0, "lost": 0, "total_prospects": 0}
+    assert summary["open_deals"] == 0
+    assert summary["won"] == 0
+    assert summary["lost"] == 0
+    assert summary["total_prospects"] == 0
 
 
 def test_dashboard_summary_is_scoped(make_client):

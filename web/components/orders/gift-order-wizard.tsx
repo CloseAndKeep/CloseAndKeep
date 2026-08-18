@@ -8,6 +8,7 @@ import { cookiePacks, labelForGiftId } from "@/lib/gift-catalog";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { NoteTemplates } from "@/components/orders/note-templates";
 import {
   EMPTY_SHIPPING_ADDRESS,
   formatShippingAddress,
@@ -32,6 +33,7 @@ export function GiftOrderWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillProspectId = searchParams.get("prospect_id");
+  const prefillGiftId = searchParams.get("gift_id");
   const fromParam = searchParams.get("from");
   const fromCrmReminder =
     fromParam === "sf_reminder" || fromParam === "hs_reminder" || fromParam === "crm_reminder";
@@ -40,7 +42,12 @@ export function GiftOrderWizard() {
   const [step, setStep] = useState(0);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [prospectId, setProspectId] = useState("");
-  const [giftId, setGiftId] = useState(cookiePacks[0]?.id ?? "");
+  const [giftId, setGiftId] = useState(() => {
+    if (prefillGiftId && cookiePacks.some((pack) => pack.id === prefillGiftId)) {
+      return prefillGiftId;
+    }
+    return cookiePacks[0]?.id ?? "";
+  });
   const [recipientName, setRecipientName] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [addressMode, setAddressMode] = useState<AddressMode>("known");
@@ -74,6 +81,7 @@ export function GiftOrderWizard() {
             : null;
         if (fromQuery) {
           setProspectId(fromQuery);
+          setStep(1);
         } else if (data.length > 0) {
           setProspectId(String(data[0].id));
         }
@@ -104,6 +112,7 @@ export function GiftOrderWizard() {
     if (!selectedProspect) return;
     setRecipientName(selectedProspect.name);
     setRecipientEmail(selectedProspect.email);
+    // Name/email only — do not set note here so a later template picker can fill it.
   }, [selectedProspect]);
 
   const selectedPack = useMemo(() => cookiePacks.find((p) => p.id === giftId), [giftId]);
@@ -262,7 +271,9 @@ export function GiftOrderWizard() {
                 ))}
               </select>
               <p className="mt-2 text-xs text-stone-500">
-                Order will be tied to this prospect. Follow-ups and outcomes stay on the prospect record.
+                {prefillProspectId && prospectId === prefillProspectId
+                  ? "Selected from the prospect record. Recipient name and email are filled on the next step."
+                  : "Order will be tied to this prospect. Follow-ups and outcomes stay on the prospect record."}
               </p>
             </div>
 
@@ -361,6 +372,11 @@ export function GiftOrderWizard() {
 
         {step === 1 && (
           <div className="space-y-4 max-w-xl">
+            {prefillProspectId && selectedProspect && String(selectedProspect.id) === prefillProspectId ? (
+              <p className="rounded-xl bg-wood/10 px-3 py-2 text-sm text-wood-dark">
+                Sending to {selectedProspect.name} ({selectedProspect.email}). Change pack or prospect on the previous step.
+              </p>
+            ) : null}
             <div>
               <label className="block text-sm font-medium text-espresso">
                 Recipient name (for delivery)
@@ -452,6 +468,7 @@ export function GiftOrderWizard() {
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Short personal message required before fulfillment."
               />
+              <NoteTemplates note={note} onApply={setNote} />
             </div>
           </div>
         )}

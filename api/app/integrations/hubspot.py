@@ -16,12 +16,16 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import IntegrationConnectionModel
+from .check_setup import build_setup_report
 from .crypto import decrypt_token, encrypt_token
 from .reminders import (
     PROVIDER_HUBSPOT,
+    default_stage_recipes,
     ensure_crm_auto_order_defaults,
     process_stage_completed_reminder,
+    recipe_stage_names,
 )
+from .token_health import handle_refresh_failure, is_auth_refresh_failure, mark_tokens_healthy
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +135,7 @@ def upsert_connection_from_oauth(
             owner_user_id=user_id,
             provider=PROVIDER_HUBSPOT,
             trigger_stage_name="Demo Completed",
+            stage_recipes=default_stage_recipes(),
             enabled=True,
         )
         db.add(connection)
@@ -142,6 +147,9 @@ def upsert_connection_from_oauth(
     if refresh:
         connection.refresh_token_encrypted = encrypt_token(refresh)
     connection.enabled = True
+    connection.token_status = "ok"
+    connection.token_error_at = None
+    connection.reconnect_email_sent_at = None
     connection.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(connection)
@@ -158,22 +166,25 @@ def _access_headers(connection: IntegrationConnectionModel) -> dict[str, str]:
 
 
 def _refresh_connection_tokens(connection: IntegrationConnectionModel, db: Session) -> None:
-    if not connection.refresh_token_encrypted:
-        raise ValueError("HubSpot connection has no refresh token.")
-    refresh = decrypt_token(connection.refresh_token_encrypted)
-    payload = refresh_access_token(refresh)
-    access = payload.get("access_token") or ""
-    if access:
-        connection.access_token_encrypted = encrypt_token(access)
-    new_refresh = payload.get("refresh_token")
-    if new_refresh:
-        connection.refresh_token_encrypted = encrypt_token(new_refresh)
-    hub_id = payload.get("hub_id") or payload.get("hubId")
-    if hub_id is not None:
-        connection.external_org_id = str(hub_id)
-    connection.updated_at = datetime.now(UTC)
-    db.commit()
-    db.refresh(connection)
+    try:
+        if not connection.refresh_token_encrypted:
+            raise ValueError("HubSpot connection has no refresh token.")
+        refresh = decrypt_token(connection.refresh_token_encrypted)
+        payload = refresh_access_token(refresh)
+        access = payload.get("access_token") or ""
+        if access:
+            connection.access_token_encrypted = encrypt_token(access)
+        new_refresh = payload.get("refresh_token")
+        if new_refresh:
+            connection.refresh_token_encrypted = encrypt_token(new_refresh)
+        hub_id = payload.get("hub_id") or payload.get("hubId")
+        if hub_id is not None:
+            connection.external_org_id = str(hub_id)
+        mark_tokens_healthy(connection, db)
+    except Exception as exc:
+        if is_auth_refresh_failure(exc):
+            handle_refresh_failure(connection, db)
+        raise
 
 
 def hubspot_request(
@@ -199,16 +210,87 @@ def hubspot_request(
         return resp.json()
 
 
+def _required_cookie_properties() -> list[str]:
+    return [
+        prop
+        for prop in (
+            settings.hubspot_cookie_note_property,
+            settings.hubspot_cookie_company_property,
+            settings.hubspot_cookie_street_property,
+            settings.hubspot_cookie_city_property,
+            settings.hubspot_cookie_state_property,
+            settings.hubspot_cookie_postal_code_property,
+        )
+        if prop
+    ]
+
+
 def _stage_id_for_label(connection: IntegrationConnectionModel, db: Session, label: str) -> str | None:
     """Resolve a deal-stage display label to HubSpot's internal stage id."""
     wanted = label.strip().casefold()
+    for stage_id, stage_label in _pipeline_stage_pairs(connection, db):
+        if stage_label.casefold() == wanted:
+            return stage_id
+    return None
+
+
+def check_setup(connection: IntegrationConnectionModel, db: Session) -> dict[str, Any]:
+    """Inspect deal properties and pipelines for cookie_* fields and the trigger stage."""
+    try:
+        raw = hubspot_request(connection, db, "GET", "/crm/v3/properties/deals")
+        present = {
+            str(item.get("name") or "").strip()
+            for item in (raw.get("results") or [])
+            if item.get("name")
+        }
+        stage = (connection.trigger_stage_name or "Demo Completed").strip()
+        unknown_stage = _stage_id_for_label(connection, db, stage) is None
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            raise ValueError("HubSpot token is invalid or expired.") from exc
+        raise
+
+    extra: list[str] = []
+    legacy = settings.hubspot_cookie_address_property
+    address_props = [
+        prop
+        for prop in (
+            settings.hubspot_cookie_street_property,
+            settings.hubspot_cookie_city_property,
+            settings.hubspot_cookie_state_property,
+            settings.hubspot_cookie_postal_code_property,
+        )
+        if prop
+    ]
+    if legacy and legacy in present and any(prop not in present for prop in address_props):
+        extra.append(
+            f"{legacy} is present as a fallback. "
+            "Split street/city/state/ZIP fields are still recommended."
+        )
+
+    return build_setup_report(
+        provider=PROVIDER_HUBSPOT,
+        object_label="Deal",
+        trigger_stage_name=stage,
+        missing_fields=[prop for prop in _required_cookie_properties() if prop not in present],
+        unknown_stage=unknown_stage,
+        extra_messages=extra or None,
+    )
+
+
+def _pipeline_stage_pairs(
+    connection: IntegrationConnectionModel, db: Session
+) -> list[tuple[str, str]]:
+    """Return (stage_id, label) pairs from all deal pipelines."""
     pipelines = hubspot_request(connection, db, "GET", "/crm/v3/pipelines/deals")
+    pairs: list[tuple[str, str]] = []
     for pipeline in pipelines.get("results") or []:
         for stage in pipeline.get("stages") or []:
+            stage_id = str(stage.get("id") or "")
             stage_label = str(stage.get("label") or "")
-            if stage_label.casefold() == wanted:
-                return str(stage.get("id") or "") or None
-    return None
+            if stage_id and stage_label:
+                pairs.append((stage_id, stage_label))
+    return pairs
 
 
 def _contact_for_deal(
@@ -248,13 +330,20 @@ def _contact_for_deal(
 
 
 def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> list[dict]:
-    """Poll HubSpot deals in the trigger stage modified since last poll; send reminders."""
-    stage_label = (connection.trigger_stage_name or "Demo Completed").strip()
-    stage_id = _stage_id_for_label(connection, db, stage_label)
-    if not stage_id:
+    """Poll HubSpot deals in recipe stages modified since last poll; send reminders."""
+    wanted_labels = recipe_stage_names(connection)
+    pairs = _pipeline_stage_pairs(connection, db)
+    label_by_id = {stage_id: label for stage_id, label in pairs}
+    id_by_label = {label.casefold(): stage_id for stage_id, label in pairs}
+    stage_ids = [
+        stage_id
+        for label in wanted_labels
+        if (stage_id := id_by_label.get(label.casefold()))
+    ]
+    if not stage_ids:
         logger.warning(
-            "HubSpot stage label %r not found in deal pipelines connection_id=%s",
-            stage_label,
+            "HubSpot stage labels %r not found in deal pipelines connection_id=%s",
+            wanted_labels,
             connection.id,
         )
         connection.last_polled_at = datetime.now(UTC)
@@ -305,6 +394,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                     },
                 ]
             }
+            for stage_id in stage_ids
         ],
         "properties": deal_properties,
         "sorts": [{"propertyName": "hs_lastmodifieddate", "direction": "ASCENDING"}],
@@ -334,7 +424,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 db,
                 connection=connection,
                 opportunity_id=deal_id,
-                stage_name=stage_label,
+                stage_name=label_by_id.get(str(props.get("dealstage") or ""), wanted_labels[0]),
                 contact_name=contact["name"] or deal_name,
                 contact_email=contact["email"],
                 cookie_note=cookie_note or None,

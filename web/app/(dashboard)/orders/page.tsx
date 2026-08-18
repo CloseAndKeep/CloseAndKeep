@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ExpiredHolds } from "@/components/dashboard/expired-holds";
 import { PageHeader } from "@/components/ui/page-header";
 import { apiFetch } from "@/lib/api";
 import { labelForGiftId } from "@/lib/gift-catalog";
@@ -98,6 +99,10 @@ export default function OrdersPage() {
           {error}
         </div>
       ) : null}
+
+      <div className="mb-6">
+        <ExpiredHolds />
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <button

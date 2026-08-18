@@ -95,6 +95,8 @@ class Settings(BaseModel):
     address_request_followup_hours: int = int(
         os.getenv("ADDRESS_REQUEST_FOLLOWUP_HOURS", "72")
     )
+    # Do not auto-order another gift to the same person within this many days.
+    regift_window_days: int = int(os.getenv("REGIFT_WINDOW_DAYS", "90"))
     # Shared secret for POST /internal/jobs/* (Render cron or manual trigger).
     cron_secret: str = os.getenv("CRON_SECRET", "").strip()
     # Signup password policy (min length; must include a letter and a digit).

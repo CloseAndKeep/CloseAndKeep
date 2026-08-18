@@ -17,12 +17,16 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import IntegrationConnectionModel
+from .check_setup import build_setup_report
 from .crypto import decrypt_token, encrypt_token
 from .reminders import (
     PROVIDER_SALESFORCE,
+    default_stage_recipes,
     ensure_crm_auto_order_defaults,
     process_stage_completed_reminder,
+    recipe_stage_names,
 )
+from .token_health import handle_refresh_failure, is_auth_refresh_failure, mark_tokens_healthy
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +156,7 @@ def upsert_connection_from_oauth(
             owner_user_id=user_id,
             provider=PROVIDER_SALESFORCE,
             trigger_stage_name="Demo Completed",
+            stage_recipes=default_stage_recipes(),
             enabled=True,
         )
         db.add(connection)
@@ -163,6 +168,9 @@ def upsert_connection_from_oauth(
     if refresh:
         connection.refresh_token_encrypted = encrypt_token(refresh)
     connection.enabled = True
+    connection.token_status = "ok"
+    connection.token_error_at = None
+    connection.reconnect_email_sent_at = None
     connection.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(connection)
@@ -184,21 +192,24 @@ def _ensure_fresh_token(connection: IntegrationConnectionModel, db: Session) -> 
 
 
 def _refresh_connection_tokens(connection: IntegrationConnectionModel, db: Session) -> None:
-    if not connection.refresh_token_encrypted:
-        raise ValueError("Salesforce connection has no refresh token.")
-    refresh = decrypt_token(connection.refresh_token_encrypted)
-    payload = refresh_access_token(refresh)
-    access = payload.get("access_token") or ""
-    if access:
-        connection.access_token_encrypted = encrypt_token(access)
-    new_refresh = payload.get("refresh_token")
-    if new_refresh:
-        connection.refresh_token_encrypted = encrypt_token(new_refresh)
-    if payload.get("instance_url"):
-        connection.instance_url = str(payload["instance_url"]).rstrip("/")
-    connection.updated_at = datetime.now(UTC)
-    db.commit()
-    db.refresh(connection)
+    try:
+        if not connection.refresh_token_encrypted:
+            raise ValueError("Salesforce connection has no refresh token.")
+        refresh = decrypt_token(connection.refresh_token_encrypted)
+        payload = refresh_access_token(refresh)
+        access = payload.get("access_token") or ""
+        if access:
+            connection.access_token_encrypted = encrypt_token(access)
+        new_refresh = payload.get("refresh_token")
+        if new_refresh:
+            connection.refresh_token_encrypted = encrypt_token(new_refresh)
+        if payload.get("instance_url"):
+            connection.instance_url = str(payload["instance_url"]).rstrip("/")
+        mark_tokens_healthy(connection, db)
+    except Exception as exc:
+        if is_auth_refresh_failure(exc):
+            handle_refresh_failure(connection, db)
+        raise
 
 
 def soql_query(connection: IntegrationConnectionModel, db: Session, query: str) -> dict[str, Any]:
@@ -214,6 +225,118 @@ def soql_query(connection: IntegrationConnectionModel, db: Session, query: str) 
             resp = client.get(url, headers=headers, params={"q": query})
         resp.raise_for_status()
         return resp.json()
+
+
+def salesforce_request(
+    connection: IntegrationConnectionModel,
+    db: Session,
+    method: str,
+    path: str,
+    *,
+    params: dict | None = None,
+) -> Any:
+    if not connection.instance_url:
+        raise ValueError("Salesforce connection has no instance URL.")
+    url = f"{connection.instance_url}{path}"
+    headers = _ensure_fresh_token(connection, db)
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.request(method, url, headers=headers, params=params)
+        if resp.status_code == 401:
+            _refresh_connection_tokens(connection, db)
+            headers = _access_headers(connection, db)
+            resp = client.request(method, url, headers=headers, params=params)
+        resp.raise_for_status()
+        if resp.status_code == 204 or not resp.content:
+            return {}
+        return resp.json()
+
+
+def _opportunity_field_names(describe: dict[str, Any]) -> set[str]:
+    names: set[str] = set()
+    for field in describe.get("fields") or []:
+        name = str(field.get("name") or "").strip()
+        if name:
+            names.add(name)
+    return names
+
+
+def _stage_labels_from_describe(describe: dict[str, Any]) -> list[str]:
+    for field in describe.get("fields") or []:
+        if str(field.get("name") or "") != "StageName":
+            continue
+        labels: list[str] = []
+        for picklist in field.get("picklistValues") or []:
+            if picklist.get("active") is False:
+                continue
+            for key in ("value", "label"):
+                text = str(picklist.get(key) or "").strip()
+                if text:
+                    labels.append(text)
+        return labels
+    return []
+
+
+def _required_cookie_fields() -> list[str]:
+    return [
+        field
+        for field in (
+            settings.salesforce_cookie_note_field,
+            settings.salesforce_cookie_company_field,
+            settings.salesforce_cookie_street_field,
+            settings.salesforce_cookie_city_field,
+            settings.salesforce_cookie_state_field,
+            settings.salesforce_cookie_postal_code_field,
+        )
+        if field
+    ]
+
+
+def check_setup(connection: IntegrationConnectionModel, db: Session) -> dict[str, Any]:
+    """Inspect Opportunity describe for Cookie_* fields and the trigger stage label."""
+    try:
+        describe = salesforce_request(
+            connection,
+            db,
+            "GET",
+            "/services/data/v59.0/sobjects/Opportunity/describe",
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            raise ValueError("Salesforce token is invalid or expired.") from exc
+        raise
+    present = _opportunity_field_names(describe)
+    missing_fields = [field for field in _required_cookie_fields() if field not in present]
+    stage = (connection.trigger_stage_name or "Demo Completed").strip()
+    stage_labels = _stage_labels_from_describe(describe)
+    wanted = stage.casefold()
+    unknown_stage = not any(label.casefold() == wanted for label in stage_labels)
+
+    extra: list[str] = []
+    legacy = settings.salesforce_cookie_address_field
+    address_fields = [
+        field
+        for field in (
+            settings.salesforce_cookie_street_field,
+            settings.salesforce_cookie_city_field,
+            settings.salesforce_cookie_state_field,
+            settings.salesforce_cookie_postal_code_field,
+        )
+        if field
+    ]
+    if legacy and legacy in present and any(field not in present for field in address_fields):
+        extra.append(
+            f"{legacy} is present as a fallback. "
+            "Split street/city/state/ZIP fields are still recommended."
+        )
+
+    return build_setup_report(
+        provider=PROVIDER_SALESFORCE,
+        object_label="Opportunity",
+        trigger_stage_name=stage,
+        missing_fields=missing_fields,
+        unknown_stage=unknown_stage,
+        extra_messages=extra or None,
+    )
 
 
 def _cookie_field_map(
@@ -266,16 +389,23 @@ def _opportunity_select_clause(field_map: dict[str, str]) -> str:
     return ", ".join(unique)
 
 
+def _soql_stage_clause(connection: IntegrationConnectionModel) -> str:
+    escaped = [name.replace("'", "\\'") for name in recipe_stage_names(connection)]
+    if len(escaped) == 1:
+        return f"StageName = '{escaped[0]}'"
+    return "StageName IN (" + ", ".join(f"'{name}'" for name in escaped) + ")"
+
+
 def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> list[dict]:
-    """Poll Opportunities in the trigger stage modified since last poll; send reminders."""
-    stage = (connection.trigger_stage_name or "Demo Completed").replace("'", "\\'")
+    """Poll Opportunities in recipe stages modified since last poll; send reminders."""
+    fallback_stage = recipe_stage_names(connection)[0]
     since = connection.last_polled_at
     if since is None:
         # First poll: only look back a short window to avoid flooding historical deals.
         since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     since_s = since.strftime("%Y-%m-%dT%H:%M:%SZ")
     where = (
-        f"WHERE StageName = '{stage}' "
+        f"WHERE {_soql_stage_clause(connection)} "
         f"AND SystemModstamp > {since_s} "
         "ORDER BY SystemModstamp ASC "
         "LIMIT 50"
@@ -329,7 +459,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
                 db,
                 connection=connection,
                 opportunity_id=str(record.get("Id") or ""),
-                stage_name=str(record.get("StageName") or stage),
+                stage_name=str(record.get("StageName") or fallback_stage),
                 contact_name=str(contact.get("Name") or record.get("Name") or ""),
                 contact_email=str(contact.get("Email") or ""),
                 cookie_note=field("note") or None,

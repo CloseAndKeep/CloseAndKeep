@@ -13,11 +13,15 @@ CloseAndKeep helps sales teams send cookie gifts after a pitch, track prospects,
 3. You’ll land on the **Dashboard**.
 4. From the left nav you can use **Prospects**, **Orders**, **Integrations**, **Payments**, **API keys**, and **Profile**.
 
+The Dashboard shows open, won, and lost counts plus your overall win rate. It also compares **close rates** for prospects who received cookies versus those who did not. Close rate is won ÷ (won + lost) for each group; open deals are not included. If a group has no closed outcomes yet, you will see a dash and “Not enough outcomes.”
+
+**Needs you today** lists unpaid checkouts to finish, gifts still waiting on a shipping address, and orders that just shipped so you can follow up.
+
 **Typical first gift (manual):**
 
-1. **Prospects** → add someone you’re working.
-2. **Orders** → **Send cookies** (or start from the prospect).
-3. Choose pack size (**4** or **12** cookies), add a note, enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
+1. **Prospects** → add someone you’re working. Search by name or email, and filter the list by Open, Won, or Lost.
+2. **Orders** → **Send cookies** (or start from the prospect — name, email, and pack are filled in).
+3. Choose pack size (**4** or **12** cookies), add a note (you can save cookie-note templates and reuse them on new orders), enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
 4. Pay at Stripe Checkout. Have a code? Enter it on the Stripe checkout page.
 
 **After you send a gift:**
@@ -27,6 +31,10 @@ We email **you** (the person who sent the gift), not the prospect, when the orde
 If you skipped the address and the recipient never sends one, the shipping link and card hold expire after about **7 days**. We email you that the link expired and the order was canceled. Place a new order if you still want to send cookies.
 
 Guest mode exists for a quick look, but guests can’t import CSVs or connect a CRM.
+
+### Expired address holds
+
+The **Dashboard** and **Orders** list show gifts whose shipping link expired before the recipient sent an address. **Resend** places a new card hold (or sends a new link on monthly billing) so you do not have to rebuild the order.
 
 ---
 
@@ -89,7 +97,9 @@ Bob Jones,bob@example.com,12,,,,,,
 
 Supported CRMs today: **Salesforce** and **HubSpot**. Custom CRMs use the **API** (see below).
 
-When a deal/opportunity hits your configured stage (default **Demo Completed**), CloseAndKeep **auto-creates a cookie order** using **Cookie Note** and the cookie company/street/city/state/ZIP fields from the CRM (auto-order turns on when you first connect). If auto-order is later turned off on Profile, you get a reminder email instead.
+When a deal/opportunity hits a stage in your **stage recipes**, CloseAndKeep **auto-creates a cookie order** using **Cookie Note** and the cookie company/street/city/state/ZIP fields from the CRM (auto-order turns on when you first connect). You can send a **different pack** for Demo vs Closed Won vs Renewal. Auto-order waits if the CRM email looks unusable and we would need to email the recipient for an address — you’ll get an email to fix the contact or send cookies yourself. Incomplete or junk address fields are ignored (we ask the recipient instead). We will not auto-send another box to the same person within **90 days**. Failed auto-orders can be retried from **Integrations**. If auto-order is later turned off on Profile, you get a reminder email instead (with that stage’s pack preselected).
+
+Integrations shows **Recent activity** for those CRM events (for example “Acme Demo Completed → cookies ordered”). If your Salesforce or HubSpot login expires, the page shows a reconnect notice and we email you once with a link back to Integrations.
 
 ### Connect (Salesforce / HubSpot)
 
@@ -97,9 +107,10 @@ When a deal/opportunity hits your configured stage (default **Demo Completed**),
 2. Open **Integrations** in CloseAndKeep.
 3. Click **Connect Salesforce** or **Connect HubSpot**.
 4. Approve access in the CRM OAuth screen.
-5. You’ll return to Integrations with a success message — auto-order is enabled (default pack: **4 cookies**; change on Profile).
-6. Confirm **Trigger stage name** matches your CRM stage → **Save stage**.
-7. Put the deal in **Demo Completed** with note + address filled, then click **Sync now** (or wait for your webhook/Flow).
+5. You’ll return to Integrations with a success message — auto-order is enabled (default pack: **4 cookies**).
+6. Confirm **stage recipes** match your CRM stages → **Save recipes**. First connect starts with **Demo Completed → 4 cookies**, **Closed Won → 12 cookies**, and **Renewal → 4 cookies**. Add, edit, or remove rows as needed.
+7. Click **Check setup**. CloseAndKeep looks at your CRM and tells you if the Cookie fields or the trigger stage name are missing (this is advisory — connect still succeeds if something is missing).
+8. Put the deal in a recipe stage (for example **Demo Completed** or **Closed Won**) with note + address filled, then click **Sync now** (or wait for your webhook/Flow).
 
 You can connect one org/portal per CRM per CloseAndKeep user.
 
@@ -109,13 +120,13 @@ You can connect one org/portal per CRM per CloseAndKeep user.
 
 | What | Details |
 |------|---------|
-| **Stage name** | Default **Demo Completed** (or whatever you set under **Trigger stage name** in Integrations) |
-| **Salesforce** | Add it on the Opportunity sales path / stage picklist so `StageName` can equal that value |
-| **HubSpot** | Add it as a deal stage label in your deal pipeline (label must match exactly, ignoring case) |
+| **Stage names** | Defaults: **Demo Completed**, **Closed Won**, **Renewal** (edit the list under **Stage recipes** in Integrations). Each stage maps to a pack (4 or 12 cookies). |
+| **Salesforce** | Add each recipe stage on the Opportunity sales path / stage picklist so `StageName` can equal that value |
+| **HubSpot** | Add each recipe stage as a deal stage label in your deal pipeline (label must match, ignoring case) |
 
 #### 2. Custom fields to add (gift details)
 
-Create these on the **Opportunity** (Salesforce) or **Deal** (HubSpot). Reps fill them before/when moving to Demo Completed.
+Create these on the **Opportunity** (Salesforce) or **Deal** (HubSpot). Reps fill them before/when moving to a recipe stage.
 
 | Purpose | Salesforce API name | HubSpot internal name | Type |
 |---------|---------------------|-----------------------|------|
@@ -141,7 +152,7 @@ Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`,
 |--------|-------|-----------|-----|
 | Opportunity | **Id** | Yes | Unique deal key |
 | Opportunity | **Name** | Fallback | Used if contact name is blank |
-| Opportunity | **StageName** | Yes | Must match your trigger stage |
+| Opportunity | **StageName** | Yes | Must match one of your stage recipes |
 | Opportunity | **ContactId** (primary contact) | Strongly recommended | Who we gift |
 | Contact | **Name** | Strongly recommended | Recipient name |
 | Contact | **Email** | Strongly recommended | Address-request email when address is blank |
@@ -151,7 +162,7 @@ Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`,
 | Object | Property | Required? | Why |
 |--------|----------|-----------|-----|
 | Deal | **dealname** | Fallback | Used if contact name is blank |
-| Deal | **dealstage** | Yes | Must be your trigger stage |
+| Deal | **dealstage** | Yes | Must match one of your stage recipes |
 | Deal | **Associated contact** | Strongly recommended | We take the first associated contact |
 | Contact | **firstname** / **lastname** | Strongly recommended | Recipient name |
 | Contact | **email** | Strongly recommended | Address-request email when address is blank |
@@ -181,10 +192,14 @@ Map these from the custom CRM fields above. Split street/city/state/ZIP is prefe
 
 | Option | What it does |
 |--------|----------------|
-| **Trigger stage name** | Stage that fires the cookie flow (default **Demo Completed**). Must match your CRM stage name. Click **Save stage**. |
+| **Stage recipes** | List of CRM stage → cookie pack (and optional note if Cookie Note is blank). Defaults: Demo Completed → 4 cookies, Closed Won → 12 cookies, Renewal → 4 cookies. Click **Save recipes**. |
+| **Check setup** | After you connect, confirms the Cookie fields and trigger stage name exist in your CRM. Missing fields or an unknown stage name are warnings — they do not disconnect you. |
 | **Sync now** | Manually poll recent matching opportunities/deals (reads Cookie Note and company/street/city/state/ZIP). |
 | **Disconnect** | Remove the CRM connection. |
-| Status / last poll / org or portal | Connection health info |
+| **Recent activity** | Last CRM events (stage hits → cookies ordered or reminder sent, or “Salesforce/HubSpot login expired”). |
+| **Reconnect** | Shown if the CRM login expires. Click **Reconnect** (or use the email we send once) to authorize again. |
+| **Failed auto-orders** | Retry a failed or held CRM auto-order. We still will not send another box to the same person within 90 days. |
+| Status / last poll / org or portal | Connection health info — status reads **Needs reconnect** when the login has expired. |
 
 After you connect a CRM, billing and auto-order controls also appear on **Profile**.
 
@@ -241,8 +256,8 @@ After Salesforce or HubSpot is connected, **or** after you create an **API key**
 | **Add / Update card** | Save a payment method via Stripe (card is stored by Stripe, not on CloseAndKeep servers). |
 | **Open balance / Pay now** | See what’s owed for the month and pay early. |
 | **Max spending limit** | Cap open monthly balance; when hit, new monthly-billed orders are blocked and you’re emailed to pay or raise the limit. Leave blank for no limit. |
-| **Auto-order on CRM stage** | Salesforce/HubSpot only. Automatically create a cookie order from CRM Cookie Note and street/city/state/ZIP when the trigger stage hits (on by default after first CRM connect). Custom CRMs use a **Send cookies** button instead. |
-| **Auto-order pack size** | Choose **4 cookies** or **12 cookies** for those auto-orders (Salesforce/HubSpot). |
+| **Auto-order on CRM stage** | Salesforce/HubSpot only. Automatically create a cookie order from CRM Cookie Note and street/city/state/ZIP when a recipe stage hits (on by default after first CRM connect). Waits if the CRM email looks unusable and we need an address from the recipient. Custom CRMs use a **Send cookies** button instead. |
+| **Auto-order pack size** | Fallback pack when no stage recipes are saved (Salesforce/HubSpot). Stage recipes override this per stage. |
 
 Turn **Pay monthly** off anytime to go back to paying per order.
 
@@ -255,5 +270,5 @@ Turn **Pay monthly** off anytime to go back to paying per order.
 3. Add a prospect and send one test order
 4. (Optional) Import a small CSV to learn batch checkout
 5. (Optional) Custom CRM: add a **Send cookies** button plus Cookie note and street/city/state/ZIP. Salesforce/HubSpot: add the **Demo Completed** stage (or your chosen name) and make sure deals have a contact with name + email
-6. (Optional) Connect Salesforce or HubSpot → set trigger stage → try **Sync now**
+6. (Optional) Connect Salesforce or HubSpot → save stage recipes → **Check setup** → try **Sync now**
 7. (Optional) On Profile: add a card and enable monthly billing (after an API key or Salesforce/HubSpot connect). Auto-order is Salesforce/HubSpot only.

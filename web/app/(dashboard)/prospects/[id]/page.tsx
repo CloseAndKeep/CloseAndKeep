@@ -90,7 +90,7 @@ export default function ProspectDetailPage() {
         description={prospect.email}
         action={
           <Link
-            href="/orders/new"
+            href={`/orders/new?prospect_id=${prospect.id}`}
             className="rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
           >
             Send cookies

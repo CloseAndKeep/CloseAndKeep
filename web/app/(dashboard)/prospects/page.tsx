@@ -1,50 +1,90 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
+
+type DealStatus = "open" | "won" | "lost";
+type StatusFilter = "all" | DealStatus;
 
 type Prospect = {
   id: number;
   name: string;
   email: string;
-  deal_status: "open" | "won" | "lost";
+  deal_status: DealStatus;
 };
 
 const inputClass = "field-input";
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "open", label: "Open" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
+];
+
+const STATUS_LABELS: Record<DealStatus, string> = {
+  open: "Open",
+  won: "Won",
+  lost: "Lost",
+};
 
 export default function ProspectsPage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [form, setForm] = useState({
     name: "",
     email: "",
   });
 
-  async function loadProspects() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<Prospect[]>("/prospects", {
-        errorMessage: "Unable to load prospects.",
-      });
-      setProspects(data);
-    } catch (loadError) {
-      const message =
-        loadError instanceof Error ? loadError.message : "Unable to load prospects.";
-      setError(message);
-    } finally {
-      setLoading(false);
+  const hasActiveFilters = search.trim() !== "" || statusFilter !== "all";
+
+  const loadProspects = useCallback(async () => {
+    const params = new URLSearchParams();
+    const q = search.trim();
+    if (q) {
+      params.set("q", q);
     }
-  }
+    if (statusFilter !== "all") {
+      params.set("deal_status", statusFilter);
+    }
+    const qs = params.toString();
+    return apiFetch<Prospect[]>(`/prospects${qs ? `?${qs}` : ""}`, {
+      errorMessage: "Unable to load prospects.",
+    });
+  }, [search, statusFilter]);
 
   useEffect(() => {
-    void loadProspects();
-  }, []);
+    let cancelled = false;
+    setError(null);
+    (async () => {
+      try {
+        const data = await loadProspects();
+        if (!cancelled) {
+          setProspects(data);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          const message =
+            loadError instanceof Error ? loadError.message : "Unable to load prospects.";
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadProspects]);
 
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,7 +98,7 @@ export default function ProspectsPage() {
         errorMessage: "Unable to create prospect.",
       });
       setForm({ name: "", email: "" });
-      await loadProspects();
+      setProspects(await loadProspects());
     } catch (createError) {
       const message =
         createError instanceof Error ? createError.message : "Unable to create prospect.";
@@ -74,7 +114,7 @@ export default function ProspectsPage() {
         title="Prospects"
         description="People and companies you're actively working."
         action={
-          prospects.length > 0 ? (
+          prospects.length > 0 || hasActiveFilters ? (
             <Link
               href="/orders/new"
               className="inline-flex items-center rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-wood-dark"
@@ -123,6 +163,40 @@ export default function ProspectsPage() {
         </Button>
       </form>
 
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="block min-w-0 flex-1 sm:max-w-sm">
+          <span className="sr-only">Search prospects</span>
+          <input
+            id="prospect-search"
+            type="search"
+            className={inputClass}
+            placeholder="Search name or email"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by deal status">
+          {STATUS_FILTERS.map(({ value, label }) => {
+            const active = statusFilter === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setStatusFilter(value)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  active
+                    ? "bg-wood text-white shadow-sm"
+                    : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {error ? (
         <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
@@ -135,19 +209,20 @@ export default function ProspectsPage() {
             <tr>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
             {loading ? (
               <tr>
-                <td className="px-4 py-3 text-stone-500" colSpan={2}>
+                <td className="px-4 py-3 text-stone-500" colSpan={3}>
                   Loading prospects...
                 </td>
               </tr>
             ) : null}
-            {!loading && prospects.length === 0 ? (
+            {!loading && prospects.length === 0 && !hasActiveFilters ? (
               <tr>
-                <td className="px-4 py-8 text-center" colSpan={2}>
+                <td className="px-4 py-8 text-center" colSpan={3}>
                   <p className="font-medium text-espresso">No prospects yet</p>
                   <p className="mt-1 text-sm text-stone-500">
                     Add someone above, then send cookies after your next pitch.
@@ -161,19 +236,36 @@ export default function ProspectsPage() {
                 </td>
               </tr>
             ) : null}
-            {prospects.map((p) => (
-              <tr key={p.id} className="hover:bg-cream/40">
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/prospects/${p.id}`}
-                    className="font-medium text-wood-dark hover:underline"
-                  >
-                    {p.name}
-                  </Link>
+            {!loading && prospects.length === 0 && hasActiveFilters ? (
+              <tr>
+                <td className="px-4 py-8 text-center" colSpan={3}>
+                  <p className="font-medium text-espresso">No matching prospects</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Try a different name, email, or Open / Won / Lost filter.
+                  </p>
                 </td>
-                <td className="px-4 py-3 text-stone-500">{p.email}</td>
               </tr>
-            ))}
+            ) : null}
+            {!loading
+              ? prospects.map((p) => (
+                  <tr key={p.id} className="hover:bg-cream/40">
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/prospects/${p.id}`}
+                        className="font-medium text-wood-dark hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-stone-500">{p.email}</td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-stone-700">
+                        {STATUS_LABELS[p.deal_status]}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              : null}
           </tbody>
         </table>
       </div>

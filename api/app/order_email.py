@@ -122,11 +122,12 @@ def send_new_order_notification(
     prospect_deal_status: str,
     placed_by_email: str,
     payment_status: str | None = None,
-) -> None:
+) -> bool:
+    """Email ops about a new order. Returns True when Resend accepts the message."""
     to = list(settings.order_notification_to or [])
     if not to:
         logger.warning("ORDER_NOTIFICATION_TO is empty; skipping new-order notification email.")
-        return
+        return False
 
     unpaid_monthly = (payment_status or "").strip().lower() == "owed"
     subject = (
@@ -191,7 +192,7 @@ def send_new_order_notification(
         "</table></body></html>"
     )
 
-    _send(
+    return _send(
         to=to,
         subject=subject,
         text_body=text_body,
@@ -740,6 +741,51 @@ def send_auto_order_checkout(
     )
 
 
+def send_auto_order_held_junk(
+    *,
+    to_email: str,
+    prospect_name: str,
+    crm_name: str,
+    order_url: str,
+) -> None:
+    """Tell the AE that CRM auto-order was held for a junk/missing contact email."""
+    to = to_email.strip().lower()
+    if not to:
+        logger.warning("Salesperson email empty; skipping auto-order held notice.")
+        return
+
+    crm = (crm_name or "CRM").strip() or "CRM"
+    subject = f"Auto-order held — fix contact for {prospect_name}"
+    text_body = (
+        f"We did not auto-create a cookie order for {prospect_name}.\n\n"
+        f"The {crm} contact email is missing or looks unusable, and we do not have "
+        "a shipping address. We cannot email the recipient to ask for one.\n\n"
+        "Update the contact email in your CRM, or send cookies yourself from "
+        "Close & Keep.\n"
+        f"Send cookies: {order_url}\n"
+    )
+    esc = html.escape
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>We did not auto-create a cookie order for <strong>{esc(prospect_name)}</strong>.</p>"
+        f"<p>The {esc(crm)} contact email is missing or looks unusable, and we do not "
+        "have a shipping address. We cannot email the recipient to ask for one.</p>"
+        "<p>Update the contact email in your CRM, or send cookies yourself from "
+        "Close &amp; Keep.</p>"
+        f"<p><a href='{esc(order_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        "Send cookies</a></p>"
+        "</body></html>"
+    )
+    _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context="auto-order-held-junk",
+    )
+
+
 def send_cookie_reminder(
     *,
     to_email: str,
@@ -932,4 +978,42 @@ def send_seller_address_hold_expired(
         text_body=text_body,
         html_body=html_body,
         context=f"seller-address-hold-expired order_id={order_id}",
+    )
+
+
+def send_crm_reconnect(
+    *,
+    to_email: str,
+    provider_label: str,
+    integrations_url: str,
+) -> bool:
+    """Ask the owner to reconnect Salesforce or HubSpot after a failed token refresh."""
+    to = to_email.strip().lower()
+    if not to:
+        logger.warning("Owner email empty; skipping CRM reconnect notice.")
+        return False
+
+    crm = (provider_label or "CRM").strip() or "CRM"
+    subject = f"Reconnect {crm} to keep cookie orders flowing"
+    text_body = (
+        f"Close & Keep could not refresh your {crm} login, so automatic cookie "
+        "orders and reminders are paused until you reconnect.\n\n"
+        f"Reconnect {crm}: {integrations_url}\n"
+    )
+    esc = html.escape
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px;line-height:1.5'>"
+        f"<p>Close &amp; Keep could not refresh your <strong>{esc(crm)}</strong> login, "
+        "so automatic cookie orders and reminders are paused until you reconnect.</p>"
+        f"<p><a href='{esc(integrations_url)}' style='display:inline-block;padding:10px 16px;"
+        "background:#8B5E3C;color:#fff;text-decoration:none;border-radius:8px'>"
+        f"Reconnect {esc(crm)}</a></p>"
+        "</body></html>"
+    )
+    return _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"crm-reconnect-{crm.casefold().replace(' ', '-')}",
     )

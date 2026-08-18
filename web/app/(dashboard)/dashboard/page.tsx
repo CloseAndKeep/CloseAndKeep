@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ExpiredHolds } from "@/components/dashboard/expired-holds";
+import { GiftedCloseRate } from "@/components/dashboard/gifted-close-rate";
+import { NeedsYouToday } from "@/components/dashboard/needs-you-today";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { apiFetch } from "@/lib/api";
@@ -12,6 +15,10 @@ export default function DashboardPage() {
     won: 0,
     lost: 0,
     total_prospects: 0,
+    gifted_won: 0,
+    gifted_lost: 0,
+    ungifted_won: 0,
+    ungifted_lost: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +121,17 @@ export default function DashboardPage() {
           }
         />
       </div>
+
+      <NeedsYouToday />
+
+      <ExpiredHolds />
+
+      <GiftedCloseRate
+        gifted_won={summary.gifted_won}
+        gifted_lost={summary.gifted_lost}
+        ungifted_won={summary.ungifted_won}
+        ungifted_lost={summary.ungifted_lost}
+      />
 
       <div className="mt-10 grid gap-8 lg:grid-cols-2">
         <section className="rounded-2xl border border-stone-200/90 bg-white/80 p-6 shadow-sm">

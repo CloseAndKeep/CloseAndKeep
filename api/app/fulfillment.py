@@ -20,6 +20,7 @@ from typing import Protocol
 from sqlalchemy.orm import Session
 
 from .models import GiftOrderModel, ProspectModel, UserModel
+from .notify_dead_letter import ops_new_order_kwargs, record_ops_notify_dead_letter
 from .order_email import (
     send_new_order_notification,
     send_seller_order_delivered,
@@ -51,27 +52,27 @@ class ManualEmailFulfillment:
         owner: UserModel,
         db: Session,
     ) -> None:
-        del db  # unused today; bakery providers will persist vendor ids here
         if not (order.shipping_address or "").strip():
             logger.info(
                 "Skipping fulfillment notify for order %s (no shipping address yet)",
                 order.id,
             )
             return
-        send_new_order_notification(
-            order_id=order.id,
-            requested_at=order.requested_at,
-            gift_id=order.gift_id,
-            recipient_name=order.recipient_name,
-            shipping_address=order.shipping_address or "",
-            note=order.note,
-            status=order.status,
-            prospect_name=prospect.name,
-            prospect_email=prospect.email,
-            prospect_deal_status=prospect.deal_status,
-            placed_by_email=owner.email,
-            payment_status=order.payment_status,
-        )
+        last_error: str | None = None
+        try:
+            ok = send_new_order_notification(
+                **ops_new_order_kwargs(order, prospect, owner)
+            )
+        except Exception as exc:
+            logger.exception("Ops new-order notify raised for order %s", order.id)
+            ok = False
+            last_error = f"{type(exc).__name__}: {exc}"
+        if ok is False:
+            record_ops_notify_dead_letter(
+                db,
+                order,
+                last_error=last_error or "Ops new-order email was not accepted",
+            )
 
 
 def get_fulfillment_provider() -> FulfillmentProvider:

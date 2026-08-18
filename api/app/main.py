@@ -8,12 +8,12 @@ import re
 logger = logging.getLogger(__name__)
 
 import bcrypt
-from fastapi import Depends, FastAPI, File, HTTPException, Response, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 import stripe
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from .api_keys import (
@@ -24,6 +24,7 @@ from .api_keys import (
 )
 from .auth_email import send_email_verification
 from .config import is_known_gift, settings
+from .dashboard import list_needs_attention, summarize_dashboard
 from .csv_import import (
     DEFAULT_IMPORT_NOTE,
     example_csv,
@@ -34,20 +35,31 @@ from .db import SessionLocal
 from .integrations import hubspot as hs
 from .integrations import salesforce as sf
 from .integrations.reminders import (
+    MAX_STAGE_RECIPES,
     PROVIDER_HUBSPOT,
     PROVIDER_SALESFORCE,
+    effective_stage_recipes,
+    event_is_retryable,
+    list_crm_reminder_events,
+    parse_stored_recipes,
     process_stage_completed_reminder,
+    retry_failed_auto_order,
 )
 from .models import (
     ApiKeyModel,
+    CrmReminderEventModel,
     GiftOrderModel,
     IntegrationConnectionModel,
+    NoteTemplateModel,
     ProspectModel,
     UserModel,
 )
 from .fulfillment import notify_seller_status_change
+from .hold_resend import list_expired_address_holds, resend_address_request
 from .jobs.address_request_followups import send_due_address_request_followups
 from .jobs.monthly_billing import run_monthly_billing_job
+from .jobs.notify_dead_letters import retry_notify_dead_letters
+from .notify_dead_letter import list_ops_notify_dead_letters
 from .order_email import send_orderer_gift_declined
 from .rate_limit import client_ip, limiter
 from .session_store import (
@@ -204,6 +216,23 @@ class DashboardSummaryResponse(BaseModel):
     won: int
     lost: int
     total_prospects: int
+    gifted_won: int
+    gifted_lost: int
+    ungifted_won: int
+    ungifted_lost: int
+
+
+class DashboardAttentionItem(BaseModel):
+    id: int
+    recipient_name: str
+    status: str
+    href: str
+
+
+class DashboardNeedsAttentionResponse(BaseModel):
+    unpaid: list[DashboardAttentionItem]
+    no_address: list[DashboardAttentionItem]
+    just_shipped: list[DashboardAttentionItem]
 
 
 def _strip_optional_text(value: str | None) -> str | None:
@@ -410,6 +439,44 @@ class ProspectUpdateRequest(BaseModel):
     deal_status: str | None = Field(default=None, pattern="^(open|won|lost)$")
 
 
+NOTE_TEMPLATE_MAX_PER_USER = 20
+
+
+class NoteTemplateCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    body: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("name", "body")
+    @classmethod
+    def _reject_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+
+class NoteTemplateUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    body: str | None = Field(default=None, min_length=1, max_length=1000)
+
+    @field_validator("name", "body")
+    @classmethod
+    def _reject_blank_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+
+class NoteTemplateResponse(BaseModel):
+    id: int
+    name: str
+    body: str
+    created_at: datetime
+
+
 # Statuses an admin can set while fulfilling a paid order.
 ADMIN_ORDER_STATUSES = ("queued", "ordered", "shipped", "delivered", "canceled")
 
@@ -457,21 +524,68 @@ class ApiKeyCreateResponse(ApiKeyResponse):
     api_key: str
 
 
+class StageRecipeItem(BaseModel):
+    stage_name: str = Field(min_length=1, max_length=255)
+    gift_id: str
+    note: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("stage_name")
+    @classmethod
+    def _strip_recipe_stage(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("stage_name must not be blank")
+        return stripped
+
+    @field_validator("gift_id")
+    @classmethod
+    def _valid_recipe_gift(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if normalized not in AUTO_ORDER_GIFT_IDS:
+            raise ValueError("gift_id must be 'cookies-4' or 'cookies-12'")
+        return normalized
+
+    @field_validator("note")
+    @classmethod
+    def _strip_recipe_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
 class IntegrationConnectionResponse(BaseModel):
     id: int
     provider: str
     enabled: bool
     trigger_stage_name: str
+    stage_recipes: list[StageRecipeItem] = Field(default_factory=list)
     external_org_id: str | None = None
     instance_url: str | None = None
     last_polled_at: datetime | None = None
+    token_status: str = "ok"
+    token_error_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class IntegrationEventResponse(BaseModel):
+    id: int
+    connection_id: int
+    provider: str
+    external_event_key: str
+    stage_name: str
+    status: str
+    prospect_id: int | None = None
+    prospect_name: str | None = None
+    created_at: datetime
+    retryable: bool
 
 
 class IntegrationUpdateRequest(BaseModel):
     trigger_stage_name: str | None = Field(default=None, min_length=1, max_length=255)
     enabled: bool | None = None
+    stage_recipes: list[StageRecipeItem] | None = None
 
     @field_validator("trigger_stage_name")
     @classmethod
@@ -483,6 +597,23 @@ class IntegrationUpdateRequest(BaseModel):
             raise ValueError("trigger_stage_name must not be blank")
         return stripped
 
+    @field_validator("stage_recipes")
+    @classmethod
+    def _valid_recipes(cls, value: list[StageRecipeItem] | None) -> list[StageRecipeItem] | None:
+        if value is None:
+            return None
+        if not value:
+            raise ValueError("stage_recipes must include at least one recipe")
+        if len(value) > MAX_STAGE_RECIPES:
+            raise ValueError(f"stage_recipes cannot exceed {MAX_STAGE_RECIPES} entries")
+        seen: set[str] = set()
+        for recipe in value:
+            key = recipe.stage_name.casefold()
+            if key in seen:
+                raise ValueError("stage_recipes stages must be unique")
+            seen.add(key)
+        return value
+
 
 class SalesforceConnectResponse(BaseModel):
     authorize_url: str
@@ -490,6 +621,17 @@ class SalesforceConnectResponse(BaseModel):
 
 class HubSpotConnectResponse(BaseModel):
     authorize_url: str
+
+
+class IntegrationCheckSetupResponse(BaseModel):
+    """Advisory CRM metadata report after OAuth connect (does not fail connect)."""
+
+    provider: str
+    ok: bool
+    missing_fields: list[str]
+    unknown_stage: bool
+    trigger_stage_name: str
+    messages: list[str]
 
 
 class SalesforceEventRequest(BaseModel):
@@ -946,6 +1088,26 @@ def run_monthly_billing(
     """Charge monthly balances on month-end; remind a few days before."""
     _require_cron_secret(request)
     return run_monthly_billing_job(db)
+
+
+@app.post("/internal/jobs/notify-dead-letters")
+def run_notify_dead_letters(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    """Retry failed ops new-order Resend emails for paid/authorized/owed orders."""
+    _require_cron_secret(request)
+    return retry_notify_dead_letters(db)
+
+
+@app.get("/internal/jobs/notify-dead-letters")
+def get_notify_dead_letters(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Tiny ops list of pending/failed new-order notify dead letters."""
+    _require_cron_secret(request)
+    return list_ops_notify_dead_letters(db)
 
 
 @app.get("/gifts", response_model=list[GiftCatalogItem])
@@ -1471,9 +1633,29 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dic
 
 
 @app.get("/prospects", response_model=list[ProspectResponse])
-def list_prospects(current_user: UserModel = Depends(get_current_user), db: Session = Depends(get_db)) -> list[ProspectResponse]:
+def list_prospects(
+    q: str | None = None,
+    deal_status: str | None = None,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ProspectResponse]:
+    filters = [ProspectModel.owner_user_id == current_user.id]
+    needle = (q or "").strip()
+    if needle:
+        pattern = f"%{needle.lower()}%"
+        filters.append(
+            or_(
+                func.lower(ProspectModel.name).like(pattern),
+                func.lower(ProspectModel.email).like(pattern),
+            )
+        )
+    status = (deal_status or "").strip()
+    if status:
+        if status not in {"open", "won", "lost"}:
+            raise HTTPException(status_code=422, detail="deal_status must be open, won, or lost.")
+        filters.append(ProspectModel.deal_status == status)
     records = db.scalars(
-        select(ProspectModel).where(ProspectModel.owner_user_id == current_user.id).order_by(ProspectModel.created_at.desc())
+        select(ProspectModel).where(*filters).order_by(ProspectModel.created_at.desc())
     ).all()
     return [
         ProspectResponse(
@@ -1560,16 +1742,111 @@ def get_dashboard_summary(
     current_user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardSummaryResponse:
-    records = db.scalars(select(ProspectModel.deal_status).where(ProspectModel.owner_user_id == current_user.id)).all()
-    open_deals = sum(1 for status in records if status == "open")
-    won = sum(1 for status in records if status == "won")
-    lost = sum(1 for status in records if status == "lost")
-    return DashboardSummaryResponse(
-        open_deals=open_deals,
-        won=won,
-        lost=lost,
-        total_prospects=len(records),
+    return DashboardSummaryResponse(**summarize_dashboard(db, current_user.id))
+
+
+@app.get("/dashboard/needs-attention", response_model=DashboardNeedsAttentionResponse)
+def get_dashboard_needs_attention(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DashboardNeedsAttentionResponse:
+    return DashboardNeedsAttentionResponse(**list_needs_attention(db, current_user.id))
+
+
+def _note_template_response(record: NoteTemplateModel) -> NoteTemplateResponse:
+    return NoteTemplateResponse(
+        id=record.id,
+        name=record.name,
+        body=record.body,
+        created_at=record.created_at,
     )
+
+
+def _owned_note_template(
+    template_id: int, current_user: UserModel, db: Session
+) -> NoteTemplateModel:
+    record = db.get(NoteTemplateModel, template_id)
+    if not record or record.owner_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Note template not found.")
+    return record
+
+
+@app.get("/note-templates", response_model=list[NoteTemplateResponse])
+def list_note_templates(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[NoteTemplateResponse]:
+    records = db.scalars(
+        select(NoteTemplateModel)
+        .where(NoteTemplateModel.owner_user_id == current_user.id)
+        .order_by(NoteTemplateModel.created_at.desc(), NoteTemplateModel.id.desc())
+    ).all()
+    return [_note_template_response(record) for record in records]
+
+
+@app.post("/note-templates", response_model=NoteTemplateResponse, status_code=201)
+def create_note_template(
+    payload: NoteTemplateCreateRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> NoteTemplateResponse:
+    count = db.scalar(
+        select(func.count(NoteTemplateModel.id)).where(
+            NoteTemplateModel.owner_user_id == current_user.id
+        )
+    )
+    if (count or 0) >= NOTE_TEMPLATE_MAX_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You can save at most {NOTE_TEMPLATE_MAX_PER_USER} note templates.",
+        )
+    record = NoteTemplateModel(
+        owner_user_id=current_user.id,
+        name=payload.name,
+        body=payload.body,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _note_template_response(record)
+
+
+@app.get("/note-templates/{template_id}", response_model=NoteTemplateResponse)
+def get_note_template(
+    template_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> NoteTemplateResponse:
+    return _note_template_response(_owned_note_template(template_id, current_user, db))
+
+
+@app.patch("/note-templates/{template_id}", response_model=NoteTemplateResponse)
+def update_note_template(
+    template_id: int,
+    payload: NoteTemplateUpdateRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> NoteTemplateResponse:
+    record = _owned_note_template(template_id, current_user, db)
+    if payload.name is not None:
+        record.name = payload.name
+    if payload.body is not None:
+        record.body = payload.body
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _note_template_response(record)
+
+
+@app.delete("/note-templates/{template_id}", status_code=204)
+def delete_note_template(
+    template_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    record = _owned_note_template(template_id, current_user, db)
+    db.delete(record)
+    db.commit()
 
 
 @app.post("/gift-orders", response_model=GiftOrderCreateResponse, status_code=201)
@@ -2103,6 +2380,30 @@ def list_gift_orders(
     return [_gift_order_response(record) for record in records]
 
 
+@app.get("/gift-orders/expired-holds", response_model=list[GiftOrderResponse])
+def list_expired_hold_orders(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[GiftOrderResponse]:
+    records = list_expired_address_holds(current_user.id, db)
+    return [_gift_order_response(record) for record in records]
+
+
+@app.post("/gift-orders/{order_id}/resend-address", response_model=GiftOrderCreateResponse)
+def resend_gift_order_address(
+    order_id: int,
+    request: Request,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GiftOrderCreateResponse:
+    _enforce_order_create_rate_limit(request, current_user)
+    order, checkout_url = resend_address_request(order_id, current_user, db)
+    return GiftOrderCreateResponse(
+        **_gift_order_response(order).model_dump(),
+        checkout_url=checkout_url,
+    )
+
+
 @app.get("/gift-orders/{order_id}", response_model=GiftOrderResponse)
 def get_gift_order(
     order_id: int,
@@ -2207,15 +2508,23 @@ def admin_update_gift_order(
     return _admin_gift_order_response(order, owner, prospect)
 
 
-def _integration_response(row: IntegrationConnectionModel) -> IntegrationConnectionResponse:
+def _integration_response(
+    row: IntegrationConnectionModel,
+    *,
+    fallback_gift_id: str | None = None,
+) -> IntegrationConnectionResponse:
+    recipes = effective_stage_recipes(row, fallback_gift_id=fallback_gift_id)
     return IntegrationConnectionResponse(
         id=row.id,
         provider=row.provider,
         enabled=row.enabled,
         trigger_stage_name=row.trigger_stage_name,
+        stage_recipes=[StageRecipeItem.model_validate(item) for item in recipes],
         external_org_id=row.external_org_id,
         instance_url=row.instance_url,
         last_polled_at=row.last_polled_at,
+        token_status=row.token_status or "ok",
+        token_error_at=row.token_error_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -2229,6 +2538,23 @@ def _require_registered_user(user: UserModel) -> None:
         )
 
 
+def _integration_event_response(
+    event: CrmReminderEventModel, prospect_name: str | None = None
+) -> IntegrationEventResponse:
+    return IntegrationEventResponse(
+        id=event.id,
+        connection_id=event.connection_id,
+        provider=event.provider,
+        external_event_key=event.external_event_key,
+        stage_name=event.stage_name,
+        status=event.status,
+        prospect_id=event.prospect_id,
+        prospect_name=prospect_name,
+        created_at=event.created_at,
+        retryable=event_is_retryable(event.status),
+    )
+
+
 @app.get("/integrations", response_model=list[IntegrationConnectionResponse])
 def list_integrations(
     current_user: UserModel = Depends(get_current_user),
@@ -2240,7 +2566,53 @@ def list_integrations(
             IntegrationConnectionModel.owner_user_id == current_user.id
         )
     ).all()
-    return [_integration_response(row) for row in rows]
+    return [
+        _integration_response(row, fallback_gift_id=current_user.auto_order_gift_id)
+        for row in rows
+    ]
+
+
+@app.get("/integrations/events", response_model=list[IntegrationEventResponse])
+def list_integration_events(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    retryable: bool = False,
+    limit: int = Query(default=20, ge=1, le=50),
+) -> list[IntegrationEventResponse]:
+    """Last N CRM journal events (stage hits + token expiry). Supports retryable filter."""
+    _require_registered_user(current_user)
+    rows = list_crm_reminder_events(
+        db,
+        owner_user_id=current_user.id,
+        retryable_only=retryable,
+        limit=limit,
+    )
+    prospect_ids = {event.prospect_id for event in rows if event.prospect_id}
+    names: dict[int, str] = {}
+    if prospect_ids:
+        names = {
+            prospect.id: prospect.name
+            for prospect in db.scalars(
+                select(ProspectModel).where(ProspectModel.id.in_(prospect_ids))
+            ).all()
+        }
+    return [
+        _integration_event_response(event, names.get(event.prospect_id) if event.prospect_id else None)
+        for event in rows
+    ]
+
+
+@app.post("/integrations/events/{event_id}/retry")
+def retry_integration_event(
+    event_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    _require_registered_user(current_user)
+    event = db.get(CrmReminderEventModel, event_id)
+    if not event or event.owner_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Integration event not found.")
+    return retry_failed_auto_order(db, event=event)
 
 
 @app.get("/integrations/salesforce/connect", response_model=SalesforceConnectResponse)
@@ -2298,14 +2670,21 @@ def update_integration(
     row = db.get(IntegrationConnectionModel, connection_id)
     if not row or row.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Integration not found.")
-    if payload.trigger_stage_name is not None:
+    if payload.stage_recipes is not None:
+        row.stage_recipes = [recipe.model_dump() for recipe in payload.stage_recipes]
+        row.trigger_stage_name = payload.stage_recipes[0].stage_name
+    elif payload.trigger_stage_name is not None:
         row.trigger_stage_name = payload.trigger_stage_name
+        stored = parse_stored_recipes(row.stage_recipes)
+        if stored:
+            stored[0]["stage_name"] = payload.trigger_stage_name
+            row.stage_recipes = stored
     if payload.enabled is not None:
         row.enabled = payload.enabled
     row.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(row)
-    return _integration_response(row)
+    return _integration_response(row, fallback_gift_id=current_user.auto_order_gift_id)
 
 
 @app.delete("/integrations/{connection_id}", response_model=IntegrationConnectionResponse)
@@ -2318,7 +2697,7 @@ def disconnect_integration(
     row = db.get(IntegrationConnectionModel, connection_id)
     if not row or row.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Integration not found.")
-    response = _integration_response(row)
+    response = _integration_response(row, fallback_gift_id=current_user.auto_order_gift_id)
     db.delete(row)
     db.commit()
     return response
@@ -2400,6 +2779,40 @@ def salesforce_sync(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Salesforce sync failed: {exc}") from exc
     return {"results": results, "count": len(results)}
+
+
+@app.post("/integrations/salesforce/check-setup", response_model=IntegrationCheckSetupResponse)
+def salesforce_check_setup(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> IntegrationCheckSetupResponse:
+    """Inspect Salesforce Opportunity metadata for Cookie_* fields and the trigger stage."""
+    _require_registered_user(current_user)
+    if not sf.salesforce_configured():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Salesforce is not configured. "
+                "Set SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET."
+            ),
+        )
+    connection = db.scalar(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.owner_user_id == current_user.id,
+            IntegrationConnectionModel.provider == PROVIDER_SALESFORCE,
+        )
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="Salesforce is not connected.")
+    if not connection.access_token_encrypted:
+        raise HTTPException(status_code=401, detail="Salesforce connection has no access token.")
+    try:
+        report = sf.check_setup(connection, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Salesforce setup check failed: {exc}") from exc
+    return IntegrationCheckSetupResponse(**report)
 
 
 @app.get("/integrations/hubspot/connect", response_model=HubSpotConnectResponse)
@@ -2521,3 +2934,37 @@ def hubspot_sync(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"HubSpot sync failed: {exc}") from exc
     return {"results": results, "count": len(results)}
+
+
+@app.post("/integrations/hubspot/check-setup", response_model=IntegrationCheckSetupResponse)
+def hubspot_check_setup(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> IntegrationCheckSetupResponse:
+    """Inspect HubSpot deal metadata for cookie_* properties and the trigger stage."""
+    _require_registered_user(current_user)
+    if not hs.hubspot_configured():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "HubSpot is not configured. "
+                "Set HUBSPOT_CLIENT_ID and HUBSPOT_CLIENT_SECRET."
+            ),
+        )
+    connection = db.scalar(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.owner_user_id == current_user.id,
+            IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+        )
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="HubSpot is not connected.")
+    if not connection.access_token_encrypted:
+        raise HTTPException(status_code=401, detail="HubSpot connection has no access token.")
+    try:
+        report = hs.check_setup(connection, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"HubSpot setup check failed: {exc}") from exc
+    return IntegrationCheckSetupResponse(**report)

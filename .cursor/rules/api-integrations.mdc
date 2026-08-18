@@ -35,5 +35,6 @@ alwaysApply: false
 - Structured shipping fields replaced a single address blob for auto-order.
 
 ### Failures
+- Placeholder address tokens like `n/a` must keep `/` when normalizing, or they become `n a` and look usable.
 - Auto-order-on-stage does not apply to custom CRM API keys; those use Send cookies.
 - Connect without client id/secret must 503, not a broken OAuth URL.

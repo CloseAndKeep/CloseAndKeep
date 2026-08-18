@@ -58,13 +58,17 @@ See `.env.example` for the full list. Important knobs:
 
 **Prospects / dashboard**
 
-- `GET|POST /prospects`, `GET|PATCH /prospects/{id}`
-- `GET /dashboard/summary`
+- `GET|POST /prospects`, `GET|PATCH /prospects/{id}` — list accepts `q` (name/email) and `deal_status` (`open|won|lost`)
+- `GET /dashboard/summary` — includes gifted vs ungifted close-rate counts
+- `GET /dashboard/needs-attention` — unpaid, no-address, just-shipped (owner-scoped, capped)
+- `GET|POST|PATCH|DELETE /note-templates` — per-user saved cookie-note templates (max 20)
 
 **Gift orders**
 
 - `POST /gift-orders` — create (+ optional Checkout URL)
 - `GET /gift-orders`, `GET /gift-orders/{id}`
+- `GET /gift-orders/expired-holds` — canceled address holds that can be resent
+- `POST /gift-orders/{id}/resend-address` — new hold + Checkout (or monthly link)
 - `POST /gift-orders/{id}/checkout` — retry unpaid checkout
 - `GET /gift-orders/import/template`, `GET /gift-orders/import/example`
 - `POST /gift-orders/import` — CSV batch (size/row capped)
@@ -83,16 +87,20 @@ See `.env.example` for the full list. Important knobs:
 
 **Integrations (Salesforce + HubSpot)**
 
-- `GET /integrations` — list CRM connections
+- `GET /integrations` — list CRM connections (includes `stage_recipes` + `token_status`)
+- `GET /integrations/events` — last CRM journal events (stage hits + login expired); `?retryable=true` filters failed/held auto-orders
+- `POST /integrations/events/{id}/retry` — retry a failed or held auto-order
 - `GET /integrations/salesforce/connect` — OAuth authorize URL
 - `GET /integrations/salesforce/callback` — OAuth callback (redirects to web)
-- `POST /integrations/salesforce/events` — immediate Demo Completed webhook intake
-- `POST /integrations/salesforce/sync` — poll Opportunities in trigger stage
+- `POST /integrations/salesforce/events` — immediate stage-recipe webhook intake
+- `POST /integrations/salesforce/sync` — poll Opportunities in recipe stages
+- `POST /integrations/salesforce/check-setup` — advisory Cookie_* field + stage-label report
 - `GET /integrations/hubspot/connect` — OAuth authorize URL
 - `GET /integrations/hubspot/callback` — OAuth callback (redirects to web)
-- `POST /integrations/hubspot/events` — immediate Demo Completed webhook intake
-- `POST /integrations/hubspot/sync` — poll Deals in trigger stage
-- `PATCH|DELETE /integrations/{id}` — update trigger stage / disconnect
+- `POST /integrations/hubspot/events` — immediate stage-recipe webhook intake
+- `POST /integrations/hubspot/sync` — poll Deals in recipe stages
+- `POST /integrations/hubspot/check-setup` — advisory cookie_* property + stage-label report
+- `PATCH|DELETE /integrations/{id}` — update stage recipes / disconnect
 
 **Admin**
 
@@ -127,5 +135,7 @@ Webhooks already accept totals below catalog. See `DECISIONS.md` (promo / test c
 
 - Session storage is database-backed (`sessions` table).
 - Gift ids accepted by the API are defined in `app/config.py` (`GIFT_CATALOG`).
-- Alembic migrations live in `alembic/versions/` (through `0012_salesforce_integrations`).
+- Alembic migrations live in `alembic/versions/` (through `0028_notify_dead_letter`).
 - Rate limits: in-process by default; set `REDIS_URL` when running multiple workers/instances.
+- Ops new-order Resend failures for paid/authorized/owed orders are retried by `POST /internal/jobs/notify-dead-letters` (or `python -m app.jobs.notify_dead_letters`) using `CRON_SECRET`.
+- `REGIFT_WINDOW_DAYS` (default 90) skips a second auto-order to the same person inside that window.
