@@ -145,3 +145,26 @@ services:
         sync: false
       - key: STRIPE_PRICE_COOKIES_12
         sync: false
+
+  # Hourly: retry ops new-order Resend if the first send died after pay/authorize.
+  - type: cron
+    name: closeandkeep-notify-dead-letters
+    runtime: python
+    region: oregon
+    rootDir: api
+    schedule: "0 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.jobs.notify_dead_letters
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: ORDER_NOTIFICATION_TO
+        value: "agent@closeandkeep.com,thamilton@closeandkeep.com,cstewart@closeandkeep.com"

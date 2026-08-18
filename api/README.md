@@ -137,5 +137,5 @@ Webhooks already accept totals below catalog. See `DECISIONS.md` (promo / test c
 - Gift ids accepted by the API are defined in `app/config.py` (`GIFT_CATALOG`).
 - Alembic migrations live in `alembic/versions/` (through `0028_notify_dead_letter`).
 - Rate limits: in-process by default; set `REDIS_URL` when running multiple workers/instances.
-- Ops new-order Resend failures for paid/authorized/owed orders are retried by `POST /internal/jobs/notify-dead-letters` (or `python -m app.jobs.notify_dead_letters`) using `CRON_SECRET`.
+- Ops new-order Resend failures for paid/authorized/owed orders are retried hourly by the Render cron `closeandkeep-notify-dead-letters` (`python -m app.jobs.notify_dead_letters`). You can also `POST /internal/jobs/notify-dead-letters` with `CRON_SECRET`.
 - `REGIFT_WINDOW_DAYS` (default 90) skips a second auto-order to the same person inside that window.

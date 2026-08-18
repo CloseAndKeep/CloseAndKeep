@@ -61,7 +61,7 @@ The frontend deploys to Vercel from `web/`. The backend deploys to Render from `
    - `TRUST_PROXY=true` on Render so IP rate limits use `X-Forwarded-For`.
    - Optional `REDIS_URL` if you scale beyond a single uvicorn worker/instance (shares rate-limit counters).
    - **Order emails:** set `RESEND_API_KEY` (replace the `re_xxxxxxxxx` placeholder with your real key). For internal alerts only, the default `RESEND_FROM` is `onboarding@resend.dev`. With that sender, Resend only allows mail to **your Resend account email** (match is **case-sensitive**—we normalize `ORDER_NOTIFICATION_TO` to lowercase before sending). For other recipients or customer-facing mail, verify a domain at Resend and set `RESEND_FROM` to an address on that domain.
-4. The build runs `pip install -r requirements.txt && python -m alembic upgrade head`, so each deploy runs migrations against Neon before the new code starts serving.
+4. The build runs `pip install -r requirements.txt && python -m alembic upgrade head`, so each deploy runs migrations against Neon before the new code starts serving. Hourly Render crons run address-request follow-ups and ops new-order email retries; a daily cron runs monthly billing. New cron services from a Blueprint sync need the same `DATABASE_URL` / `RESEND_*` as the API.
 5. After the first successful deploy, verify with `curl https://<your-render-host>/health`.
 
 ### Frontend (Vercel)
