@@ -8,7 +8,7 @@ Post-pitch cookie gifts for sales teams after the demo. Prefer this file and the
 
 - Stack: Next.js 14 / Vercel (`web/`), FastAPI / Render (`api/`), Neon Postgres + Alembic, Stripe Checkout per gift order (`mode: payment`), Resend, app-managed HttpOnly sessions.
 - **Prefer `Architecture.MD` §0 and `DECISIONS.md` over speculative Architecture sections.**
-- Pointers (open only if this summary is not enough): `Architecture.MD` §0, `DECISIONS.md`, `USER_GUIDE.md`, `Test.MD`, `api/README.md`, `web/README.md`.
+- Pointers (open only if this summary is not enough): `Architecture.MD` §0, `DECISIONS.md`, `USER_GUIDE.md`, `Test.MD`, `api/README.md`, `web/README.md`. Next steps / improvements: `docs/next-feature-brief.md`; parked bakery fulfill: `docs/bakery-fulfill-later.md`.
 - Local web: `NEXT_PUBLIC_API_BASE_URL`. Production: Vercel `/__cak_api` proxy via `BACKEND_URL`.
 
 ## Preferences

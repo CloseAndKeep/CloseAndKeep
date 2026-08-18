@@ -11,7 +11,7 @@ CloseAndKeep is post-pitch cookie gifts for salespeople. Solo-user first.
 - Deferred address: authorize/hold → public `/ship/[token]` → capture → `queued`. Token/hold ~7 days.
 - Checkout already has `allow_promotion_codes: True`. Amounts **below** catalog are allowed (promos). Amounts **above** catalog are rejected.
 - CRM: Salesforce + HubSpot OAuth auto-order on a trigger stage (default Demo Completed). Custom CRM = API keys + Send cookies. Auto-order-on-stage is OAuth-only.
-- Fulfillment is **manual** via `/admin`. Do not start a bakery vendor API.
+- Fulfillment is **manual** via `/admin`. Do not start a bakery vendor API. Parked ops idea (not an API): Crumbl-first Cursor autofill — `docs/bakery-fulfill-later.md`.
 - Cards stay with Stripe. Never store PAN. Tests must not call live Stripe.
 - Prefer `AGENTS.md`, `DECISIONS.md`, and `Architecture.MD` §0 over speculative Architecture sections.
 
@@ -53,6 +53,10 @@ App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to
 15. Re-gift policy + retry failed auto-order
 19. Failed-notify dead letter + retry (paid order, Resend to ops died)
 
+## Parked (remind on next steps; do not build now)
+
+**Bakery autofill — Crumbl first, Levain if out of area.** Cursor on the owner’s machine fills bakery checkout from a **queued** order with a **full address**, then pays on the logged-in Crumbl (or Levain) account. Not a vendor API; do not change bakery websites. Full write-up: [`docs/bakery-fulfill-later.md`](bakery-fulfill-later.md).
+
 ## Cut (do not build)
 
 - 2 CRM write-back (status/tracking onto the Salesforce/HubSpot deal)
@@ -69,4 +73,5 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 
 - Next: **#1 seller status emails**
 - Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
+- Parked: Crumbl-first / Levain-fallback Cursor fulfill (`docs/bakery-fulfill-later.md`)
 - Do not like: 2, 9, 13, 16, 17, 18, 20

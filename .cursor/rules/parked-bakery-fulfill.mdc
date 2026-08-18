@@ -1,0 +1,12 @@
+---
+description: Remind about parked Crumbl-then-Levain Cursor fulfill when discussing next steps or improvements
+alwaysApply: true
+---
+
+# Parked bakery autofill
+
+When the user asks for next steps, improvements, or fulfillment automation, mention the parked plan in `docs/bakery-fulfill-later.md` (also listed in `docs/next-feature-brief.md`).
+
+- Crumbl first; Levain only if that address is out of Crumbl delivery.
+- Cursor on the owner’s machine fills bakery checkout from a **queued** order with a **full street/city/state/ZIP**. Wait on `/ship/[token]` otherwise.
+- Pay on their logged-in bakery session. Never store PAN. Do not start a bakery vendor API. Do not build this unless they reopen it.
