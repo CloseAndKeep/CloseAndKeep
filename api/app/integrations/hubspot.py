@@ -33,7 +33,11 @@ HUBSPOT_API = "https://api.hubapi.com"
 HUBSPOT_AUTH = "https://app.hubspot.com/oauth/authorize"
 HUBSPOT_TOKEN = "https://api.hubapi.com/oauth/v1/token"
 # Deals + contacts + companies so we can map Demo Completed → prospect fields.
-HUBSPOT_SCOPES = "oauth crm.objects.deals.read crm.objects.contacts.read crm.objects.companies.read"
+# deals.write lets the Deal app card persist cookie_* properties.
+HUBSPOT_SCOPES = (
+    "oauth crm.objects.deals.read crm.objects.deals.write "
+    "crm.objects.contacts.read crm.objects.companies.read"
+)
 
 
 def hubspot_configured() -> bool:
@@ -452,3 +456,234 @@ def verify_webhook_secret(provided: str | None) -> bool:
     if not provided:
         return False
     return hmac.compare_digest(provided.strip(), expected)
+
+
+def verify_request_signature_v2(
+    *,
+    method: str,
+    uri: str,
+    body: bytes | str,
+    signature: str | None,
+) -> bool:
+    """Validate HubSpot X-HubSpot-Signature v2 (workflow actions / card fetch)."""
+    secret = (settings.hubspot_client_secret or "").strip()
+    if not secret:
+        return settings.app_env.lower() != "production"
+    if not signature:
+        return False
+    raw = body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else (body or "")
+    source = f"{secret}{method.upper()}{uri}{raw}"
+    expected = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(expected, signature.strip().lower())
+
+
+def public_request_uri(path: str, query: str = "") -> str:
+    """Build the public HTTPS URI HubSpot used when signing the request."""
+    base = settings.api_base_url.rstrip("/")
+    suffix = f"?{query}" if query else ""
+    return f"{base}{path}{suffix}"
+
+
+def find_connection_by_portal(
+    db: Session, portal_id: str | int | None
+) -> IntegrationConnectionModel | None:
+    if portal_id is None or portal_id == "":
+        return None
+    return db.scalar(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+            IntegrationConnectionModel.external_org_id == str(portal_id),
+            IntegrationConnectionModel.enabled.is_(True),
+        )
+    )
+
+
+def _cookie_property_names() -> dict[str, str]:
+    return {
+        "note": settings.hubspot_cookie_note_property or "",
+        "company": settings.hubspot_cookie_company_property or "",
+        "street": settings.hubspot_cookie_street_property or "",
+        "street2": settings.hubspot_cookie_street2_property or "",
+        "city": settings.hubspot_cookie_city_property or "",
+        "state": settings.hubspot_cookie_state_property or "",
+        "postal": settings.hubspot_cookie_postal_code_property or "",
+        "address": settings.hubspot_cookie_address_property or "",
+    }
+
+
+def _deal_property_list() -> list[str]:
+    props = ["dealname", "dealstage"]
+    for name in _cookie_property_names().values():
+        if name and name not in props:
+            props.append(name)
+    return props
+
+
+def _stage_label_for_id(
+    connection: IntegrationConnectionModel, db: Session, stage_id: str
+) -> str:
+    wanted = (stage_id or "").strip()
+    if not wanted:
+        return ""
+    for sid, label in _pipeline_stage_pairs(connection, db):
+        if sid == wanted:
+            return label
+    return wanted
+
+
+def load_deal_gift_context(
+    connection: IntegrationConnectionModel,
+    db: Session,
+    deal_id: str,
+    *,
+    stage_name_override: str | None = None,
+) -> dict[str, Any]:
+    """Fetch deal cookie fields, stage label, and primary associated contact."""
+    deal_id = (deal_id or "").strip()
+    if not deal_id:
+        raise ValueError("deal_id is required")
+
+    deal = hubspot_request(
+        connection,
+        db,
+        "GET",
+        f"/crm/v3/objects/deals/{deal_id}",
+        params={"properties": ",".join(_deal_property_list())},
+    )
+    props = deal.get("properties") or {}
+    names = _cookie_property_names()
+    stage_id = str(props.get("dealstage") or "")
+    stage_name = (stage_name_override or "").strip() or _stage_label_for_id(
+        connection, db, stage_id
+    )
+    contact = _contact_for_deal(connection, db, deal_id)
+    deal_name = str(props.get("dealname") or "")
+
+    def _prop(key: str) -> str:
+        prop_name = names.get(key) or ""
+        return str(props.get(prop_name) or "") if prop_name else ""
+
+    return {
+        "deal_id": deal_id,
+        "stage_name": stage_name or (connection.trigger_stage_name or "Demo Completed"),
+        "contact_name": contact["name"] or deal_name,
+        "contact_email": contact["email"],
+        "cookie_note": _prop("note") or None,
+        "cookie_company": _prop("company") or None,
+        "cookie_street": _prop("street") or None,
+        "cookie_street2": _prop("street2") or None,
+        "cookie_city": _prop("city") or None,
+        "cookie_state": _prop("state") or None,
+        "cookie_postal_code": _prop("postal") or None,
+        "cookie_address": _prop("address") or None,
+        "properties": {
+            "cookie_note": _prop("note"),
+            "cookie_company": _prop("company"),
+            "cookie_street": _prop("street"),
+            "cookie_street2": _prop("street2"),
+            "cookie_city": _prop("city"),
+            "cookie_state": _prop("state"),
+            "cookie_postal_code": _prop("postal"),
+            "dealname": deal_name,
+            "dealstage": stage_name,
+        },
+    }
+
+
+def update_deal_cookie_properties(
+    connection: IntegrationConnectionModel,
+    db: Session,
+    deal_id: str,
+    fields: dict[str, str | None],
+) -> dict[str, str]:
+    """Persist cookie_* values onto the HubSpot deal."""
+    deal_id = (deal_id or "").strip()
+    if not deal_id:
+        raise ValueError("deal_id is required")
+
+    names = _cookie_property_names()
+    key_map = {
+        "cookie_note": "note",
+        "cookie_company": "company",
+        "cookie_street": "street",
+        "cookie_street2": "street2",
+        "cookie_city": "city",
+        "cookie_state": "state",
+        "cookie_postal_code": "postal",
+        "cookie_address": "address",
+    }
+    properties: dict[str, str] = {}
+    for api_key, name_key in key_map.items():
+        if api_key not in fields:
+            continue
+        prop_name = names.get(name_key) or ""
+        if not prop_name:
+            continue
+        value = fields.get(api_key)
+        properties[prop_name] = "" if value is None else str(value)
+
+    if not properties:
+        return {}
+
+    hubspot_request(
+        connection,
+        db,
+        "PATCH",
+        f"/crm/v3/objects/deals/{deal_id}",
+        json_body={"properties": properties},
+    )
+    return properties
+
+
+def run_deal_stage_action(
+    db: Session,
+    *,
+    portal_id: str | int | None,
+    deal_id: str,
+    stage_name: str | None = None,
+) -> dict[str, Any]:
+    """Resolve portal → connection, load deal context, run reminder/auto-order."""
+    connection = find_connection_by_portal(db, portal_id)
+    if not connection:
+        return {"status": "error", "reason": "connection_not_found", "portal_id": portal_id}
+
+    context = load_deal_gift_context(
+        connection, db, deal_id, stage_name_override=stage_name
+    )
+    result = process_stage_completed_reminder(
+        db,
+        connection=connection,
+        opportunity_id=context["deal_id"],
+        stage_name=context["stage_name"],
+        contact_name=context["contact_name"],
+        contact_email=context["contact_email"] or "",
+        cookie_note=context.get("cookie_note"),
+        cookie_company=context.get("cookie_company"),
+        cookie_street=context.get("cookie_street"),
+        cookie_street2=context.get("cookie_street2"),
+        cookie_city=context.get("cookie_city"),
+        cookie_state=context.get("cookie_state"),
+        cookie_postal_code=context.get("cookie_postal_code"),
+        cookie_address=context.get("cookie_address"),
+    )
+    result["portal_id"] = str(portal_id) if portal_id is not None else None
+    result["deal_id"] = context["deal_id"]
+    return result
+
+
+def parse_workflow_action_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Extract portal/deal/stage from a HubSpot custom workflow action body."""
+    origin = payload.get("origin") or {}
+    obj = payload.get("object") or {}
+    inputs = payload.get("inputFields") or {}
+    portal_id = origin.get("portalId") or origin.get("portal_id")
+    deal_id = obj.get("objectId") or obj.get("object_id") or inputs.get("deal_id")
+    stage_name = inputs.get("stage_name")
+    if isinstance(stage_name, dict):
+        stage_name = stage_name.get("value") or stage_name.get("label")
+    return {
+        "portal_id": portal_id,
+        "deal_id": str(deal_id) if deal_id is not None else "",
+        "stage_name": str(stage_name).strip() if stage_name else None,
+        "callback_id": payload.get("callbackId"),
+    }

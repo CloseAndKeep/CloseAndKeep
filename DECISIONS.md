@@ -87,9 +87,11 @@ Locked behaviors after medium-severity review:
 - **Trigger:** Opportunity/Deal stage matches configured name (default **Demo Completed**).
 - **Timing:** Reminder email to the connected salesperson is sent **immediately**.
 - **CTA:** Deep link to `/orders/new?prospect_id=…&from=sf_reminder` (Salesforce) or `from=hs_reminder` (HubSpot) with note prompt.
-- **Intake:** `POST /integrations/{salesforce|hubspot}/events` (webhook secret) preferred; `POST /integrations/{salesforce|hubspot}/sync` polls as fallback.
+- **Intake (Salesforce):** `POST /integrations/salesforce/events` (webhook secret) preferred; `POST .../sync` polls as fallback.
+- **Intake (HubSpot):** Prefer app **custom workflow action** (`POST /integrations/hubspot/workflow-action`, HubSpot signature v2) and Deal **app card** (`.../card/properties`, `.../card/send`). Keep DIY `POST /integrations/hubspot/events` + `POST .../sync` as bridge. Do not require customer Data Hub Pro webhooks for the primary path.
 - OAuth tokens encrypted at rest with `INTEGRATION_TOKEN_FERNET_KEY`.
 - v1: one CRM org/portal connection per CloseAndKeep user (no shared team connections).
+- HubSpot project stays **private** until sandbox proves card + workflow action; Marketplace flip checklist: `docs/hubspot-marketplace-prep.md`.
 
 ## CRM cookie note + address → auto-order (2026-08)
 
