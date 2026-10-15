@@ -110,7 +110,13 @@ Integrations shows **Recent activity** for those CRM events (for example “Acme
 5. You’ll return to Integrations with a success message — auto-order is enabled (default pack: **4 cookies**).
 6. Confirm **stage recipes** match your CRM stages → **Save recipes**. First connect starts with **Demo Completed → 4 cookies**, **Closed Won → 12 cookies**, and **Renewal → 4 cookies**. Add, edit, or remove rows as needed.
 7. Click **Check setup**. CloseAndKeep looks at your CRM and tells you if the Cookie fields or the trigger stage name are missing (this is advisory — connect still succeeds if something is missing).
-8. Put the deal in a recipe stage (for example **Demo Completed** or **Closed Won**) with note + address filled, then click **Sync now** (or wait for your webhook/Flow).
+8. Put the deal in a recipe stage (for example **Demo Completed** or **Closed Won**) with note + address filled, then click **Sync now** (or wait for your workflow / webhook).
+
+**HubSpot (preferred after the app is installed on your portal):**
+
+- Use the **CloseAndKeep cookies** Deal card in HubSpot to fill Cookie Note and street/city/state/ZIP, then **Save fields** or **Queue cookie gift**.
+- In HubSpot workflows, add the **Send CloseAndKeep cookies** action when a deal hits a recipe stage. This does **not** need Data Hub’s “Send a webhook.”
+- **Sync now** and admin DIY webhooks to CloseAndKeep still work as a fallback.
 
 You can connect one org/portal per CRM per CloseAndKeep user.
 
@@ -169,7 +175,7 @@ Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`,
 
 #### 4. Webhook / Flow payload (optional admin setup)
 
-If your admin posts stage events to CloseAndKeep instead of relying only on **Sync now**, include:
+HubSpot Marketplace-ready installs should prefer the **workflow action** and **Deal card** above. If your admin still posts stage events to CloseAndKeep (or uses Salesforce Flow) instead of only **Sync now**, include:
 
 | Field | Salesforce event | HubSpot event |
 |-------|------------------|---------------|

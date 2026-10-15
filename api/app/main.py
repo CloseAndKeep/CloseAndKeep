@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import compare_digest, randbelow, token_urlsafe
+import json
 import logging
 import re
 
@@ -2968,3 +2969,144 @@ def hubspot_check_setup(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"HubSpot setup check failed: {exc}") from exc
     return IntegrationCheckSetupResponse(**report)
+
+
+def _verify_hubspot_signed_request(request: Request, body: bytes, path: str) -> None:
+    """Reject HubSpot workflow/card calls with a bad X-HubSpot-Signature (v2)."""
+    signature = request.headers.get("X-HubSpot-Signature") or request.headers.get(
+        "x-hubspot-signature"
+    )
+    uri = hs.public_request_uri(path, request.url.query)
+    if not hs.verify_request_signature_v2(
+        method=request.method,
+        uri=uri,
+        body=body,
+        signature=signature,
+    ):
+        raise HTTPException(status_code=401, detail="Invalid HubSpot request signature.")
+
+
+@app.post("/integrations/hubspot/workflow-action")
+async def hubspot_workflow_action(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Custom workflow actionUrl: HubSpot POSTs here when a deal workflow fires.
+
+    Preferred marketplace trigger (does not require customer Data Hub Pro webhooks).
+    Existing POST /integrations/hubspot/events and /sync remain supported.
+    """
+    body = await request.body()
+    _verify_hubspot_signed_request(
+        request, body, "/integrations/hubspot/workflow-action"
+    )
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+
+    parsed = hs.parse_workflow_action_payload(payload if isinstance(payload, dict) else {})
+    if not parsed["deal_id"]:
+        raise HTTPException(status_code=400, detail="Missing deal objectId.")
+    try:
+        result = hs.run_deal_stage_action(
+            db,
+            portal_id=parsed["portal_id"],
+            deal_id=parsed["deal_id"],
+            stage_name=parsed.get("stage_name"),
+        )
+    except Exception as exc:
+        logger.exception("HubSpot workflow action failed")
+        raise HTTPException(status_code=502, detail=f"HubSpot workflow action failed: {exc}") from exc
+
+    if result.get("status") == "error" and result.get("reason") == "connection_not_found":
+        raise HTTPException(
+            status_code=404,
+            detail="HubSpot portal is not connected to CloseAndKeep.",
+        )
+    return result
+
+
+class HubSpotCardPropertiesRequest(BaseModel):
+    portal_id: str = Field(min_length=1, max_length=64)
+    deal_id: str = Field(min_length=1, max_length=64)
+    cookie_note: str | None = Field(default=None, max_length=1000)
+    cookie_company: str | None = Field(default=None, max_length=255)
+    cookie_street: str | None = Field(default=None, max_length=255)
+    cookie_street2: str | None = Field(default=None, max_length=255)
+    cookie_city: str | None = Field(default=None, max_length=100)
+    cookie_state: str | None = Field(default=None, max_length=64)
+    cookie_postal_code: str | None = Field(default=None, max_length=20)
+
+
+class HubSpotCardSendRequest(BaseModel):
+    portal_id: str = Field(min_length=1, max_length=64)
+    deal_id: str = Field(min_length=1, max_length=64)
+    stage_name: str | None = Field(default=None, max_length=255)
+
+
+@app.post("/integrations/hubspot/card/properties")
+async def hubspot_card_save_properties(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Deal app card: persist cookie_* fields onto the HubSpot deal."""
+    body = await request.body()
+    _verify_hubspot_signed_request(
+        request, body, "/integrations/hubspot/card/properties"
+    )
+    try:
+        raw = json.loads(body.decode("utf-8") or "{}")
+        payload = HubSpotCardPropertiesRequest.model_validate(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid card payload: {exc}") from exc
+
+    connection = hs.find_connection_by_portal(db, payload.portal_id)
+    if not connection:
+        raise HTTPException(status_code=404, detail="HubSpot portal is not connected.")
+    try:
+        updated = hs.update_deal_cookie_properties(
+            connection,
+            db,
+            payload.deal_id,
+            {
+                "cookie_note": payload.cookie_note,
+                "cookie_company": payload.cookie_company,
+                "cookie_street": payload.cookie_street,
+                "cookie_street2": payload.cookie_street2,
+                "cookie_city": payload.cookie_city,
+                "cookie_state": payload.cookie_state,
+                "cookie_postal_code": payload.cookie_postal_code,
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"HubSpot property update failed: {exc}") from exc
+    return {"status": "ok", "updated": updated}
+
+
+@app.post("/integrations/hubspot/card/send")
+async def hubspot_card_send(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Deal app card: queue cookie gift / reminder from the current deal."""
+    body = await request.body()
+    _verify_hubspot_signed_request(request, body, "/integrations/hubspot/card/send")
+    try:
+        raw = json.loads(body.decode("utf-8") or "{}")
+        payload = HubSpotCardSendRequest.model_validate(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid card payload: {exc}") from exc
+
+    try:
+        result = hs.run_deal_stage_action(
+            db,
+            portal_id=payload.portal_id,
+            deal_id=payload.deal_id,
+            stage_name=payload.stage_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"HubSpot card send failed: {exc}") from exc
+    if result.get("status") == "error" and result.get("reason") == "connection_not_found":
+        raise HTTPException(status_code=404, detail="HubSpot portal is not connected.")
+    return result
