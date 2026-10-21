@@ -217,6 +217,63 @@ def effective_stage_recipes(
     return [{"stage_name": stage, "gift_id": gift, "note": None}]
 
 
+def stage_event_key(opportunity_id: str, stage_name: str) -> str:
+    """One send per CRM record per recipe stage. Legacy keys were the bare id."""
+    stage = " ".join((stage_name or "").split()).casefold()
+    return f"{opportunity_id}:{stage}"[:512]
+
+
+def _same_stage(stored: str | None, incoming: str) -> bool:
+    return " ".join((stored or "").split()).casefold() == " ".join(incoming.split()).casefold()
+
+
+def _find_stage_event(
+    db: Session,
+    *,
+    connection_id: int,
+    opportunity_id: str,
+    stage_name: str,
+) -> CrmReminderEventModel | None:
+    key = stage_event_key(opportunity_id, stage_name)
+    current = db.scalar(
+        select(CrmReminderEventModel).where(
+            CrmReminderEventModel.connection_id == connection_id,
+            CrmReminderEventModel.external_event_key == key,
+        )
+    )
+    if current is not None:
+        return current
+    legacy = db.scalar(
+        select(CrmReminderEventModel).where(
+            CrmReminderEventModel.connection_id == connection_id,
+            CrmReminderEventModel.external_event_key == opportunity_id,
+        )
+    )
+    if legacy is not None and _same_stage(legacy.stage_name, stage_name):
+        return legacy
+    return None
+
+
+def _deal_has_earlier_stage(
+    db: Session,
+    *,
+    connection_id: int,
+    opportunity_id: str,
+) -> bool:
+    """True when this deal already produced a stage event (any recipe stage)."""
+    prefix = f"{opportunity_id}:"
+    existing = db.scalar(
+        select(CrmReminderEventModel.id).where(
+            CrmReminderEventModel.connection_id == connection_id,
+            or_(
+                CrmReminderEventModel.external_event_key == opportunity_id,
+                CrmReminderEventModel.external_event_key.startswith(prefix),
+            ),
+        )
+    )
+    return existing is not None
+
+
 def match_stage_recipe(
     connection: IntegrationConnectionModel,
     stage_name: str,
@@ -494,13 +551,14 @@ def process_stage_completed_reminder(
     cookie_country: str | None = None,
     cookie_address: str | None = None,
 ) -> dict:
-    """Upsert prospect, dedupe by opportunity, then auto-order or email reminder.
+    """Upsert prospect, dedupe by deal and stage, then auto-order or email reminder.
 
     When auto-order is enabled, CRM cookie note / address fill the gift order
     (address present → ready to pay/ship; blank address → request from recipient).
     Junk email plus no usable address holds the auto-order (``held_junk``);
     junk address parts are ignored so we ask the recipient instead.
-    A successful gift to the same person inside the re-gift window is skipped.
+    A successful gift to the same person inside the re-gift window is skipped when
+    it came from a different deal. A later recipe stage on the same deal still sends.
 
     Returns a small status dict for API/logging. Does not raise on email transport
     failure (Resend is best-effort, matching other order emails).
@@ -523,11 +581,11 @@ def process_stage_completed_reminder(
     if not opportunity_id:
         return {"status": "error", "reason": "missing_opportunity_id"}
 
-    existing_event = db.scalar(
-        select(CrmReminderEventModel).where(
-            CrmReminderEventModel.connection_id == connection.id,
-            CrmReminderEventModel.external_event_key == opportunity_id,
-        )
+    existing_event = _find_stage_event(
+        db,
+        connection_id=connection.id,
+        opportunity_id=opportunity_id,
+        stage_name=incoming,
     )
     if existing_event:
         owner = db.get(UserModel, connection.owner_user_id)
@@ -558,6 +616,12 @@ def process_stage_completed_reminder(
             "prospect_id": existing_event.prospect_id,
             "retryable": event_is_retryable(existing_event.status),
         }
+
+    earlier_stage = _deal_has_earlier_stage(
+        db,
+        connection_id=connection.id,
+        opportunity_id=opportunity_id,
+    )
 
     prospect = upsert_prospect_from_crm(
         db,
@@ -592,7 +656,7 @@ def process_stage_completed_reminder(
         owner_user_id=connection.owner_user_id,
         prospect_id=prospect.id,
         provider=connection.provider,
-        external_event_key=opportunity_id,
+        external_event_key=stage_event_key(opportunity_id, incoming),
         stage_name=incoming,
         status="sent",
         email_sent_at=now,
@@ -602,11 +666,11 @@ def process_stage_completed_reminder(
         db.commit()
     except IntegrityError:
         db.rollback()
-        existing_event = db.scalar(
-            select(CrmReminderEventModel).where(
-                CrmReminderEventModel.connection_id == connection.id,
-                CrmReminderEventModel.external_event_key == opportunity_id,
-            )
+        existing_event = _find_stage_event(
+            db,
+            connection_id=connection.id,
+            opportunity_id=opportunity_id,
+            stage_name=incoming,
         )
         return {
             "status": "duplicate",
@@ -617,12 +681,16 @@ def process_stage_completed_reminder(
     db.refresh(prospect)
 
     if owner.auto_order_enabled:
-        recent = find_recent_successful_gift(
-            db,
-            owner_user_id=owner.id,
-            email=prospect.email or contact_email,
-            prospect_id=prospect.id,
-        )
+        # A later recipe stage on the same deal still sends its pack. The 90-day
+        # window applies when a different deal would gift the same person again.
+        recent = None
+        if not earlier_stage:
+            recent = find_recent_successful_gift(
+                db,
+                owner_user_id=owner.id,
+                email=prospect.email or contact_email,
+                prospect_id=prospect.id,
+            )
         if recent is not None:
             event.status = REGIFT_SKIP_STATUS
             event.email_sent_at = None
