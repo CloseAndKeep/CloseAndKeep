@@ -142,7 +142,8 @@ class Settings(BaseModel):
     salesforce_cookie_address_field: str = os.getenv(
         "SALESFORCE_COOKIE_ADDRESS_FIELD", "Cookie_Address__c"
     ).strip()
-    # HubSpot private app / OAuth app + cookie-reminder webhooks.
+    # HubSpot Marketplace OAuth app + cookie-reminder webhooks.
+    # HUBSPOT_CLIENT_SECRET also verifies signature v3 on native webhooks and the deal card.
     hubspot_client_id: str = os.getenv("HUBSPOT_CLIENT_ID", "").strip()
     hubspot_client_secret: str = os.getenv("HUBSPOT_CLIENT_SECRET", "").strip()
     hubspot_redirect_uri: str = os.getenv("HUBSPOT_REDIRECT_URI", "").strip()
