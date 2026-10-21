@@ -654,6 +654,12 @@ class SalesforceEventRequest(BaseModel):
     org_id: str | None = Field(default=None, max_length=64)
 
 
+class HubSpotClaimRequest(BaseModel):
+    """One-time code from a HubSpot Marketplace install redirect."""
+
+    code: str = Field(min_length=8, max_length=256)
+
+
 class HubSpotEventRequest(BaseModel):
     """Inbound Demo Completed (or configured stage) event from HubSpot workflow / webhook."""
 
@@ -2845,17 +2851,102 @@ def hubspot_oauth_callback(
     if error:
         detail = quote(error_description or error, safe="")
         return RedirectResponse(f"{web}/integrations?error={detail}")
-    if not code or not state:
+    if not code:
         return RedirectResponse(f"{web}/integrations?error=missing_oauth_params")
-    user_id = hs.verify_oauth_state(state)
-    if user_id is None:
-        return RedirectResponse(f"{web}/integrations?error=invalid_oauth_state")
+    user_id = hs.verify_oauth_state(state or "")
     try:
         tokens = hs.exchange_code_for_tokens(code)
-        hs.upsert_connection_from_oauth(db, user_id=user_id, token_payload=tokens)
     except Exception:
         return RedirectResponse(f"{web}/integrations?error=oauth_exchange_failed")
-    return RedirectResponse(f"{web}/integrations?connected=hubspot")
+    if user_id is not None:
+        try:
+            hs.upsert_connection_from_oauth(db, user_id=user_id, token_payload=tokens)
+        except Exception:
+            return RedirectResponse(f"{web}/integrations?error=oauth_exchange_failed")
+        return RedirectResponse(f"{web}/integrations?connected=hubspot")
+    # Marketplace installs start in HubSpot and do not carry our signed user id.
+    try:
+        install_code = hs.create_pending_install(db, tokens)
+    except Exception:
+        return RedirectResponse(f"{web}/integrations?error=oauth_exchange_failed")
+    return RedirectResponse(
+        f"{web}/integrations/hubspot/finish/{quote(install_code, safe='')}"
+    )
+
+
+def _require_hubspot_signature(request: Request, body: bytes) -> None:
+    ok = hs.verify_hubspot_v3_signature(
+        method=request.method,
+        uri=hs.public_request_uri(request.url.path, request.url.query),
+        body=body.decode("utf-8"),
+        timestamp=request.headers.get("x-hubspot-request-timestamp"),
+        signature=request.headers.get("x-hubspot-signature-v3"),
+    )
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid HubSpot signature.")
+
+
+@app.post("/integrations/hubspot/claim")
+def hubspot_claim_install(
+    payload: HubSpotClaimRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Finish a Marketplace install by attaching the portal to the signed-in user."""
+    if current_user.role == "guest":
+        raise HTTPException(
+            status_code=403,
+            detail="Create a CloseAndKeep account before linking this HubSpot portal.",
+        )
+    try:
+        connection = hs.claim_pending_install(db, user_id=current_user.id, code=payload.code)
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="This HubSpot portal is already connected to another CloseAndKeep account.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="This HubSpot install link expired. Install CloseAndKeep from HubSpot again.",
+        ) from exc
+    return {
+        "connected": True,
+        "connection_id": connection.id,
+        "portal_id": connection.external_org_id,
+    }
+
+
+@app.get("/integrations/hubspot/card")
+async def hubspot_card_status(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Deal-card status. HubSpot signs the request; there is no CloseAndKeep session."""
+    raw = await request.body()
+    _require_hubspot_signature(request, raw)
+    portal_id = request.query_params.get("portalId") or request.query_params.get("portal_id") or ""
+    deal_id = request.query_params.get("dealId") or request.query_params.get("deal_id") or ""
+    return hs.card_status(db, portal_id=portal_id, deal_id=deal_id or None)
+
+
+@app.post("/integrations/hubspot/webhooks")
+async def hubspot_native_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """HubSpot dealstage subscription. Signature v3, then the same intake as Sync now."""
+    raw = await request.body()
+    _require_hubspot_signature(request, raw)
+    try:
+        events = hs.parse_webhook_events(raw.decode("utf-8"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload.") from exc
+    try:
+        results = hs.ingest_native_webhook_events(db, events)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"HubSpot webhook processing failed: {exc}") from exc
+    return {"results": results}
 
 
 @app.post("/integrations/hubspot/events")

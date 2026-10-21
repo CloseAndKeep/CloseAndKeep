@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
+import json
 import logging
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -15,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import IntegrationConnectionModel
+from ..models import CrmReminderEventModel, HubSpotPendingInstallModel, IntegrationConnectionModel
 from .check_setup import build_setup_report
 from .crypto import decrypt_token, encrypt_token
 from .reminders import (
@@ -364,19 +366,7 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
     state_prop = settings.hubspot_cookie_state_property or ""
     postal_prop = settings.hubspot_cookie_postal_code_property or ""
     address_prop = settings.hubspot_cookie_address_property or ""
-    deal_properties = ["dealname", "dealstage"]
-    for prop in (
-        note_prop,
-        company_prop,
-        street_prop,
-        street2_prop,
-        city_prop,
-        state_prop,
-        postal_prop,
-        address_prop,
-    ):
-        if prop and prop not in deal_properties:
-            deal_properties.append(prop)
+    deal_properties = _deal_property_names()
 
     search_body = {
         "filterGroups": [
@@ -452,3 +442,330 @@ def verify_webhook_secret(provided: str | None) -> bool:
     if not provided:
         return False
     return hmac.compare_digest(provided.strip(), expected)
+
+
+_HUBSPOT_URI_DECODE = (
+    ("%3A", ":"),
+    ("%2F", "/"),
+    ("%3F", "?"),
+    ("%40", "@"),
+    ("%21", "!"),
+    ("%24", "$"),
+    ("%27", "'"),
+    ("%28", "("),
+    ("%29", ")"),
+    ("%2A", "*"),
+    ("%2C", ","),
+    ("%3B", ";"),
+)
+_SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000
+_PENDING_INSTALL_TTL = timedelta(minutes=30)
+
+_DEAL_STATUS_LABELS = {
+    "sent": "Reminder sent. Open CloseAndKeep to send the cookies.",
+    "auto_ordered": "Cookie order created for this deal.",
+    "held_junk": "Waiting on a usable email or address before sending cookies.",
+    "error": "The last cookie attempt failed. Retry it from CloseAndKeep Integrations.",
+    "skipped_regift": "Skipped. This person was gifted recently.",
+}
+
+
+def _deal_property_names() -> list[str]:
+    names = ["dealname", "dealstage"]
+    for prop in (
+        settings.hubspot_cookie_note_property,
+        settings.hubspot_cookie_company_property,
+        settings.hubspot_cookie_street_property,
+        settings.hubspot_cookie_street2_property,
+        settings.hubspot_cookie_city_property,
+        settings.hubspot_cookie_state_property,
+        settings.hubspot_cookie_postal_code_property,
+        settings.hubspot_cookie_address_property,
+    ):
+        if prop and prop not in names:
+            names.append(prop)
+    return names
+
+
+def _cookie_fields_from_props(props: dict[str, Any]) -> dict[str, str | None]:
+    def _value(name: str) -> str | None:
+        if not name:
+            return None
+        raw = str(props.get(name) or "").strip()
+        return raw or None
+
+    return {
+        "cookie_note": _value(settings.hubspot_cookie_note_property or ""),
+        "cookie_company": _value(settings.hubspot_cookie_company_property or ""),
+        "cookie_street": _value(settings.hubspot_cookie_street_property or ""),
+        "cookie_street2": _value(settings.hubspot_cookie_street2_property or ""),
+        "cookie_city": _value(settings.hubspot_cookie_city_property or ""),
+        "cookie_state": _value(settings.hubspot_cookie_state_property or ""),
+        "cookie_postal_code": _value(settings.hubspot_cookie_postal_code_property or ""),
+        "cookie_address": _value(settings.hubspot_cookie_address_property or ""),
+    }
+
+
+def normalize_hubspot_request_uri(uri: str) -> str:
+    """Decode the query characters HubSpot decodes before signing a v3 request."""
+    uri = (uri or "").split("#", 1)[0]
+    query_pos = uri.find("?")
+    if query_pos == -1:
+        return uri
+    path = uri[: query_pos + 1]
+    query = uri[query_pos + 1 :]
+    for encoded, decoded in _HUBSPOT_URI_DECODE:
+        query = query.replace(encoded, decoded).replace(encoded.lower(), decoded)
+    return path + query
+
+
+def public_request_uri(path: str, query: str = "") -> str:
+    """Public URL HubSpot signed. Uses API_BASE_URL, not the internal proxy host."""
+    base = settings.api_base_url.rstrip("/")
+    uri = f"{base}{path}"
+    if query:
+        uri = f"{uri}?{query}"
+    return uri
+
+
+def hubspot_v3_signature(*, method: str, uri: str, body: str, timestamp: str) -> str:
+    source = f"{method.upper()}{normalize_hubspot_request_uri(uri)}{body}{timestamp}"
+    digest = hmac.new(
+        settings.hubspot_client_secret.encode("utf-8"),
+        source.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return base64.b64encode(digest).decode("ascii")
+
+
+def verify_hubspot_v3_signature(
+    *,
+    method: str,
+    uri: str,
+    body: str,
+    timestamp: str | None,
+    signature: str | None,
+    now_ms: int | None = None,
+) -> bool:
+    """Validate X-HubSpot-Signature-v3. Unsigned requests are allowed only outside production."""
+    if not settings.hubspot_client_secret:
+        return settings.app_env.lower() != "production"
+    if not signature or not timestamp:
+        return False
+    try:
+        ts = int(timestamp)
+    except ValueError:
+        return False
+    now = now_ms if now_ms is not None else int(datetime.now(UTC).timestamp() * 1000)
+    if now - ts > _SIGNATURE_MAX_AGE_MS:
+        return False
+    expected = hubspot_v3_signature(method=method, uri=uri, body=body, timestamp=timestamp)
+    if len(expected) != len(signature):
+        return False
+    return hmac.compare_digest(expected, signature)
+
+
+def _hash_install_code(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
+def create_pending_install(db: Session, token_payload: dict[str, Any]) -> str:
+    """Store marketplace OAuth tokens behind a one-time code. Returns the raw code."""
+    access = token_payload.get("access_token") or ""
+    refresh = token_payload.get("refresh_token") or ""
+    if not access:
+        raise ValueError("HubSpot did not return an access token.")
+    hub_id = token_payload.get("hub_id") or token_payload.get("hubId")
+    portal_id = str(hub_id) if hub_id is not None else ""
+    code = secrets.token_urlsafe(32)
+    row = HubSpotPendingInstallModel(
+        code_hash=_hash_install_code(code),
+        portal_id=portal_id or None,
+        access_token_encrypted=encrypt_token(access),
+        refresh_token_encrypted=encrypt_token(refresh) if refresh else None,
+        expires_at=datetime.now(UTC) + _PENDING_INSTALL_TTL,
+    )
+    db.add(row)
+    db.commit()
+    return code
+
+
+def claim_pending_install(db: Session, *, user_id: int, code: str) -> IntegrationConnectionModel:
+    """Attach a marketplace install to the signed-in CloseAndKeep user."""
+    digest = _hash_install_code((code or "").strip())
+    row = db.scalar(
+        select(HubSpotPendingInstallModel).where(HubSpotPendingInstallModel.code_hash == digest)
+    )
+    if row is None or _as_utc(row.expires_at) < datetime.now(UTC):
+        if row is not None:
+            db.delete(row)
+            db.commit()
+        raise ValueError("install_expired")
+
+    portal_id = (row.portal_id or "").strip()
+    if portal_id:
+        other = db.scalar(
+            select(IntegrationConnectionModel).where(
+                IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+                IntegrationConnectionModel.external_org_id == portal_id,
+                IntegrationConnectionModel.owner_user_id != user_id,
+            )
+        )
+        if other is not None:
+            db.delete(row)
+            db.commit()
+            raise PermissionError("portal_taken")
+
+    payload = {
+        "access_token": decrypt_token(row.access_token_encrypted),
+        "refresh_token": (
+            decrypt_token(row.refresh_token_encrypted) if row.refresh_token_encrypted else ""
+        ),
+        "hub_id": portal_id or None,
+    }
+    connection = upsert_connection_from_oauth(db, user_id=user_id, token_payload=payload)
+    pending = db.get(HubSpotPendingInstallModel, row.id)
+    if pending is not None:
+        db.delete(pending)
+        db.commit()
+    return connection
+
+
+def connection_for_portal(db: Session, portal_id: str) -> IntegrationConnectionModel | None:
+    portal = (portal_id or "").strip()
+    if not portal:
+        return None
+    return db.scalar(
+        select(IntegrationConnectionModel).where(
+            IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+            IntegrationConnectionModel.external_org_id == portal,
+            IntegrationConnectionModel.enabled.is_(True),
+        )
+    )
+
+
+def card_status(db: Session, *, portal_id: str, deal_id: str | None) -> dict[str, Any]:
+    """Account link + latest cookie action for a deal card. No tokens or owner emails."""
+    connection = connection_for_portal(db, portal_id)
+    if connection is None:
+        return {"linked": False, "portal_id": (portal_id or "").strip() or None}
+    payload: dict[str, Any] = {
+        "linked": True,
+        "portal_id": connection.external_org_id,
+        "token_status": connection.token_status,
+        "recipe_stages": recipe_stage_names(connection),
+    }
+    deal = (deal_id or "").strip()
+    if deal:
+        event = db.scalar(
+            select(CrmReminderEventModel).where(
+                CrmReminderEventModel.connection_id == connection.id,
+                CrmReminderEventModel.external_event_key == deal,
+            )
+        )
+        status = event.status if event else None
+        payload["deal"] = {
+            "id": deal,
+            "status": status,
+            "status_label": _DEAL_STATUS_LABELS.get(status or "", None),
+        }
+    return payload
+
+
+def parse_webhook_events(body_text: str) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(body_text or "[]")
+    except json.JSONDecodeError as exc:
+        raise ValueError("invalid_json") from exc
+    if isinstance(payload, dict):
+        return [payload]
+    if isinstance(payload, list) and all(isinstance(item, dict) for item in payload):
+        return payload
+    raise ValueError("invalid_json")
+
+
+def _is_deal_stage_event(event: dict[str, Any]) -> bool:
+    kind = str(event.get("subscriptionType") or "")
+    prop = str(event.get("propertyName") or "")
+    if prop != "dealstage":
+        return False
+    if kind == "deal.propertyChange":
+        return True
+    if kind != "object.propertyChange":
+        return False
+    object_type = str(event.get("objectType") or event.get("objectTypeId") or "").casefold()
+    return object_type in {"deal", "deals", "0-3"}
+
+
+def _stage_label_for_value(
+    connection: IntegrationConnectionModel, db: Session, property_value: str
+) -> str | None:
+    raw = property_value.strip()
+    if not raw:
+        return None
+    for stage_id, label in _pipeline_stage_pairs(connection, db):
+        if stage_id == raw or label.casefold() == raw.casefold():
+            return label
+    return None
+
+
+def ingest_native_webhook_events(db: Session, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Turn HubSpot dealstage webhooks into the same cookie intake as Sync now."""
+    return [_ingest_native_webhook_event(db, event) for event in events]
+
+
+def _ingest_native_webhook_event(db: Session, event: dict[str, Any]) -> dict[str, Any]:
+    if not _is_deal_stage_event(event):
+        return {"status": "ignored", "reason": "unsupported_event"}
+
+    portal_id = str(event.get("portalId") or event.get("portal_id") or "").strip()
+    deal_id = str(event.get("objectId") or event.get("object_id") or "").strip()
+    connection = connection_for_portal(db, portal_id)
+    if connection is None:
+        return {"status": "ignored", "reason": "unknown_portal", "portal_id": portal_id or None}
+    if not deal_id:
+        return {"status": "ignored", "reason": "missing_deal"}
+
+    stage_label = _stage_label_for_value(
+        connection, db, str(event.get("propertyValue") or "")
+    )
+    if not stage_label:
+        return {"status": "ignored", "reason": "unknown_stage", "deal_id": deal_id}
+
+    deal = hubspot_request(
+        connection,
+        db,
+        "GET",
+        f"/crm/v3/objects/deals/{deal_id}",
+        params={"properties": ",".join(_deal_property_names())},
+    )
+    props = deal.get("properties") or {}
+    contact = _contact_for_deal(connection, db, deal_id)
+    email = (contact.get("email") or "").strip()
+    if "@" not in email:
+        return {"status": "ignored", "reason": "missing_contact", "deal_id": deal_id}
+
+    deal_name = str(props.get("dealname") or "").strip()
+    fields = _cookie_fields_from_props(props)
+    return process_stage_completed_reminder(
+        db,
+        connection=connection,
+        opportunity_id=deal_id,
+        stage_name=stage_label,
+        contact_name=(contact.get("name") or "").strip() or deal_name or "HubSpot contact",
+        contact_email=email,
+        cookie_note=fields["cookie_note"],
+        cookie_company=fields["cookie_company"],
+        cookie_street=fields["cookie_street"],
+        cookie_street2=fields["cookie_street2"],
+        cookie_city=fields["cookie_city"],
+        cookie_state=fields["cookie_state"],
+        cookie_postal_code=fields["cookie_postal_code"],
+        cookie_address=fields["cookie_address"],
+    )

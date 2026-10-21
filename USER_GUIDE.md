@@ -112,7 +112,15 @@ Integrations shows **Recent activity** for those CRM events (for example “Acme
 7. Click **Check setup**. CloseAndKeep looks at your CRM and tells you if the Cookie fields or the trigger stage name are missing (this is advisory — connect still succeeds if something is missing).
 8. Put the deal in a recipe stage (for example **Demo Completed** or **Closed Won**) with note + address filled, then click **Sync now** (or wait for your webhook/Flow).
 
-You can connect one org/portal per CRM per CloseAndKeep user.
+**HubSpot Marketplace:** you can start from HubSpot instead of the Connect button.
+
+1. In HubSpot, install **CloseAndKeep** from the Marketplace (or from your developer project while the listing is in review).
+2. Approve read access to deals, contacts, and companies.
+3. HubSpot sends you to CloseAndKeep. Sign in (or create an account) so we can attach that portal to you. The link works once and expires after 30 minutes.
+4. On a deal, open **Customize** and add the **CloseAndKeep** card if it is not already there. The card shows which cookie fields are filled and whether a cookie order already started.
+5. Move the deal into a recipe stage. CloseAndKeep receives the stage change from HubSpot. **Sync now** still works if you want to pull recent deals yourself.
+
+You can connect one org/portal per CRM per CloseAndKeep user. A HubSpot portal that is already linked to another CloseAndKeep account cannot be claimed again until that account disconnects it.
 
 ### CRM fields you need
 
@@ -169,7 +177,7 @@ Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`,
 
 #### 4. Webhook / Flow payload (optional admin setup)
 
-If your admin posts stage events to CloseAndKeep instead of relying only on **Sync now**, include:
+If your admin posts stage events to CloseAndKeep instead of relying only on **Sync now**, include the fields below. HubSpot Marketplace installs also receive deal stage changes automatically, so a separate HubSpot workflow is optional.
 
 | Field | Salesforce event | HubSpot event |
 |-------|------------------|---------------|
