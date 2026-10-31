@@ -27,11 +27,12 @@ from .config import is_known_gift, settings
 from .dashboard import list_needs_attention, summarize_dashboard
 from .csv_import import (
     DEFAULT_IMPORT_NOTE,
-    EXCEL_WORKBOOK_MESSAGE,
     example_csv,
     looks_like_excel_workbook,
+    non_csv_upload_message,
     parse_gift_orders_csv,
     template_csv,
+    workbook_upload_message,
 )
 from .db import SessionLocal
 from .integrations import hubspot as hs
@@ -2058,15 +2059,9 @@ async def import_gift_orders_csv(
     if not raw:
         raise HTTPException(status_code=400, detail="CSV file is empty.")
     if looks_like_excel_workbook(filename, raw):
-        raise HTTPException(status_code=400, detail=EXCEL_WORKBOOK_MESSAGE)
+        raise HTTPException(status_code=400, detail=workbook_upload_message(filename))
     if filename and not filename.endswith(".csv"):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Please upload a .csv file. In Google Sheets choose "
-                "File → Download → Comma-separated values (.csv)."
-            ),
-        )
+        raise HTTPException(status_code=400, detail=non_csv_upload_message())
     if len(raw) > settings.csv_import_max_bytes:
         raise HTTPException(
             status_code=400,

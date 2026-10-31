@@ -257,6 +257,8 @@ def test_import_rejects_excel_workbook_with_sheets_hint(auth_client):
     )
     assert resp.status_code == 400
     detail = resp.json()["detail"]
+    assert ".xlsx" in detail
+    assert "CSV UTF-8" in detail
     assert "Comma-separated values" in detail
 
     renamed = auth_client.post(
@@ -270,7 +272,17 @@ def test_import_rejects_excel_workbook_with_sheets_hint(auth_client):
         },
     )
     assert renamed.status_code == 400
-    assert "Comma-separated values" in renamed.json()["detail"]
+    renamed_detail = renamed.json()["detail"]
+    assert "Renaming" in renamed_detail
+    assert "CSV UTF-8" in renamed_detail
+    assert "Comma-separated values" in renamed_detail
+
+    numbers = auth_client.post(
+        "/gift-orders/import",
+        files={"file": ("Orders.numbers", io.BytesIO(b"not-a-csv"), "application/octet-stream")},
+    )
+    assert numbers.status_code == 400
+    assert "Export To" in numbers.json()["detail"]
 
 
 def test_import_requires_authentication(client):

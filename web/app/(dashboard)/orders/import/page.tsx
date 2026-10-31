@@ -30,8 +30,25 @@ const CSV_ACCEPT =
 
 const WORKBOOK_EXTENSIONS = [".xlsx", ".xlsm", ".xls", ".numbers", ".ods"];
 
-const SHEETS_CSV_HINT =
-  "In Google Sheets use File → Download → Comma-separated values (.csv). You can import another file after this one.";
+const EXCEL_SAVE_AS =
+  "In Excel choose File → Save As and pick CSV UTF-8 (Comma delimited) (*.csv). Older Excel lists this as CSV (Comma delimited) (*.csv).";
+const SHEETS_DOWNLOAD =
+  "In Google Sheets choose File → Download → Comma-separated values (.csv).";
+
+const CSV_SAVE_HINT = `${EXCEL_SAVE_AS} ${SHEETS_DOWNLOAD} You can import another file after this one.`;
+
+function workbookError(filename: string): string {
+  const name = filename.trim().toLowerCase();
+  if (name.endsWith(".numbers")) {
+    return "This is an Apple Numbers spreadsheet, not a CSV. In Numbers choose File → Export To → CSV, then upload that file.";
+  }
+  if (name.endsWith(".ods")) {
+    return `This is a spreadsheet workbook (.ods), not a CSV. Save it as Text CSV (.csv), then upload that file. ${EXCEL_SAVE_AS} ${SHEETS_DOWNLOAD}`;
+  }
+  const extension = [".xlsx", ".xlsm", ".xls"].find((suffix) => name.endsWith(suffix));
+  const labeled = extension ? ` (${extension})` : "";
+  return `This is an Excel workbook${labeled}, not a CSV. Upload the .csv you save, not the workbook. ${EXCEL_SAVE_AS} ${SHEETS_DOWNLOAD} You can import another file after this one.`;
+}
 
 export default function ImportOrdersPage() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -68,9 +85,7 @@ export default function ImportOrdersPage() {
       if (inputRef.current) {
         inputRef.current.value = "";
       }
-      setError(
-        `That file is a spreadsheet workbook, not a CSV. ${SHEETS_CSV_HINT}`,
-      );
+      setError(workbookError(name));
       return;
     }
     setFile(next);
@@ -225,7 +240,7 @@ Bob Jones,bob@example.com,12,,,,,,`}</pre>
           <h2 className="text-base font-semibold text-espresso">Upload</h2>
           <p className="mt-1 text-sm text-stone-600">
             Rows with an address are charged together in one Stripe checkout. Rows without an
-            address each get their own authorize-then-capture payment. {SHEETS_CSV_HINT}
+            address each get their own authorize-then-capture payment. {CSV_SAVE_HINT}
           </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <input

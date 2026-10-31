@@ -29,6 +29,20 @@ def test_template_and_example_helpers():
     assert by_email["bob@example.com"].request_recipient_address is True
 
 
+def test_parse_names_cookie_header_to_rename():
+    csv_text = (
+        "Name,Email,Number of Cookies(4 or 12),Company,Street,Street 2,City,State,Postal Code\n"
+        "Ashlyn Hamilton,ashlyn@example.com,4,Hamilton Homes,39789 Yorktown Ter,,Elizabeth,CO,80107\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert rows == []
+    assert len(errors) == 1
+    message = errors[0].message
+    assert "Number of Cookies(4 or 12)" in message
+    assert "Rename it to Cookies" in message
+    assert "4 or 12" in message
+
+
 def test_parse_accepts_header_aliases():
     csv_text = (
         "Recipient Name,Recipient Email,Cookie Count,Shipping Address\n"

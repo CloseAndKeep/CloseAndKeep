@@ -98,11 +98,12 @@ _HEADER_ALIASES: dict[str, str] = {
     "shipping_postal_code": "postal_code",
 }
 
-# Google Sheets / Excel "CSV" downloads that are actually workbooks.
-EXCEL_WORKBOOK_MESSAGE = (
-    "This looks like an Excel or Google Sheets workbook, not a CSV. "
-    "In Google Sheets choose File → Download → Comma-separated values (.csv) "
-    "and upload that file."
+_EXCEL_SAVE_AS = (
+    "In Excel choose File → Save As and pick CSV UTF-8 (Comma delimited) (*.csv). "
+    "Older Excel lists this as CSV (Comma delimited) (*.csv)."
+)
+_SHEETS_DOWNLOAD = (
+    "In Google Sheets choose File → Download → Comma-separated values (.csv)."
 )
 
 _EXCEL_EXTENSIONS = (".xlsx", ".xlsm", ".xls", ".numbers", ".ods")
@@ -137,6 +138,43 @@ def template_csv() -> str:
 def example_csv() -> str:
     """Downloadable example with a reminder, headers, and sample rows."""
     return CSV_TEMPLATE_NOTE + CSV_TEMPLATE_HEADERS + CSV_EXAMPLE_BODY
+
+
+def workbook_upload_message(filename: str) -> str:
+    """Tell the person how to save a real CSV from the app that made this file."""
+    name = (filename or "").strip().lower()
+    if name.endswith(".numbers"):
+        return (
+            "This is an Apple Numbers spreadsheet, not a CSV. "
+            "In Numbers choose File → Export To → CSV, then upload that file."
+        )
+    if name.endswith(".ods"):
+        return (
+            "This is a spreadsheet workbook (.ods), not a CSV. "
+            "Save it as Text CSV (.csv), then upload that file. "
+            f"{_EXCEL_SAVE_AS} {_SHEETS_DOWNLOAD}"
+        )
+    if name.endswith(".csv"):
+        return (
+            "This file is named .csv, but it is still an Excel or Google Sheets workbook. "
+            "Renaming the file does not convert it. "
+            f"{_EXCEL_SAVE_AS} {_SHEETS_DOWNLOAD}"
+        )
+    extension = next(
+        (suffix for suffix in (".xlsx", ".xlsm", ".xls") if name.endswith(suffix)),
+        "",
+    )
+    labeled = f" ({extension})" if extension else ""
+    return (
+        f"This is an Excel workbook{labeled}, not a CSV. "
+        "Upload the .csv you save, not the workbook. "
+        f"{_EXCEL_SAVE_AS} {_SHEETS_DOWNLOAD}"
+    )
+
+
+def non_csv_upload_message() -> str:
+    """Used when the upload is not a .csv and is not a known workbook."""
+    return f"Please upload a .csv file. {_EXCEL_SAVE_AS} {_SHEETS_DOWNLOAD}"
 
 
 def looks_like_excel_workbook(filename: str, raw: bytes) -> bool:
@@ -195,17 +233,62 @@ def _decode_csv_text(content: str | bytes) -> str:
     return text.lstrip("\ufeff")
 
 
-def _missing_header_error(header_map: dict[str, int]) -> RowError:
-    missing = [h for h in REQUIRED_HEADERS if h not in header_map]
-    return RowError(
-        row=1,
-        message=(
-            "Missing required column(s): "
-            + ", ".join(missing)
-            + ". Expected headers: Name, Email, Cookies, Company, Street, Street2, City, State, Postal Code "
-            "(address columns optional)."
-        ),
-    )
+def _quote_header(label: str) -> str:
+    return f"“{label}”"
+
+
+def _best_header_cells(text: str) -> list[str]:
+    """Header row to describe when the file is missing a required column.
+
+    Prefer the row that already matches the most required names, and prefer a
+    row whose label mentions cookies over a title like "Cookie orders".
+    """
+    best_cells: list[str] = []
+    best_score = -1
+    for delimiter in _DELIMITERS:
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+        for index, cells in enumerate(reader):
+            if index > _HEADER_SCAN_LIMIT:
+                break
+            if not any(_clean_cell(cell) for cell in cells):
+                continue
+            header_map = _header_map_from_cells(cells)
+            score = sum(1 for name in REQUIRED_HEADERS if name in header_map)
+            if any("cookie" in _clean_cell(cell).lower() for cell in cells):
+                score += 1
+            if all(name in header_map for name in REQUIRED_HEADERS):
+                return cells
+            if score > best_score:
+                best_score = score
+                best_cells = cells
+    return best_cells
+
+
+def _missing_header_error(cells: list[str]) -> RowError:
+    header_map = _header_map_from_cells(cells)
+    labels = {"name": "Name", "email": "Email", "cookies": "Cookies"}
+    missing = [field for field in REQUIRED_HEADERS if field not in header_map]
+    missing_labels = [labels[field] for field in missing]
+    unrecognized = [
+        cleaned
+        for cell in cells
+        if (cleaned := _clean_cell(cell)) and _normalize_header(cell) is None
+    ]
+    parts = [
+        "Missing required column(s): " + ", ".join(missing_labels) + ".",
+        "Use the header Name, Email, Cookies. Company, Street, Street2, City, State, and Postal Code are optional.",
+    ]
+    cookie_like = [name for name in unrecognized if "cookie" in name.lower()]
+    if "cookies" in missing and cookie_like:
+        found = ", ".join(_quote_header(name) for name in cookie_like)
+        parts.append(
+            f"Found {found} instead of Cookies. Rename it to Cookies. "
+            "Put 4 or 12 in the cells, not in the column name."
+        )
+    elif unrecognized:
+        found = ", ".join(_quote_header(name) for name in unrecognized[:6])
+        parts.append(f"These headers were not recognized: {found}.")
+    return RowError(row=1, message=" ".join(parts))
 
 
 def _locate_csv_header(text: str) -> tuple[str, int] | None:
@@ -276,12 +359,10 @@ def parse_gift_orders_csv(
 
     located = _locate_csv_header(text)
     if located is None:
-        fallback = csv.reader(io.StringIO(text))
-        try:
-            header_row = next(fallback)
-        except StopIteration:
+        cells = _best_header_cells(text)
+        if not cells:
             return [], [RowError(row=0, message="CSV file is empty.")]
-        return [], [_missing_header_error(_header_map_from_cells(header_row))]
+        return [], [_missing_header_error(cells)]
 
     delimiter, header_index = located
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
@@ -295,7 +376,7 @@ def parse_gift_orders_csv(
 
     header_map = _header_map_from_cells(header_row)
     if any(h not in header_map for h in REQUIRED_HEADERS):
-        return [], [_missing_header_error(header_map)]
+        return [], [_missing_header_error(header_row)]
 
     errors: list[RowError] = []
     rows: list[ParsedOrderRow] = []
