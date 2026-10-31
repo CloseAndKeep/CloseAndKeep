@@ -206,6 +206,72 @@ def test_import_rejects_non_csv_filename(auth_client):
     assert "csv" in resp.json()["detail"].lower()
 
 
+def test_second_import_accepts_google_sheets_two_row_csv(auth_client, stripe_stub):
+    first = _upload(
+        auth_client,
+        "Name,Email,Cookies\nJane Smith,jane@example.com,4\n",
+        filename="cookie-orders-template.csv",
+    )
+    assert first.status_code == 201, first.text
+    assert len(first.json()["created"]) == 1
+
+    sheets = (
+        "Cookie orders\r\n"
+        "Name;Email;Cookies;Company;Street;Street2;City;State;Postal Code\r\n"
+        "Bob Jones;bob@example.com;4;;123 Main St;;Springfield;IL;62704\r\n"
+        "Alex Rivera;alex@example.com;12;;;;;;\r\n"
+    )
+    raw = b"\xef\xbb\xbf" + sheets.encode("utf-8")
+    second = auth_client.post(
+        "/gift-orders/import",
+        files={
+            "file": (
+                "Untitled spreadsheet - Sheet1.csv",
+                io.BytesIO(raw),
+                "application/vnd.ms-excel",
+            )
+        },
+    )
+    assert second.status_code == 201, second.text
+    created = second.json()["created"]
+    assert len(created) == 2
+    by_email = {order["recipient_email"]: order for order in created}
+    assert by_email["bob@example.com"]["status"] == "pending_payment"
+    assert "Springfield" in (by_email["bob@example.com"]["shipping_address"] or "")
+    assert by_email["alex@example.com"]["status"] == "no_address"
+    listed = auth_client.get("/gift-orders")
+    assert len(listed.json()) == 3
+
+
+def test_import_rejects_excel_workbook_with_sheets_hint(auth_client):
+    resp = auth_client.post(
+        "/gift-orders/import",
+        files={
+            "file": (
+                "Orders.xlsx",
+                io.BytesIO(b"PK\x03\x04not-a-csv"),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "Comma-separated values" in detail
+
+    renamed = auth_client.post(
+        "/gift-orders/import",
+        files={
+            "file": (
+                "Orders.csv",
+                io.BytesIO(b"PK\x03\x04not-a-csv"),
+                "application/vnd.ms-excel",
+            )
+        },
+    )
+    assert renamed.status_code == 400
+    assert "Comma-separated values" in renamed.json()["detail"]
+
+
 def test_import_requires_authentication(client):
     csv_text = "Name,Email,Cookies,Address\nJane,jane@example.com,4,1 Main\n"
     resp = _upload(client, csv_text)

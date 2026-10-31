@@ -27,7 +27,9 @@ from .config import is_known_gift, settings
 from .dashboard import list_needs_attention, summarize_dashboard
 from .csv_import import (
     DEFAULT_IMPORT_NOTE,
+    EXCEL_WORKBOOK_MESSAGE,
     example_csv,
+    looks_like_excel_workbook,
     parse_gift_orders_csv,
     template_csv,
 )
@@ -2051,13 +2053,20 @@ async def import_gift_orders_csv(
             detail="Guest accounts cannot import orders. Please create an account.",
         )
 
-    filename = (file.filename or "").lower()
-    if filename and not filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
-
+    filename = (file.filename or "").strip().lower()
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="CSV file is empty.")
+    if looks_like_excel_workbook(filename, raw):
+        raise HTTPException(status_code=400, detail=EXCEL_WORKBOOK_MESSAGE)
+    if filename and not filename.endswith(".csv"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Please upload a .csv file. In Google Sheets choose "
+                "File → Download → Comma-separated values (.csv)."
+            ),
+        )
     if len(raw) > settings.csv_import_max_bytes:
         raise HTTPException(
             status_code=400,
