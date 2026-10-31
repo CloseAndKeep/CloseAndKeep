@@ -22,9 +22,22 @@ type ImportError = {
   message: string;
 };
 
+// Google Sheets "Download as CSV" is often registered as an Excel CSV
+// (`application/vnd.ms-excel`). A text/csv-only filter leaves that file
+// visible in the dialog but not selectable.
+const CSV_ACCEPT =
+  ".csv,text/csv,application/csv,text/comma-separated-values,text/x-csv,text/plain,application/vnd.ms-excel";
+
+const WORKBOOK_EXTENSIONS = [".xlsx", ".xlsm", ".xls", ".numbers", ".ods"];
+
+const SHEETS_CSV_HINT =
+  "In Google Sheets use File → Download → Comma-separated values (.csv). You can import another file after this one.";
+
 export default function ImportOrdersPage() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
   const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<ImportError[]>([]);
@@ -39,6 +52,30 @@ export default function ImportOrdersPage() {
     () => (created ?? []).filter((order) => !order.shipping_address),
     [created],
   );
+
+  function chooseFile(next: File | null) {
+    setCreated(null);
+    setBatchCheckoutUrl(null);
+    setRowErrors([]);
+    if (!next) {
+      setFile(null);
+      setError(null);
+      return;
+    }
+    const name = next.name.trim().toLowerCase();
+    if (WORKBOOK_EXTENSIONS.some((ext) => name.endsWith(ext))) {
+      setFile(null);
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+      setError(
+        `That file is a spreadsheet workbook, not a CSV. ${SHEETS_CSV_HINT}`,
+      );
+      return;
+    }
+    setFile(next);
+    setError(null);
+  }
 
   async function downloadCsv(kind: "template" | "example") {
     setError(null);
@@ -88,9 +125,6 @@ export default function ImportOrdersPage() {
       setCreated(data.created ?? []);
       setBatchCheckoutUrl(data.batch_checkout_url ?? null);
       setFile(null);
-      if (inputRef.current) {
-        inputRef.current.value = "";
-      }
     } catch (uploadError) {
       if (uploadError instanceof ApiError) {
         const detail = uploadError.detail;
@@ -104,6 +138,11 @@ export default function ImportOrdersPage() {
       setError(uploadError instanceof Error ? uploadError.message : "Unable to import CSV.");
     } finally {
       setUploading(false);
+      // Clearing the control lets the next pick register, including a Google
+      // Sheets re-download that kept the same filename.
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
     }
   }
 
@@ -145,22 +184,56 @@ Bob Jones,bob@example.com,4,,,,,,`}</pre>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-stone-200/90 bg-white/90 p-5 shadow-sm">
+        <section
+          className={`rounded-2xl border bg-white/90 p-5 shadow-sm ${
+            dragOver ? "border-wood bg-wood/5" : "border-stone-200/90"
+          }`}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            dragDepth.current += 1;
+            setDragOver(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            dragDepth.current -= 1;
+            if (dragDepth.current <= 0) {
+              dragDepth.current = 0;
+              setDragOver(false);
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            dragDepth.current = 0;
+            setDragOver(false);
+            const dropped = Array.from(event.dataTransfer.files);
+            const csv =
+              dropped.find((item) => item.name.toLowerCase().endsWith(".csv")) ??
+              dropped[0] ??
+              null;
+            chooseFile(csv);
+          }}
+        >
           <h2 className="text-base font-semibold text-espresso">Upload</h2>
           <p className="mt-1 text-sm text-stone-600">
             Rows with an address are charged together in one Stripe checkout. Rows without an
-            address each get their own authorize-then-capture payment.
+            address each get their own authorize-then-capture payment. {SHEETS_CSV_HINT}
           </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
               ref={inputRef}
               type="file"
-              accept=".csv,text/csv"
+              accept={CSV_ACCEPT}
               className="block w-full text-sm text-stone-600 file:mr-3 file:rounded-full file:border-0 file:bg-wood/15 file:px-4 file:py-2 file:text-sm file:font-medium file:text-wood-dark hover:file:bg-wood/25"
+              onClick={(event) => {
+                // Empty the control before the dialog opens so choosing the same
+                // downloaded filename (Google Sheets re-exports) fires onChange.
+                event.currentTarget.value = "";
+              }}
               onChange={(event) => {
-                setFile(event.target.files?.[0] ?? null);
-                setError(null);
-                setRowErrors([]);
+                chooseFile(event.target.files?.[0] ?? null);
               }}
             />
             <Button type="button" disabled={uploading || !file} onClick={() => void upload()}>
@@ -168,8 +241,12 @@ Bob Jones,bob@example.com,4,,,,,,`}</pre>
             </Button>
           </div>
           {file ? (
-            <p className="mt-2 text-xs text-stone-500">Selected: {file.name}</p>
-          ) : null}
+            <p className="mt-2 text-sm text-stone-600">
+              Ready to import <span className="font-medium text-espresso">{file.name}</span>
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-stone-500">Or drop a CSV file here.</p>
+          )}
         </section>
 
         {error ? (

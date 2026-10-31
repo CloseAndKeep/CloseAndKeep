@@ -110,6 +110,71 @@ def test_parse_cookie_count_from_text():
     assert rows[0].cookie_count == 4
 
 
+def test_parse_google_sheets_semicolon_two_rows():
+    csv_text = (
+        "Name;Email;Cookies;Company;Street;Street2;City;State;Postal Code\n"
+        "Jane Smith;jane@example.com;4;;123 Main St;;Springfield;IL;62704\n"
+        "Bob Jones;bob@example.com;12;Acme;456 Oak Ave;;Austin;TX;78701\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert errors == []
+    assert len(rows) == 2
+    assert rows[0].shipping_address is not None
+    assert "Springfield" in rows[0].shipping_address
+    assert rows[1].address_parts is not None
+    assert rows[1].address_parts.city == "Austin"
+    assert rows[1].cookie_count == 12
+
+
+def test_parse_google_sheets_tab_and_title_row():
+    csv_text = (
+        "Cookie orders\n"
+        "Name\tEmail\tCookies\n"
+        "Jane Smith\tjane@example.com\t4\n"
+        "Bob Jones\tbob@example.com\t12\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert errors == []
+    assert [row.recipient_name for row in rows] == ["Jane Smith", "Bob Jones"]
+    assert rows[0].request_recipient_address is True
+
+
+def test_parse_google_sheets_bom_crlf_quoted_two_rows():
+    text = (
+        '"Name","Email","Cookies","Company","Street","Street2","City","State","Postal Code"\r\n'
+        '"Jane Smith","jane@example.com","4","","123 Main St","","Springfield","IL","62704"\r\n'
+        '"Bob Jones","bob@example.com","12","Acme, Inc","456 Oak Ave","","Austin","TX","78701"\r\n'
+    )
+    raw = b"\xef\xbb\xbf" + text.encode("utf-8")
+    rows, errors = parse_gift_orders_csv(raw)
+    assert errors == []
+    assert len(rows) == 2
+    assert rows[1].address_parts is not None
+    assert rows[1].address_parts.company == "Acme, Inc"
+
+
+def test_parse_utf16_and_leading_blank_line():
+    text = "\nName,Email,Cookies\nJane,jane@example.com,4\nBob,bob@example.com,12\n"
+    rows, errors = parse_gift_orders_csv(text.encode("utf-16"))
+    assert errors == []
+    assert len(rows) == 2
+    assert rows[1].gift_id == "cookies-12"
+
+
+def test_parse_ignores_zero_width_space_in_postal_header():
+    csv_text = (
+        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal\u200b Code\n"
+        "Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704\n"
+        "Bob Jones,bob@example.com,12,,,,,,\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert errors == []
+    assert len(rows) == 2
+    assert rows[0].address_parts is not None
+    assert rows[0].address_parts.postal_code == "62704"
+    assert rows[1].request_recipient_address is True
+
+
 def test_parse_collects_multiple_row_errors():
     csv_text = (
         "Name,Email,Cookies,Address\n"

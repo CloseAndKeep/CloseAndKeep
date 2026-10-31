@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from email_validator import EmailNotValidError, validate_email
@@ -44,9 +45,12 @@ DEFAULT_IMPORT_NOTE = "Enjoy these cookies — a small thank-you from us."
 
 _HEADER_ALIASES: dict[str, str] = {
     "name": "name",
+    "full name": "name",
     "recipient_name": "name",
     "recipient name": "name",
     "email": "email",
+    "e-mail": "email",
+    "email address": "email",
     "recipient_email": "email",
     "recipient email": "email",
     "cookies": "cookies",
@@ -84,8 +88,21 @@ _HEADER_ALIASES: dict[str, str] = {
     "zip": "postal_code",
     "zip_code": "postal_code",
     "zip code": "postal_code",
+    "zipcode": "postal_code",
     "shipping_postal_code": "postal_code",
 }
+
+# Google Sheets / Excel "CSV" downloads that are actually workbooks.
+EXCEL_WORKBOOK_MESSAGE = (
+    "This looks like an Excel or Google Sheets workbook, not a CSV. "
+    "In Google Sheets choose File → Download → Comma-separated values (.csv) "
+    "and upload that file."
+)
+
+_EXCEL_EXTENSIONS = (".xlsx", ".xlsm", ".xls", ".numbers", ".ods")
+_OLE_WORKBOOK_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_HEADER_SCAN_LIMIT = 20
+_DELIMITERS = (",", ";", "\t")
 
 
 @dataclass(frozen=True)
@@ -116,10 +133,101 @@ def example_csv() -> str:
     return CSV_TEMPLATE_HEADERS + CSV_EXAMPLE_BODY
 
 
+def looks_like_excel_workbook(filename: str, raw: bytes) -> bool:
+    """True for .xlsx/.xls uploads, including workbooks renamed to .csv."""
+    name = (filename or "").strip().lower()
+    if name.endswith(_EXCEL_EXTENSIONS):
+        return True
+    return raw.startswith(b"PK\x03\x04") or raw.startswith(_OLE_WORKBOOK_MAGIC)
+
+
+def _strip_format_chars(raw: str) -> str:
+    """Drop BOM / zero-width characters Sheets and Excel sometimes leave in cells."""
+    cleaned = "".join(ch for ch in raw if unicodedata.category(ch) != "Cf")
+    return cleaned.replace("\u00a0", " ")
+
+
+def _clean_cell(value: str) -> str:
+    return _strip_format_chars(value).strip()
+
+
 def _normalize_header(raw: str) -> str | None:
-    spaced = re.sub(r"\s+", " ", raw.strip().lower().replace("_", " "))
+    spaced = re.sub(r"\s+", " ", _strip_format_chars(raw).strip().lower().replace("_", " "))
     underscored = spaced.replace(" ", "_")
     return _HEADER_ALIASES.get(spaced) or _HEADER_ALIASES.get(underscored)
+
+
+def _header_map_from_cells(cells: list[str]) -> dict[str, int]:
+    header_map: dict[str, int] = {}
+    for index, cell in enumerate(cells):
+        normalized = _normalize_header(cell)
+        if normalized and normalized not in header_map:
+            header_map[normalized] = index
+    return header_map
+
+
+def _decode_csv_text(content: str | bytes) -> str:
+    if isinstance(content, str):
+        return content.lstrip("\ufeff")
+    if content.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return content.decode("utf-16").lstrip("\ufeff")
+    # Excel "Unicode Text" is UTF-16 without a BOM (NUL bytes between ASCII).
+    if b"\x00" in content[:64]:
+        for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+            try:
+                text = content.decode(encoding)
+            except UnicodeError:
+                continue
+            if text.strip("\ufeff"):
+                return text.lstrip("\ufeff")
+    if content.startswith(b"\xef\xbb\xbf"):
+        content = content[3:]
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+    return text.lstrip("\ufeff")
+
+
+def _missing_header_error(header_map: dict[str, int]) -> RowError:
+    missing = [h for h in REQUIRED_HEADERS if h not in header_map]
+    return RowError(
+        row=1,
+        message=(
+            "Missing required column(s): "
+            + ", ".join(missing)
+            + ". Expected headers: Name, Email, Cookies, Company, Street, Street2, City, State, Postal Code "
+            "(address columns optional)."
+        ),
+    )
+
+
+def _locate_csv_header(text: str) -> tuple[str, int] | None:
+    """Find the header record in a Google Sheets / Excel CSV export.
+
+    Spreadsheet locale chooses comma, semicolon, or tab. Users often leave a
+    title or ``sep=`` line above the real header. Prefer the earliest row that
+    contains Name, Email, and Cookies, and prefer comma when scores tie.
+    """
+    best: tuple[tuple[int, int, int], str, int] | None = None
+    for delimiter in _DELIMITERS:
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+        for index, cells in enumerate(reader):
+            if index > _HEADER_SCAN_LIMIT:
+                break
+            if not any(_clean_cell(cell) for cell in cells):
+                continue
+            header_map = _header_map_from_cells(cells)
+            if any(h not in header_map for h in REQUIRED_HEADERS):
+                continue
+            recognized = sum(1 for name in ALL_HEADERS if name in header_map)
+            rank = (recognized, -index, 1 if delimiter == "," else 0)
+            if best is None or rank > best[0]:
+                best = (rank, delimiter, index)
+            break
+    if best is None:
+        return None
+    return best[1], best[2]
 
 
 def _parse_cookie_count(raw: str) -> int | None:
@@ -155,53 +263,40 @@ def parse_gift_orders_csv(
     callers should reject the upload without creating orders.
     """
     row_cap = settings.csv_import_max_rows if max_rows is None else max_rows
-    if isinstance(content, bytes):
-        # Strip UTF-8 BOM if present (Excel often adds it).
-        if content.startswith(b"\xef\xbb\xbf"):
-            content = content[3:]
-        try:
-            text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            text = content.decode("latin-1")
-    else:
-        text = content.lstrip("\ufeff")
+    text = _decode_csv_text(content)
 
     if not text.strip():
         return [], [RowError(row=0, message="CSV file is empty.")]
 
-    reader = csv.reader(io.StringIO(text))
-    try:
-        header_row = next(reader)
-    except StopIteration:
+    located = _locate_csv_header(text)
+    if located is None:
+        fallback = csv.reader(io.StringIO(text))
+        try:
+            header_row = next(fallback)
+        except StopIteration:
+            return [], [RowError(row=0, message="CSV file is empty.")]
+        return [], [_missing_header_error(_header_map_from_cells(header_row))]
+
+    delimiter, header_index = located
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    header_row: list[str] | None = None
+    for index, cells in enumerate(reader):
+        if index == header_index:
+            header_row = cells
+            break
+    if header_row is None:
         return [], [RowError(row=0, message="CSV file is empty.")]
 
-    header_map: dict[str, int] = {}
+    header_map = _header_map_from_cells(header_row)
+    if any(h not in header_map for h in REQUIRED_HEADERS):
+        return [], [_missing_header_error(header_map)]
+
     errors: list[RowError] = []
-    for index, cell in enumerate(header_row):
-        normalized = _normalize_header(cell)
-        if normalized and normalized not in header_map:
-            header_map[normalized] = index
-
-    missing = [h for h in REQUIRED_HEADERS if h not in header_map]
-    if missing:
-        errors.append(
-            RowError(
-                row=1,
-                message=(
-                    "Missing required column(s): "
-                    + ", ".join(missing)
-                    + ". Expected headers: Name, Email, Cookies, Company, Street, Street2, City, State, Postal Code "
-                    "(address columns optional)."
-                ),
-            )
-        )
-        return [], errors
-
     rows: list[ParsedOrderRow] = []
     data_rows_seen = 0
-    for line_index, cells in enumerate(reader, start=2):
+    for line_index, cells in enumerate(reader, start=header_index + 2):
         # Skip blank lines.
-        if not any(cell.strip() for cell in cells):
+        if not any(_clean_cell(cell) for cell in cells):
             continue
 
         data_rows_seen += 1
@@ -221,7 +316,7 @@ def parse_gift_orders_csv(
             idx = header_map.get(field)
             if idx is None or idx >= len(cells):
                 return ""
-            return cells[idx].strip()
+            return _clean_cell(cells[idx])
 
         name = cell("name")
         email_raw = cell("email")

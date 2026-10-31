@@ -77,9 +77,11 @@ Bob Jones,bob@example.com,12,,,,,,
 
 ### Import steps
 
-1. Choose your `.csv` file.
+1. Choose your `.csv` file (or drop it on the upload box). You can import another file after the first one.
 2. Click **Import CSV**.
 3. If validation fails, **no orders are created** — fix the listed row errors and try again.
+
+From Google Sheets, use **File → Download → Comma-separated values (.csv)**. A workbook download (`.xlsx`) will not import. Sheets can use commas, semicolons, or tabs; a title row above the headers is fine.
 4. If it succeeds:
    - **Rows with an address** → one shared “pay together” Stripe checkout.
    - **Rows without street/city/state/ZIP** → authorize payment **per order**, then we email the recipient a shipping link. If they do not reply within about **7 days**, we email you that the hold expired and that order was canceled.
