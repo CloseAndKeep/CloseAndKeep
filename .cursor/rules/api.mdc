@@ -37,6 +37,7 @@ alwaysApply: false
 - Duplicate signup returns generic 400 (no email enumeration).
 
 ### Failures
+- A note in the header such as Number of Cookies(4 or 12) does not match the Cookies alias; keep the file header exactly Cookies and explain 4 or 12 in a title row and on the import page.
 - Google Sheets CSV is not always comma-on-line-1 (semicolon/tab locale, title row, UTF-16); detect the header row and delimiter before rejecting the file.
 - Stripe coupons are amount-off (catalog − 1¢), not “set charge to $0.01”; one amount cannot leave 1¢ on both pack prices — keep TEST1C test-mode-only and size it to one pack.
 - Subscriptions are not in MVP; do not reintroduce `subscription_status` or a billing portal.

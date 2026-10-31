@@ -31,12 +31,18 @@ COOKIE_COUNT_TO_GIFT_ID: dict[int, str] = {
 }
 ALLOWED_COOKIE_COUNTS = frozenset(COOKIE_COUNT_TO_GIFT_ID)
 
+# Title row above the header. Import already skips a line that is not the header.
+# No commas, so this stays one cell and is not read as column names.
+CSV_TEMPLATE_NOTE = (
+    "Keep these column names. Put 4 or 12 under Cookies. "
+    "Do not rename that column to Number of Cookies (4 or 12).\n"
+)
 CSV_TEMPLATE_HEADERS = "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code\n"
 
 # Filled example rows so users can see both known-address and request-address cases.
 CSV_EXAMPLE_BODY = (
     "Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704\n"
-    "Bob Jones,bob@example.com,4,,,,,,\n"
+    "Bob Jones,bob@example.com,12,,,,,,\n"
     "Casey NoEmail,,4,,,,,,\n"
     "Alex Rivera,alex@example.com,12,Acme Tower,456 Oak Ave,Apt 2,Austin,TX,78701\n"
 )
@@ -124,13 +130,13 @@ class RowError:
 
 
 def template_csv() -> str:
-    """Headers-only template for users to fill in."""
-    return CSV_TEMPLATE_HEADERS
+    """Reminder line plus the header row. No sample orders."""
+    return CSV_TEMPLATE_NOTE + CSV_TEMPLATE_HEADERS
 
 
 def example_csv() -> str:
-    """Downloadable example with headers and sample rows."""
-    return CSV_TEMPLATE_HEADERS + CSV_EXAMPLE_BODY
+    """Downloadable example with a reminder, headers, and sample rows."""
+    return CSV_TEMPLATE_NOTE + CSV_TEMPLATE_HEADERS + CSV_EXAMPLE_BODY
 
 
 def looks_like_excel_workbook(filename: str, raw: bytes) -> bool:

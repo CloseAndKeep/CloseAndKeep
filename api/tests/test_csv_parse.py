@@ -6,13 +6,27 @@ from app.csv_import import parse_gift_orders_csv, template_csv, example_csv
 
 
 def test_template_and_example_helpers():
-    assert template_csv().startswith(
-        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code"
-    )
+    header = "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code"
+    template = template_csv()
+    assert header in template
+    assert "Do not rename that column" in template
+    assert "jane@example.com" not in template
+    # Reminder is a title row, not a data row. Header-only file has no orders.
+    template_rows, template_errors = parse_gift_orders_csv(template)
+    assert template_rows == []
+    assert any("no data rows" in error.message for error in template_errors)
+
     example = example_csv()
+    assert header in example
     assert "jane@example.com" in example
     assert "bob@example.com" in example
     assert "Springfield" in example
+    example_rows, example_errors = parse_gift_orders_csv(example)
+    assert example_errors == []
+    by_email = {row.recipient_email: row for row in example_rows}
+    assert by_email["jane@example.com"].cookie_count == 4
+    assert by_email["bob@example.com"].cookie_count == 12
+    assert by_email["bob@example.com"].request_recipient_address is True
 
 
 def test_parse_accepts_header_aliases():

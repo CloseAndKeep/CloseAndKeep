@@ -2042,7 +2042,7 @@ async def import_gift_orders_csv(
 ) -> GiftOrderImportResponse:
     """Create multiple cookie orders from a CSV upload.
 
-    Columns: Name, Email, Cookies (1 / 4 / 12), Address (optional).
+    Columns: Name, Email, Cookies (4 or 12), Address (optional).
     Rows without an address request shipping from the recipient via email after
     payment is authorized. Guests cannot import.
     """

@@ -57,7 +57,7 @@ Use CSV when you want to create many cookie orders at once.
 |--------|-----------|-------------|
 | **Name** | Yes | Recipient name |
 | **Email** | Recommended | Needed if you leave shipping blank (we email them for shipping) |
-| **Cookies** | Yes | Pack size: **4** or **12** |
+| **Cookies** | Yes | Header must stay **Cookies** (or **Cookie count** / **Number of cookies**). The cell is **4** or **12** only. Do not add a note in the header. |
 | **Company** | Optional | Workplace / building name (helps office deliveries) |
 | **Street** | Optional* | Street address |
 | **Street2** | Optional | Apt, suite, unit |
@@ -66,6 +66,8 @@ Use CSV when you want to create many cookie orders at once.
 | **Postal Code** | Optional* | ZIP / postal code |
 
 \*Street, City, State, and Postal Code are required **together**. Leave all of them blank to request the address after you authorize payment. A single **Address** column still works for older files.
+
+The **Cookies** column is the one people rename. `Number of Cookies (4 or 12)` is rejected. Rename that column to `Cookies` and leave `4` or `12` in the cells. **Download template** starts with a one-line reminder, then the header. You can delete the reminder; import skips it.
 
 Example:
 
