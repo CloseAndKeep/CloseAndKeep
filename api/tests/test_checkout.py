@@ -39,8 +39,48 @@ def test_order_create_starts_checkout_with_correct_price(
     assert params["mode"] == "payment"
     assert params["line_items"] == [{"price": "price_cookies_4", "quantity": 1}]
     assert params["metadata"]["gift_order_id"] == str(body["id"])
-    assert f"/orders/{body['id']}?payment=success" in params["success_url"]
-    assert f"/orders/{body['id']}?payment=cancel" in params["cancel_url"]
+    assert params["success_url"].endswith("/orders?payment=success")
+    assert params["cancel_url"].endswith("/orders?payment=cancel")
+    assert f"/orders/{body['id']}" not in params["success_url"]
+
+
+def test_checkout_returns_to_orders_on_the_browser_host(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    """Stripe must send the buyer back to the host that holds their session."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "web_base_url", "https://closeandkeep.com")
+    monkeypatch.setattr(settings, "cors_origins", ["https://closeandkeep.com"])
+
+    resp = auth_client.post(
+        "/gift-orders",
+        json=make_order_payload(prospect_id),
+        headers={"Origin": "https://www.closeandkeep.com"},
+    )
+    assert resp.status_code == 201, resp.text
+    params = stripe_stub.session_create_calls[-1]
+    assert params["success_url"] == "https://www.closeandkeep.com/orders?payment=success"
+    assert params["cancel_url"] == "https://www.closeandkeep.com/orders?payment=cancel"
+
+
+def test_checkout_ignores_untrusted_return_origin(
+    auth_client, prospect_id, stripe_stub, monkeypatch
+):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "web_base_url", "https://closeandkeep.com")
+    monkeypatch.setattr(settings, "cors_origins", ["https://closeandkeep.com"])
+
+    resp = auth_client.post(
+        "/gift-orders",
+        json=make_order_payload(prospect_id),
+        headers={"Origin": "https://evil.example"},
+    )
+    assert resp.status_code == 201, resp.text
+    params = stripe_stub.session_create_calls[-1]
+    assert params["success_url"] == "https://closeandkeep.com/orders?payment=success"
+    assert params["cancel_url"] == "https://closeandkeep.com/orders?payment=cancel"
 
 
 def test_checkout_replaces_customer_from_other_stripe_mode(

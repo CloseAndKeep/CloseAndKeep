@@ -1912,7 +1912,12 @@ def create_gift_order(
             return GiftOrderCreateResponse(**response.model_dump(), checkout_url=None)
 
         try:
-            checkout_url = create_checkout_session_for_order(order, current_user, db)
+            checkout_url = create_checkout_session_for_order(
+                order,
+                current_user,
+                db,
+                origin=request.headers.get("origin"),
+            )
         except HTTPException:
             db.delete(order)
             db.commit()
@@ -1951,7 +1956,12 @@ def create_gift_order(
         return GiftOrderCreateResponse(**response.model_dump(), checkout_url=None)
 
     try:
-        checkout_url = create_checkout_session_for_order(order, current_user, db)
+        checkout_url = create_checkout_session_for_order(
+            order,
+            current_user,
+            db,
+            origin=request.headers.get("origin"),
+        )
     except HTTPException:
         # Checkout could not be created (e.g. Stripe not configured). Don't leave
         # behind an unpayable pending order.
@@ -2147,14 +2157,22 @@ async def import_gift_orders_csv(
 
             if known_address:
                 batch_checkout_url = create_checkout_session_for_orders(
-                    known_address, current_user, db
+                    known_address,
+                    current_user,
+                    db,
+                    origin=request.headers.get("origin"),
                 )
                 for order in known_address:
                     db.refresh(order)
                     checkout_by_id[order.id] = batch_checkout_url
 
             for order in needs_address:
-                checkout_url = create_checkout_session_for_order(order, current_user, db)
+                checkout_url = create_checkout_session_for_order(
+                    order,
+                    current_user,
+                    db,
+                    origin=request.headers.get("origin"),
+                )
                 db.refresh(order)
                 checkout_by_id[order.id] = checkout_url
 
@@ -2363,7 +2381,12 @@ def checkout_gift_order(
     if not order or order.owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Gift order not found.")
 
-    checkout_url = create_checkout_session_for_order(order, current_user, db)
+    checkout_url = create_checkout_session_for_order(
+        order,
+        current_user,
+        db,
+        origin=request.headers.get("origin"),
+    )
     return StripeCheckoutResponse(checkout_url=checkout_url)
 
 
@@ -2397,7 +2420,12 @@ def resend_gift_order_address(
     db: Session = Depends(get_db),
 ) -> GiftOrderCreateResponse:
     _enforce_order_create_rate_limit(request, current_user)
-    order, checkout_url = resend_address_request(order_id, current_user, db)
+    order, checkout_url = resend_address_request(
+        order_id,
+        current_user,
+        db,
+        origin=request.headers.get("origin"),
+    )
     return GiftOrderCreateResponse(
         **_gift_order_response(order).model_dump(),
         checkout_url=checkout_url,

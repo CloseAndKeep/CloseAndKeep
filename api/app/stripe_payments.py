@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 import stripe
 from fastapi import HTTPException
@@ -861,10 +862,66 @@ def _reuse_open_checkout_session(order: GiftOrderModel) -> str | None:
     return None
 
 
+def checkout_return_base(origin: str | None) -> str:
+    """App origin to send the buyer back to after Stripe Checkout.
+
+    The session cookie is host-only. Returning to a different host (apex vs
+    www) looks like a logout. Prefer the browser Origin when it is an allowed
+    CloseAndKeep origin; otherwise use WEB_BASE_URL.
+    """
+    fallback = settings.web_base_url.rstrip("/")
+    candidate = (origin or "").strip().rstrip("/")
+    if not _is_http_origin(candidate):
+        return fallback
+    allowed = {item.rstrip("/") for item in settings.cors_origins}
+    allowed.add(fallback)
+    allowed.update(_closeandkeep_host_pair(fallback))
+    if candidate in allowed:
+        return candidate
+    return fallback
+
+
+def orders_list_return_urls(origin: str | None = None) -> tuple[str, str]:
+    """Stay signed in on the orders list after Checkout succeeds or is canceled."""
+    base = checkout_return_base(origin)
+    return (
+        f"{base}/orders?payment=success",
+        f"{base}/orders?payment=cancel",
+    )
+
+
+def _is_http_origin(value: str) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    return (
+        parsed.scheme in {"http", "https"}
+        and bool(parsed.netloc)
+        and parsed.path in {"", "/"}
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
+def _closeandkeep_host_pair(base: str) -> set[str]:
+    """Allow the other closeandkeep.com host so www and apex share a return."""
+    parsed = urlparse(base)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"}:
+        return set()
+    if host == "closeandkeep.com":
+        return {f"{parsed.scheme}://www.closeandkeep.com"}
+    if host == "www.closeandkeep.com":
+        return {f"{parsed.scheme}://closeandkeep.com"}
+    return set()
+
+
 def create_checkout_session_for_order(
     order: GiftOrderModel,
     current_user: UserModel,
     db: Session,
+    *,
+    origin: str | None = None,
 ) -> str:
     if order.payment_status == "paid":
         raise HTTPException(status_code=400, detail="This order is already paid.")
@@ -896,11 +953,12 @@ def create_checkout_session_for_order(
 
         price_id = resolve_stripe_price_id(order.gift_id)
         customer_id = _ensure_stripe_customer(current_user, db)
+        success_url, cancel_url = orders_list_return_urls(origin)
         session_params: dict = {
             "mode": "payment",
             "line_items": [{"price": price_id, "quantity": 1}],
-            "success_url": f"{settings.web_base_url}/orders/{order.id}?payment=success",
-            "cancel_url": f"{settings.web_base_url}/orders/{order.id}?payment=cancel",
+            "success_url": success_url,
+            "cancel_url": cancel_url,
             "metadata": {
                 "gift_order_id": str(order.id),
                 "gift_order_ids": str(order.id),
@@ -920,13 +978,17 @@ def create_checkout_session_for_order(
         db.refresh(order)
         return session["url"]
 
-    return create_checkout_session_for_orders([order], current_user, db)
+    return create_checkout_session_for_orders(
+        [order], current_user, db, origin=origin
+    )
 
 
 def create_checkout_session_for_orders(
     orders: list[GiftOrderModel],
     current_user: UserModel,
     db: Session,
+    *,
+    origin: str | None = None,
 ) -> str:
     """One Checkout Session covering one or more known-address orders.
 
@@ -983,12 +1045,7 @@ def create_checkout_session_for_orders(
     # primary fulfill path, so truncate ids in metadata if the batch is huge.
     metadata_ids = order_ids if len(order_ids) <= 500 else order_ids[:497] + "..."
 
-    if len(orders) == 1:
-        success_url = f"{settings.web_base_url}/orders/{orders[0].id}?payment=success"
-        cancel_url = f"{settings.web_base_url}/orders/{orders[0].id}?payment=cancel"
-    else:
-        success_url = f"{settings.web_base_url}/orders?payment=success"
-        cancel_url = f"{settings.web_base_url}/orders?payment=cancel"
+    success_url, cancel_url = orders_list_return_urls(origin)
 
     session_params: dict = {
         "mode": "payment",

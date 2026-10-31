@@ -205,7 +205,7 @@ export function GiftOrderWizard() {
         window.location.href = data.checkout_url;
         return;
       }
-      router.push(`/orders/${data.id}`);
+      router.push("/orders");
       router.refresh();
     } catch (submitError) {
       const message =

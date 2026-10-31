@@ -22,7 +22,7 @@ The Dashboard shows open, won, and lost counts plus your overall win rate. It al
 1. **Prospects** → add someone you’re working. Search by name or email, and filter the list by Open, Won, or Lost.
 2. **Orders** → **Send cookies** (or start from the prospect — name, email, and pack are filled in).
 3. Choose pack size (**4** or **12** cookies), add a note (you can save cookie-note templates and reuse them on new orders), enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
-4. Pay at Stripe Checkout. Have a code? Enter it on the Stripe checkout page.
+4. Pay at Stripe Checkout. Have a code? Enter it on the Stripe checkout page. After you pay — or if you leave checkout — you stay signed in and land on **Orders** (`/orders`). If Pay monthly is on, you skip Stripe and go straight to Orders.
 
 **After you send a gift:**
 
@@ -81,7 +81,7 @@ Bob Jones,bob@example.com,12,,,,,,
 2. Click **Import CSV**.
 3. If validation fails, **no orders are created** — fix the listed row errors and try again.
 4. If it succeeds:
-   - **Rows with an address** → one shared “pay together” Stripe checkout.
+   - **Rows with an address** → one shared “pay together” Stripe checkout. After you pay, you stay signed in and return to **Orders**.
    - **Rows without street/city/state/ZIP** → authorize payment **per order**, then we email the recipient a shipping link. If they do not reply within about **7 days**, we email you that the hold expired and that order was canceled.
 
 ### Limits & notes

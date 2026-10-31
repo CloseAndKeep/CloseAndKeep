@@ -74,6 +74,8 @@ def test_request_address_starts_manual_capture_checkout(
     params = stripe_stub.session_create_calls[0]
     assert params["payment_intent_data"] == {"capture_method": "manual"}
     assert params["metadata"]["defer_capture"] == "true"
+    assert params["success_url"].endswith("/orders?payment=success")
+    assert params["cancel_url"].endswith("/orders?payment=cancel")
 
 
 def test_authorization_sends_recipient_email(

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ExpiredHolds } from "@/components/dashboard/expired-holds";
 import { PageHeader } from "@/components/ui/page-header";
 import { apiFetch } from "@/lib/api";
@@ -26,6 +27,8 @@ type Prospect = {
 };
 
 export default function OrdersPage() {
+  const searchParams = useSearchParams();
+  const paymentNotice = searchParams.get("payment");
   const [orders, setOrders] = useState<GiftOrder[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +97,16 @@ export default function OrdersPage() {
         }
       />
 
+      {paymentNotice === "success" ? (
+        <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Payment submitted. You&apos;re still signed in — your orders are listed below.
+        </p>
+      ) : null}
+      {paymentNotice === "cancel" ? (
+        <p className="mb-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
+          Checkout was canceled. Open an order below when you&apos;re ready to pay.
+        </p>
+      ) : null}
       {error ? (
         <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}

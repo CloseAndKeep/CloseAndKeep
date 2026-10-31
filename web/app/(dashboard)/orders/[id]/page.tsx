@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
@@ -32,6 +32,7 @@ type Prospect = {
 
 export default function OrderDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const paymentNotice = searchParams.get("payment");
   const [order, setOrder] = useState<GiftOrder | null>(null);
@@ -66,6 +67,12 @@ export default function OrderDetailPage() {
       setLoading(false);
     }
   }, [params.id]);
+
+  useEffect(() => {
+    if (paymentNotice === "success") {
+      router.replace("/orders?payment=success");
+    }
+  }, [paymentNotice, router]);
 
   useEffect(() => {
     if (params.id) {

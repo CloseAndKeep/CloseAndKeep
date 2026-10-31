@@ -82,6 +82,8 @@ def resend_address_request(
     order_id: int,
     user: UserModel,
     db: Session,
+    *,
+    origin: str | None = None,
 ) -> tuple[GiftOrderModel, str | None]:
     """Start a new address-request on an expired-hold order.
 
@@ -140,6 +142,6 @@ def resend_address_request(
         order = prepare_monthly_owed_order(order, db)
         return order, None
 
-    checkout_url = create_checkout_session_for_order(order, user, db)
+    checkout_url = create_checkout_session_for_order(order, user, db, origin=origin)
     db.refresh(order)
     return order, checkout_url
