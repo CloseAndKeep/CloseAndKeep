@@ -152,8 +152,26 @@ class IntegrationConnectionModel(Base):
     )
 
 
+class OAuthStateModel(Base):
+    """Single-use OAuth state nonce. The callback deletes the row."""
+
+    __tablename__ = "oauth_states"
+
+    nonce: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    code_verifier: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+
+
 class CrmReminderEventModel(Base):
-    """Deduped CRM → cookie-reminder sends (once per opportunity by default)."""
+    """Deduped CRM stage sends (once per deal per recipe stage)."""
 
     __tablename__ = "crm_reminder_events"
     __table_args__ = (
@@ -177,8 +195,8 @@ class CrmReminderEventModel(Base):
         ForeignKey("prospects.id", ondelete="SET NULL"), nullable=True, index=True
     )
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
-    # Stable key: e.g. opportunity Id — one reminder email per opportunity.
-    external_event_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    # "{deal_id}:{stage}". Legacy rows stored the bare deal/opportunity id.
+    external_event_key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     stage_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="sent")
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

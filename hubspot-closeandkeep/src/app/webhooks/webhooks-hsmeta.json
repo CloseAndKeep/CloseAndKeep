@@ -9,34 +9,14 @@
     "subscriptions": {
       "crmObjects": [
         {
-          "subscriptionType": "object.creation",
-          "objectType": "contact",
-          "active": false
-        },
-        {
           "subscriptionType": "object.propertyChange",
-          "objectType": "contact",
-          "propertyName": "firstname",
-          "active": false
+          "objectType": "deal",
+          "propertyName": "dealstage",
+          "active": true
         }
       ],
-      "legacyCrmObjects": [
-        {
-          "subscriptionType": "contact.propertyChange",
-          "propertyName": "lastname",
-          "active": false
-        },
-        {
-          "subscriptionType": "contact.deletion",
-          "active": false
-        }
-      ],
-      "hubEvents": [
-        {
-          "subscriptionType": "contact.privacyDeletion",
-          "active": false
-        }
-      ]
+      "legacyCrmObjects": [],
+      "hubEvents": []
     }
   }
 }

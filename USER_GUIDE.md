@@ -102,7 +102,7 @@ From Excel, use **File → Save As** and choose **CSV UTF-8 (Comma delimited) (*
 
 Supported CRMs today: **Salesforce** and **HubSpot**. Custom CRMs use the **API** (see below).
 
-When a deal/opportunity hits a stage in your **stage recipes**, CloseAndKeep **auto-creates a cookie order** using **Cookie Note** and the cookie company/street/city/state/ZIP fields from the CRM (auto-order turns on when you first connect). You can send a **different pack** for Demo vs Closed Won vs Renewal. Auto-order waits if the CRM email looks unusable and we would need to email the recipient for an address — you’ll get an email to fix the contact or send cookies yourself. Incomplete or junk address fields are ignored (we ask the recipient instead). We will not auto-send another box to the same person within **90 days**. Failed auto-orders can be retried from **Integrations**. If auto-order is later turned off on Profile, you get a reminder email instead (with that stage’s pack preselected).
+When a deal/opportunity hits a stage in your **stage recipes**, CloseAndKeep **auto-creates a cookie order** using **Cookie Note** and the cookie company/street/city/state/ZIP fields from the CRM (auto-order turns on when you first connect). You can send a **different pack** for Demo vs Closed Won vs Renewal on the same deal. Auto-order waits if the CRM email looks unusable and we would need to email the recipient for an address — you’ll get an email to fix the contact or send cookies yourself. Incomplete or junk address fields are ignored (we ask the recipient instead). We will not auto-send another box to the same person for a **different deal** within **90 days**. Failed auto-orders can be retried from **Integrations**. If auto-order is later turned off on Profile, you get a reminder email instead (with that stage’s pack preselected).
 
 Integrations shows **Recent activity** for those CRM events (for example “Acme Demo Completed → cookies ordered”). If your Salesforce or HubSpot login expires, the page shows a reconnect notice and we email you once with a link back to Integrations.
 
@@ -114,8 +114,8 @@ Integrations shows **Recent activity** for those CRM events (for example “Acme
 4. Approve access in the CRM OAuth screen.
 5. You’ll return to Integrations with a success message — auto-order is enabled (default pack: **4 cookies**).
 6. Confirm **stage recipes** match your CRM stages → **Save recipes**. First connect starts with **Demo Completed → 4 cookies**, **Closed Won → 12 cookies**, and **Renewal → 4 cookies**. Add, edit, or remove rows as needed.
-7. Click **Check setup**. CloseAndKeep looks at your CRM and tells you if the Cookie fields or the trigger stage name are missing (this is advisory — connect still succeeds if something is missing).
-8. Put the deal in a recipe stage (for example **Demo Completed** or **Closed Won**) with note + address filled, then click **Sync now** (or wait for your webhook/Flow).
+7. Click **Check setup**. CloseAndKeep looks at your CRM and tells you if the Cookie fields or a recipe stage name are missing (this is advisory — connect still succeeds if something is missing).
+8. Put the deal in a recipe stage (for example **Demo Completed** or **Closed Won**) with note + address filled, then click **Sync now** (or wait for the HubSpot deal-stage webhook / your Flow). After you connect HubSpot, reconnect once if Check setup says a scope is missing.
 
 You can connect one org/portal per CRM per CloseAndKeep user.
 
@@ -168,16 +168,17 @@ Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`,
 |--------|----------|-----------|-----|
 | Deal | **dealname** | Fallback | Used if contact name is blank |
 | Deal | **dealstage** | Yes | Must match one of your stage recipes |
-| Deal | **Associated contact** | Strongly recommended | We take the first associated contact |
+| Deal | **Associated contact** | Strongly recommended | We use the first associated contact that has an email |
 | Contact | **firstname** / **lastname** | Strongly recommended | Recipient name |
 | Contact | **email** | Strongly recommended | Address-request email when address is blank |
 
 #### 4. Webhook / Flow payload (optional admin setup)
 
-If your admin posts stage events to CloseAndKeep instead of relying only on **Sync now**, include:
+If your admin posts stage events to CloseAndKeep instead of relying only on **Sync now**, include the fields below. HubSpot can also send deal-stage changes itself after the app is installed; those requests are signed by HubSpot. A custom workflow must send header `X-Webhook-Secret` and must include `portal_id` or `connection_id`.
 
 | Field | Salesforce event | HubSpot event |
 |-------|------------------|---------------|
+| Which account | `org_id` (optional) | `portal_id` or `connection_id` (one is required) |
 | Deal id | `opportunity_id` | `deal_id` |
 | Stage | `stage_name` | `stage_name` |
 | Contact name | `contact_name` | `contact_name` |
@@ -198,8 +199,8 @@ Map these from the custom CRM fields above. Split street/city/state/ZIP is prefe
 | Option | What it does |
 |--------|----------------|
 | **Stage recipes** | List of CRM stage → cookie pack (and optional note if Cookie Note is blank). Defaults: Demo Completed → 4 cookies, Closed Won → 12 cookies, Renewal → 4 cookies. Click **Save recipes**. |
-| **Check setup** | After you connect, confirms the Cookie fields and trigger stage name exist in your CRM. Missing fields or an unknown stage name are warnings — they do not disconnect you. |
-| **Sync now** | Manually poll recent matching opportunities/deals (reads Cookie Note and company/street/city/state/ZIP). |
+| **Check setup** | After you connect, confirms the Cookie fields and recipe stage names exist in your CRM. Missing fields or an unknown stage name are warnings — they do not disconnect you. |
+| **Sync now** | Manually look for deals or opportunities that **entered** a recipe stage since the last sync. Editing an older HubSpot deal does not send another gift. |
 | **Disconnect** | Remove the CRM connection. |
 | **Recent activity** | Last CRM events (stage hits → cookies ordered or reminder sent, or “Salesforce/HubSpot login expired”). |
 | **Reconnect** | Shown if the CRM login expires. Click **Reconnect** (or use the email we send once) to authorize again. |

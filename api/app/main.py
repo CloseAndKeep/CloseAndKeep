@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import compare_digest, randbelow, token_urlsafe
+import json
 import logging
 import re
 
@@ -11,7 +12,7 @@ import bcrypt
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, RedirectResponse
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator, model_validator
 import stripe
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
@@ -2850,6 +2851,7 @@ def salesforce_check_setup(
 @app.get("/integrations/hubspot/connect", response_model=HubSpotConnectResponse)
 def hubspot_connect(
     current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> HubSpotConnectResponse:
     _require_registered_user(current_user)
     if not hs.hubspot_configured():
@@ -2860,7 +2862,7 @@ def hubspot_connect(
                 "Set HUBSPOT_CLIENT_ID and HUBSPOT_CLIENT_SECRET."
             ),
         )
-    return HubSpotConnectResponse(authorize_url=hs.build_authorize_url(current_user.id))
+    return HubSpotConnectResponse(authorize_url=hs.build_authorize_url(db, current_user.id))
 
 
 @app.get("/integrations/hubspot/callback")
@@ -2879,52 +2881,103 @@ def hubspot_oauth_callback(
         return RedirectResponse(f"{web}/integrations?error={detail}")
     if not code or not state:
         return RedirectResponse(f"{web}/integrations?error=missing_oauth_params")
-    user_id = hs.verify_oauth_state(state)
-    if user_id is None:
+    verified = hs.verify_oauth_state(db, state)
+    if verified is None:
         return RedirectResponse(f"{web}/integrations?error=invalid_oauth_state")
+    user_id, code_verifier = verified
     try:
-        tokens = hs.exchange_code_for_tokens(code)
+        tokens = hs.exchange_code_for_tokens(code, code_verifier=code_verifier)
         hs.upsert_connection_from_oauth(db, user_id=user_id, token_payload=tokens)
     except Exception:
+        logger.exception("HubSpot OAuth code exchange failed")
         return RedirectResponse(f"{web}/integrations?error=oauth_exchange_failed")
     return RedirectResponse(f"{web}/integrations?connected=hubspot")
 
 
+def _hubspot_event_connection(
+    db: Session,
+    *,
+    connection_id: int | None,
+    portal_id: str | None,
+) -> IntegrationConnectionModel:
+    """Route a custom HubSpot event. Refuses to guess when the account is omitted."""
+    portal = (portal_id or "").strip()
+    if connection_id is None and not portal:
+        raise HTTPException(
+            status_code=400,
+            detail="HubSpot events require connection_id or portal_id.",
+        )
+    if connection_id is not None:
+        connection = db.get(IntegrationConnectionModel, connection_id)
+        if (
+            not connection
+            or connection.provider != PROVIDER_HUBSPOT
+            or (portal and connection.external_org_id and connection.external_org_id != portal)
+        ):
+            raise HTTPException(status_code=404, detail="HubSpot connection not found.")
+        return connection
+    matches = list(
+        db.scalars(
+            select(IntegrationConnectionModel).where(
+                IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
+                IntegrationConnectionModel.external_org_id == portal,
+                IntegrationConnectionModel.enabled.is_(True),
+            )
+        ).all()
+    )
+    if not matches:
+        raise HTTPException(status_code=404, detail="HubSpot connection not found.")
+    if len(matches) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Multiple HubSpot connections match this portal.",
+        )
+    return matches[0]
+
+
 @app.post("/integrations/hubspot/events")
-def hubspot_stage_event(
-    payload: HubSpotEventRequest,
+async def hubspot_stage_event(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    """Immediate intake for Demo Completed (or configured stage) from HubSpot workflow."""
+    """Deal-stage intake from a signed HubSpot webhook or a custom workflow POST."""
+    raw = await request.body()
+    try:
+        parsed = json.loads(raw.decode("utf-8") or "null")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="HubSpot event body must be JSON.")
+
+    if isinstance(parsed, list):
+        uri = hs.webhook_validation_uri(request.url.path, request.url.query)
+        if not hs.verify_hubspot_signature(
+            method=request.method,
+            uri=uri,
+            body=raw,
+            timestamp=request.headers.get("X-HubSpot-Request-Timestamp"),
+            signature=request.headers.get("X-HubSpot-Signature-v3"),
+        ):
+            raise HTTPException(status_code=401, detail="Invalid HubSpot signature.")
+        results = hs.ingest_webhook_batch(db, parsed)
+        return {"results": results, "count": len(results)}
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="HubSpot event body must be JSON.")
+
     auth = request.headers.get("Authorization", "")
     bearer = auth.removeprefix("Bearer ").strip() if auth.lower().startswith("bearer ") else ""
     secret = request.headers.get("X-Webhook-Secret") or bearer
     if not hs.verify_webhook_secret(secret or None):
         raise HTTPException(status_code=401, detail="Invalid webhook secret.")
+    try:
+        payload = HubSpotEventRequest.model_validate(parsed)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
-    connection: IntegrationConnectionModel | None = None
-    if payload.connection_id is not None:
-        connection = db.get(IntegrationConnectionModel, payload.connection_id)
-    elif payload.portal_id:
-        connection = db.scalar(
-            select(IntegrationConnectionModel).where(
-                IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
-                IntegrationConnectionModel.external_org_id == payload.portal_id,
-                IntegrationConnectionModel.enabled.is_(True),
-            )
-        )
-    else:
-        connection = db.scalar(
-            select(IntegrationConnectionModel).where(
-                IntegrationConnectionModel.provider == PROVIDER_HUBSPOT,
-                IntegrationConnectionModel.enabled.is_(True),
-            )
-        )
-
-    if not connection or connection.provider != PROVIDER_HUBSPOT:
-        raise HTTPException(status_code=404, detail="HubSpot connection not found.")
-
+    connection = _hubspot_event_connection(
+        db,
+        connection_id=payload.connection_id,
+        portal_id=payload.portal_id,
+    )
     return process_stage_completed_reminder(
         db,
         connection=connection,
