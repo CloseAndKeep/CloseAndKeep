@@ -26,7 +26,6 @@ from .auth_email import send_email_verification
 from .config import is_known_gift, settings
 from .dashboard import list_needs_attention, summarize_dashboard
 from .csv_import import (
-    DEFAULT_IMPORT_NOTE,
     example_csv,
     looks_like_excel_workbook,
     non_csv_upload_message,
@@ -2043,9 +2042,10 @@ async def import_gift_orders_csv(
 ) -> GiftOrderImportResponse:
     """Create multiple cookie orders from a CSV upload.
 
-    Columns: Name, Email, Cookies (4 or 12), Address (optional).
-    Rows without an address request shipping from the recipient via email after
-    payment is authorized. Guests cannot import.
+    Columns: Name, Email, Cookies (4 or 12), Comment (optional), Address
+    (optional). Blank comments use the default gift note. Rows without an
+    address request shipping from the recipient via email after payment is
+    authorized. Guests cannot import.
     """
     _enforce_order_create_rate_limit(request, current_user)
     if current_user.role == "guest":
@@ -2107,7 +2107,7 @@ async def import_gift_orders_csv(
                     recipient_name=row.recipient_name,
                     **empty_shipping_address_values(),
                     recipient_email=row.recipient_email,
-                    note=DEFAULT_IMPORT_NOTE,
+                    note=row.note,
                     status="no_address",
                     payment_status="pending",
                     address_request_token=token,
@@ -2126,7 +2126,7 @@ async def import_gift_orders_csv(
                         blob=row.shipping_address,
                     ),
                     recipient_email=row.recipient_email,
-                    note=DEFAULT_IMPORT_NOTE,
+                    note=row.note,
                     status="pending_payment",
                     payment_status="pending",
                 )

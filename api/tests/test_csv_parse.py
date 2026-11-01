@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from app.csv_import import parse_gift_orders_csv, template_csv, example_csv
+from app.csv_import import (
+    DEFAULT_IMPORT_NOTE,
+    NOTE_MAX_LENGTH,
+    example_csv,
+    parse_gift_orders_csv,
+    template_csv,
+)
 
 
 def test_template_and_example_helpers():
-    header = "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code"
+    header = "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment"
     template = template_csv()
     assert header in template
     assert "Do not rename that column" in template
+    assert "Comment is optional" in template
     assert "jane@example.com" not in template
     # Reminder is a title row, not a data row. Header-only file has no orders.
     template_rows, template_errors = parse_gift_orders_csv(template)
@@ -21,12 +28,15 @@ def test_template_and_example_helpers():
     assert "jane@example.com" in example
     assert "bob@example.com" in example
     assert "Springfield" in example
+    assert "Thanks for the great meeting!" in example
     example_rows, example_errors = parse_gift_orders_csv(example)
     assert example_errors == []
     by_email = {row.recipient_email: row for row in example_rows}
     assert by_email["jane@example.com"].cookie_count == 4
+    assert by_email["jane@example.com"].note == "Thanks for the great meeting!"
     assert by_email["bob@example.com"].cookie_count == 12
     assert by_email["bob@example.com"].request_recipient_address is True
+    assert by_email["bob@example.com"].note == DEFAULT_IMPORT_NOTE
 
 
 def test_parse_names_cookie_header_to_rename():
@@ -215,3 +225,42 @@ def test_parse_collects_multiple_row_errors():
     messages = " ".join(e.message for e in errors)
     assert "Name is required" in messages
     assert "Invalid email" in messages or "Cookies must be" in messages
+
+
+def test_parse_comment_defaults_when_blank_or_missing():
+    missing = "Name,Email,Cookies,Address\nJane,jane@example.com,4,1 Main\n"
+    rows, errors = parse_gift_orders_csv(missing)
+    assert errors == []
+    assert rows[0].note == DEFAULT_IMPORT_NOTE
+
+    blank = (
+        "Name,Email,Cookies,Comment,Address\n"
+        "Jane,jane@example.com,4,,1 Main\n"
+        "Bob,bob@example.com,12,  ,\n"
+    )
+    rows, errors = parse_gift_orders_csv(blank)
+    assert errors == []
+    assert rows[0].note == DEFAULT_IMPORT_NOTE
+    assert rows[1].note == DEFAULT_IMPORT_NOTE
+    assert rows[1].request_recipient_address is True
+
+
+def test_parse_comment_and_note_aliases():
+    csv_text = (
+        "Name,Email,Cookies,Gift Note,Address\n"
+        "Jane,jane@example.com,4,Congrats on the launch!,1 Main\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert errors == []
+    assert rows[0].note == "Congrats on the launch!"
+
+
+def test_parse_comment_rejects_too_long():
+    long_note = "x" * (NOTE_MAX_LENGTH + 1)
+    csv_text = (
+        "Name,Email,Cookies,Comment,Address\n"
+        f"Jane,jane@example.com,4,{long_note},1 Main\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert rows == []
+    assert any("at most 1000" in error.message for error in errors)

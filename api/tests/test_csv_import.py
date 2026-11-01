@@ -23,8 +23,12 @@ def test_template_and_example_downloads(auth_client):
     assert template.status_code == 200
     assert "text/csv" in template.headers["content-type"]
     assert "cookie-orders-template.csv" in template.headers["content-disposition"]
-    assert "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code" in template.text
+    assert (
+        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment"
+        in template.text
+    )
     assert "Do not rename that column" in template.text
+    assert "Comment is optional" in template.text
     # Reminder plus header. No sample orders.
     assert "jane@example.com" not in template.text
     assert template.text.count("\n") == 2
@@ -33,18 +37,21 @@ def test_template_and_example_downloads(auth_client):
     assert example.status_code == 200
     assert "cookie-orders-example.csv" in example.headers["content-disposition"]
     body = example.text
-    assert "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code" in body
+    assert (
+        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment" in body
+    )
     assert "Do not rename that column" in body
     assert "jane@example.com" in body
     assert "bob@example.com" in body
+    assert "Thanks for the great meeting!" in body
 
 
 def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub):
     csv_text = (
-        "Name,Email,Cookies,Address\n"
-        'Jane Smith,jane@example.com,4,"123 Main St, Springfield, IL 62704"\n'
-        "Bob Jones,bob@example.com,4,\n"
-        "Alex Rivera,alex@example.com,12,456 Oak Ave\n"
+        "Name,Email,Cookies,Comment,Address\n"
+        'Jane Smith,jane@example.com,4,Thanks for the demo!,"123 Main St, Springfield, IL 62704"\n'
+        "Bob Jones,bob@example.com,4,,\n"
+        "Alex Rivera,alex@example.com,12,,456 Oak Ave\n"
     )
     resp = _upload(auth_client, csv_text)
     assert resp.status_code == 201, resp.text
@@ -57,6 +64,7 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     jane = by_email["jane@example.com"]
     assert jane["gift_id"] == "cookies-4"
     assert jane["status"] == "pending_payment"
+    assert jane["note"] == "Thanks for the demo!"
     assert "123 Main St" in (jane["shipping_address"] or "")
     assert jane["checkout_url"] == data["batch_checkout_url"]
 
@@ -64,11 +72,13 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     assert bob["gift_id"] == "cookies-4"
     assert bob["status"] == "no_address"
     assert bob["shipping_address"] is None
+    assert bob["note"] == "Enjoy these cookies — a small thank-you from us."
     assert bob["checkout_url"]
 
     alex = by_email["alex@example.com"]
     assert alex["gift_id"] == "cookies-12"
     assert alex["status"] == "pending_payment"
+    assert alex["note"] == "Enjoy these cookies — a small thank-you from us."
     assert alex["checkout_url"] == data["batch_checkout_url"]
 
     # One batched immediate-capture session for Jane+Alex, one manual-capture for Bob.
