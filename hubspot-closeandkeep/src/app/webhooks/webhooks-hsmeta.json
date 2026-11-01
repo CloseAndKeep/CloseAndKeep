@@ -3,38 +3,15 @@
   "type": "webhooks",
   "config": {
     "settings": {
-      "targetUrl": "https://closeandkeep-api.onrender.com/integrations/hubspot/events",
+      "targetUrl": "https://closeandkeep-api.onrender.com/integrations/hubspot/webhooks",
       "maxConcurrentRequests": 10
     },
     "subscriptions": {
-      "crmObjects": [
-        {
-          "subscriptionType": "object.creation",
-          "objectType": "contact",
-          "active": false
-        },
-        {
-          "subscriptionType": "object.propertyChange",
-          "objectType": "contact",
-          "propertyName": "firstname",
-          "active": false
-        }
-      ],
       "legacyCrmObjects": [
         {
-          "subscriptionType": "contact.propertyChange",
-          "propertyName": "lastname",
-          "active": false
-        },
-        {
-          "subscriptionType": "contact.deletion",
-          "active": false
-        }
-      ],
-      "hubEvents": [
-        {
-          "subscriptionType": "contact.privacyDeletion",
-          "active": false
+          "subscriptionType": "deal.propertyChange",
+          "propertyName": "dealstage",
+          "active": true
         }
       ]
     }

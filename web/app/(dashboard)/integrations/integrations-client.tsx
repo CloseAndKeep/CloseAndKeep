@@ -205,7 +205,7 @@ export function IntegrationsClient() {
     <>
       <PageHeader
         title="Integrations"
-        description="Connect Salesforce or HubSpot so matching deal stages create cookie orders from your CRM Cookie Note and street / city / state / ZIP fields (or send a reminder if auto-order is off). Use stage recipes to send a 4-pack after a demo and a 12-pack on Closed Won."
+        description="Connect Salesforce or HubSpot so matching deal stages create cookie orders from your CRM Cookie Note and street / city / state / ZIP fields (or send a reminder if auto-order is off). You can also install CloseAndKeep from the HubSpot Marketplace and finish linking here. Use stage recipes to send a 4-pack after a demo and a 12-pack on Closed Won."
       />
 
       {error ? (
@@ -321,6 +321,13 @@ export function IntegrationsClient() {
                       ? "Redirecting…"
                       : `Connect ${provider.label}`}
                   </button>
+                  {provider.key === "hubspot" ? (
+                    <p className="mt-3 max-w-xl text-sm text-stone-600">
+                      Or install CloseAndKeep from the HubSpot Marketplace. After you approve
+                      access, HubSpot sends you back here to link the portal to this account.
+                      Deal records can show a CloseAndKeep card with the cookie fields.
+                    </p>
+                  ) : null}
                 </div>
               )}
             </section>
