@@ -64,6 +64,7 @@ Use CSV when you want to create many cookie orders at once.
 | **City** | Optional* | City |
 | **State** | Optional* | 2-letter state (e.g. IL) |
 | **Postal Code** | Optional* | ZIP / postal code |
+| **Comment** | Optional | Gift note on the cookie order. Leave blank for the default. **Note** / **Gift note** also work as the column name. |
 
 \*Street, City, State, and Postal Code are required **together**. Leave all of them blank to request the address after you authorize payment. A single **Address** column still works for older files.
 
@@ -72,9 +73,9 @@ The **Cookies** column is the one people rename. `Number of Cookies (4 or 12)` i
 Example:
 
 ```csv
-Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code
-Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704
-Bob Jones,bob@example.com,12,,,,,,
+Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment
+Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704,Thanks for the great meeting!
+Bob Jones,bob@example.com,12,,,,,,,
 ```
 
 ### Import steps
@@ -92,7 +93,7 @@ From Excel, use **File → Save As** and choose **CSV UTF-8 (Comma delimited) (*
 
 - Max about **100 data rows** and **256 KB** per file.
 - Must be signed in (not guest).
-- Default gift note on import: *“Enjoy these cookies — a small thank-you from us.”*
+- Default gift note when **Comment** is blank or missing: *“Enjoy these cookies — a small thank-you from us.”*
 - CSV is for **importing gift orders only** (not exporting prospects/orders).
 
 ---

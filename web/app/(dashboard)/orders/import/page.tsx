@@ -183,17 +183,19 @@ export default function ImportOrdersPage() {
             Keep the header names below. In <strong>Cookies</strong>, type <strong>4</strong> or{" "}
             <strong>12</strong>. Do not put that note in the header. A column named{" "}
             <span className="font-medium text-espresso">Number of Cookies (4 or 12)</span> is
-            rejected. Company is optional. Street, city, state, and ZIP are optional together.
+            rejected. Comment is optional (blank uses the default gift note). Company is
+            optional. Street, city, state, and ZIP are optional together.
           </p>
           <p className="mt-2 text-xs text-stone-500">
             The template download starts with a one-line reminder, then this header. You can
             delete the reminder; import skips it. Cookie count and Number of cookies also work
-            as that column name, as long as nothing else is added.
+            as that column name, as long as nothing else is added. Note and Gift note also work
+            for Comment.
           </p>
           <div className="mt-3 overflow-x-auto rounded-xl border border-stone-200 bg-cream/40">
-            <pre className="px-4 py-3 text-xs text-stone-700 sm:text-sm">{`Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code
-Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704
-Bob Jones,bob@example.com,12,,,,,,`}</pre>
+            <pre className="px-4 py-3 text-xs text-stone-700 sm:text-sm">{`Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment
+Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704,Thanks for the great meeting!
+Bob Jones,bob@example.com,12,,,,,,,`}</pre>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => void downloadCsv("template")}>

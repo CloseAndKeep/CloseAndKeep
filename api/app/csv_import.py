@@ -13,9 +13,10 @@ from email_validator import EmailNotValidError, validate_email
 from .config import GIFT_CATALOG, settings
 from .shipping_address import ShippingAddressParts, parts_from_optional, shipping_address_values
 
-# Headers accepted (case-insensitive). Address pieces are optional per row.
+# Headers accepted (case-insensitive). Address pieces and Comment are optional per row.
 REQUIRED_HEADERS = ("name", "email", "cookies")
 OPTIONAL_HEADERS = (
+    "comment",
     "company",
     "street",
     "street2",
@@ -35,19 +36,23 @@ ALLOWED_COOKIE_COUNTS = frozenset(COOKIE_COUNT_TO_GIFT_ID)
 # No commas, so this stays one cell and is not read as column names.
 CSV_TEMPLATE_NOTE = (
     "Keep these column names. Put 4 or 12 under Cookies. "
-    "Do not rename that column to Number of Cookies (4 or 12).\n"
+    "Do not rename that column to Number of Cookies (4 or 12). "
+    "Comment is optional; leave it blank for the default gift note.\n"
 )
-CSV_TEMPLATE_HEADERS = "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code\n"
+CSV_TEMPLATE_HEADERS = (
+    "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment\n"
+)
 
 # Filled example rows so users can see both known-address and request-address cases.
 CSV_EXAMPLE_BODY = (
-    "Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704\n"
-    "Bob Jones,bob@example.com,12,,,,,,\n"
-    "Casey NoEmail,,4,,,,,,\n"
-    "Alex Rivera,alex@example.com,12,Acme Tower,456 Oak Ave,Apt 2,Austin,TX,78701\n"
+    "Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704,Thanks for the great meeting!\n"
+    "Bob Jones,bob@example.com,12,,,,,,,\n"
+    "Casey NoEmail,,4,,,,,,,\n"
+    "Alex Rivera,alex@example.com,12,Acme Tower,456 Oak Ave,Apt 2,Austin,TX,78701,\n"
 )
 
 DEFAULT_IMPORT_NOTE = "Enjoy these cookies — a small thank-you from us."
+NOTE_MAX_LENGTH = 1000
 
 _HEADER_ALIASES: dict[str, str] = {
     "name": "name",
@@ -64,6 +69,15 @@ _HEADER_ALIASES: dict[str, str] = {
     "cookie_count": "cookies",
     "cookie count": "cookies",
     "number of cookies": "cookies",
+    "comment": "comment",
+    "comments": "comment",
+    "note": "comment",
+    "notes": "comment",
+    "gift_note": "comment",
+    "gift note": "comment",
+    "gift_message": "comment",
+    "gift message": "comment",
+    "message": "comment",
     "address": "address",
     "shipping_address": "address",
     "shipping address": "address",
@@ -119,6 +133,7 @@ class ParsedOrderRow:
     recipient_email: str | None
     gift_id: str
     cookie_count: int
+    note: str
     shipping_address: str | None
     address_parts: ShippingAddressParts | None
     request_recipient_address: bool
@@ -276,7 +291,7 @@ def _missing_header_error(cells: list[str]) -> RowError:
     ]
     parts = [
         "Missing required column(s): " + ", ".join(missing_labels) + ".",
-        "Use the header Name, Email, Cookies. Company, Street, Street2, City, State, and Postal Code are optional.",
+        "Use the header Name, Email, Cookies. Comment, Company, Street, Street2, City, State, and Postal Code are optional.",
     ]
     cookie_like = [name for name in unrecognized if "cookie" in name.lower()]
     if "cookies" in missing and cookie_like:
@@ -408,6 +423,7 @@ def parse_gift_orders_csv(
         name = cell("name")
         email_raw = cell("email")
         cookies_raw = cell("cookies")
+        comment_raw = cell("comment")
         company_raw = cell("company")
         street_raw = cell("street")
         street2_raw = cell("street2")
@@ -435,6 +451,13 @@ def parse_gift_orders_csv(
             allowed = ", ".join(str(c) for c in sorted(ALLOWED_COOKIE_COUNTS))
             row_errors.append(
                 f"Cookies must be one of: {allowed} (got {cookie_count})."
+            )
+
+        note = comment_raw if comment_raw else DEFAULT_IMPORT_NOTE
+        if len(note) > NOTE_MAX_LENGTH:
+            row_errors.append(
+                f"Comment must be at most {NOTE_MAX_LENGTH} characters "
+                f"(got {len(note)})."
             )
 
         address_parts = parts_from_optional(
@@ -480,6 +503,7 @@ def parse_gift_orders_csv(
                 recipient_email=email,
                 gift_id=gift_id,
                 cookie_count=cookie_count,
+                note=note,
                 shipping_address=address,
                 address_parts=stored_parts,
                 request_recipient_address=request_address,
