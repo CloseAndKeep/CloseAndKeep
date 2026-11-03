@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from email_validator import EmailNotValidError, validate_email
 
 from .config import GIFT_CATALOG, settings
+from .gift_notes import GIFT_NOTE_MAX_LENGTH
 from .shipping_address import ShippingAddressParts, parts_from_optional, shipping_address_values
 
 # Headers accepted (case-insensitive). Address pieces and Comment are optional per row.
@@ -37,7 +38,8 @@ ALLOWED_COOKIE_COUNTS = frozenset(COOKIE_COUNT_TO_GIFT_ID)
 CSV_TEMPLATE_NOTE = (
     "Keep these column names. Put 4 or 12 under Cookies. "
     "Do not rename that column to Number of Cookies (4 or 12). "
-    "Comment is optional; leave it blank for the default gift note.\n"
+    "Comment is optional; leave it blank for the default gift note. "
+    f"Comment max {GIFT_NOTE_MAX_LENGTH} characters (Crumbl gift-note limit).\n"
 )
 CSV_TEMPLATE_HEADERS = (
     "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment\n"
@@ -52,7 +54,7 @@ CSV_EXAMPLE_BODY = (
 )
 
 DEFAULT_IMPORT_NOTE = "Enjoy these cookies — a small thank-you from us."
-NOTE_MAX_LENGTH = 1000
+NOTE_MAX_LENGTH = GIFT_NOTE_MAX_LENGTH
 
 _HEADER_ALIASES: dict[str, str] = {
     "name": "name",

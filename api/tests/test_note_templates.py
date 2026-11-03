@@ -55,10 +55,12 @@ def test_create_rejects_blank_name_and_body(auth_client):
     assert auth_client.post("/note-templates", json={"name": "Hello"}).status_code == 422
 
 
-def test_create_rejects_body_over_1000(auth_client):
+def test_create_rejects_body_over_gift_note_limit(auth_client):
+    from app.gift_notes import GIFT_NOTE_MAX_LENGTH
+
     resp = auth_client.post(
         "/note-templates",
-        json={"name": "Too long", "body": "x" * 1001},
+        json={"name": "Too long", "body": "x" * (GIFT_NOTE_MAX_LENGTH + 1)},
     )
     assert resp.status_code == 422
 

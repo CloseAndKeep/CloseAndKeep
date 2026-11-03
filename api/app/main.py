@@ -33,6 +33,7 @@ from .csv_import import (
     template_csv,
     workbook_upload_message,
 )
+from .gift_notes import GIFT_NOTE_MAX_LENGTH
 from .db import SessionLocal
 from .integrations import hubspot as hs
 from .integrations import salesforce as sf
@@ -257,7 +258,7 @@ class GiftOrderCreateRequest(BaseModel):
     shipping_country: str | None = Field(default=None, max_length=64)
     # Legacy blob. Prefer structured street/city/state/postal fields.
     shipping_address: str | None = Field(default=None, max_length=1000)
-    note: str = Field(min_length=1, max_length=1000)
+    note: str = Field(min_length=1, max_length=GIFT_NOTE_MAX_LENGTH)
     # When true, authorize payment at checkout, then collect shipping via email
     # link and/or redeem code. Guests cannot use this.
     request_recipient_address: bool = False
@@ -446,7 +447,7 @@ NOTE_TEMPLATE_MAX_PER_USER = 20
 
 class NoteTemplateCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    body: str = Field(min_length=1, max_length=1000)
+    body: str = Field(min_length=1, max_length=GIFT_NOTE_MAX_LENGTH)
 
     @field_validator("name", "body")
     @classmethod
@@ -459,7 +460,7 @@ class NoteTemplateCreateRequest(BaseModel):
 
 class NoteTemplateUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
-    body: str | None = Field(default=None, min_length=1, max_length=1000)
+    body: str | None = Field(default=None, min_length=1, max_length=GIFT_NOTE_MAX_LENGTH)
 
     @field_validator("name", "body")
     @classmethod
@@ -529,7 +530,7 @@ class ApiKeyCreateResponse(ApiKeyResponse):
 class StageRecipeItem(BaseModel):
     stage_name: str = Field(min_length=1, max_length=255)
     gift_id: str
-    note: str | None = Field(default=None, max_length=1000)
+    note: str | None = Field(default=None, max_length=GIFT_NOTE_MAX_LENGTH)
 
     @field_validator("stage_name")
     @classmethod

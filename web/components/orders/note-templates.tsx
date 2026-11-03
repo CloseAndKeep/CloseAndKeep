@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { GIFT_NOTE_MAX_LENGTH } from "@/lib/gift-notes";
 
 export type NoteTemplate = {
   id: number;
@@ -49,12 +50,12 @@ export function NoteTemplates({ note, onApply }: NoteTemplatesProps) {
   function apply(id: string) {
     setSelectedId(id);
     const template = templates.find((item) => String(item.id) === id);
-    if (template) onApply(template.body);
+    if (template) onApply(template.body.slice(0, GIFT_NOTE_MAX_LENGTH));
   }
 
   async function saveCurrent() {
     const name = saveName.trim();
-    const body = note.trim();
+    const body = note.trim().slice(0, GIFT_NOTE_MAX_LENGTH);
     if (!name || !body) return;
     setSaving(true);
     setError(null);
@@ -93,7 +94,8 @@ export function NoteTemplates({ note, onApply }: NoteTemplatesProps) {
   }
 
   const atCap = templates.length >= MAX_TEMPLATES;
-  const canSave = Boolean(note.trim()) && !atCap;
+  const noteWithinLimit = note.trim().length > 0 && note.trim().length <= GIFT_NOTE_MAX_LENGTH;
+  const canSave = noteWithinLimit && !atCap;
 
   return (
     <div className="mt-2 space-y-2">
