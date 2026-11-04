@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.csv_import import (
+    COMMENT_HEADER,
     DEFAULT_IMPORT_NOTE,
     NOTE_MAX_LENGTH,
     example_csv,
@@ -12,11 +13,14 @@ from app.csv_import import (
 
 
 def test_template_and_example_helpers():
-    header = "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment"
+    header = (
+        f"Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,{COMMENT_HEADER}"
+    )
     template = template_csv()
     assert header in template
+    assert COMMENT_HEADER == "Comment: 150 char"
     assert "Do not rename that column" in template
-    assert "Comment is optional" in template
+    assert f"{COMMENT_HEADER} is optional" in template
     assert "jane@example.com" not in template
     # Reminder is a title row, not a data row. Header-only file has no orders.
     template_rows, template_errors = parse_gift_orders_csv(template)
@@ -253,6 +257,24 @@ def test_parse_comment_and_note_aliases():
     rows, errors = parse_gift_orders_csv(csv_text)
     assert errors == []
     assert rows[0].note == "Congrats on the launch!"
+
+
+def test_parse_comment_header_with_char_limit_hint():
+    csv_text = (
+        f"Name,Email,Cookies,{COMMENT_HEADER},Address\n"
+        "Jane,jane@example.com,4,Thanks for coming by!,1 Main\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert errors == []
+    assert rows[0].note == "Thanks for coming by!"
+
+    paren = (
+        "Name,Email,Cookies,Note (150 characters),Address\n"
+        "Bob,bob@example.com,12,See you next week,2 Oak\n"
+    )
+    rows, errors = parse_gift_orders_csv(paren)
+    assert errors == []
+    assert rows[0].note == "See you next week"
 
 
 def test_parse_comment_rejects_too_long():

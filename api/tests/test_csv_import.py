@@ -23,12 +23,13 @@ def test_template_and_example_downloads(auth_client):
     assert template.status_code == 200
     assert "text/csv" in template.headers["content-type"]
     assert "cookie-orders-template.csv" in template.headers["content-disposition"]
-    assert (
-        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment"
-        in template.text
+    header = (
+        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,"
+        "Comment: 150 char"
     )
+    assert header in template.text
     assert "Do not rename that column" in template.text
-    assert "Comment is optional" in template.text
+    assert "Comment: 150 char is optional" in template.text
     # Reminder plus header. No sample orders.
     assert "jane@example.com" not in template.text
     assert template.text.count("\n") == 2
@@ -37,9 +38,7 @@ def test_template_and_example_downloads(auth_client):
     assert example.status_code == 200
     assert "cookie-orders-example.csv" in example.headers["content-disposition"]
     body = example.text
-    assert (
-        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment" in body
-    )
+    assert header in body
     assert "Do not rename that column" in body
     assert "jane@example.com" in body
     assert "bob@example.com" in body
