@@ -483,6 +483,20 @@ class NoteTemplateResponse(BaseModel):
 ADMIN_ORDER_STATUSES = ("queued", "ordered", "shipped", "delivered", "canceled")
 
 
+_ADMIN_SHIPPING_FIELDS = frozenset(
+    {
+        "shipping_company",
+        "shipping_street",
+        "shipping_street2",
+        "shipping_city",
+        "shipping_state",
+        "shipping_postal_code",
+        "shipping_country",
+        "shipping_address",
+    }
+)
+
+
 class AdminOrderUpdateRequest(BaseModel):
     status: str | None = Field(
         default=None,
@@ -490,6 +504,43 @@ class AdminOrderUpdateRequest(BaseModel):
     )
     tracking_number: str | None = Field(default=None, max_length=255)
     admin_notes: str | None = Field(default=None, max_length=2000)
+    shipping_company: str | None = Field(default=None, max_length=255)
+    shipping_street: str | None = Field(default=None, max_length=255)
+    shipping_street2: str | None = Field(default=None, max_length=255)
+    shipping_city: str | None = Field(default=None, max_length=100)
+    shipping_state: str | None = Field(default=None, max_length=64)
+    shipping_postal_code: str | None = Field(default=None, max_length=20)
+    shipping_country: str | None = Field(default=None, max_length=64)
+    shipping_address: str | None = Field(default=None, max_length=1000)
+
+    @field_validator(
+        "shipping_company",
+        "shipping_street",
+        "shipping_street2",
+        "shipping_city",
+        "shipping_state",
+        "shipping_postal_code",
+        "shipping_country",
+        "shipping_address",
+        "tracking_number",
+        "admin_notes",
+    )
+    @classmethod
+    def _strip_optional_admin_text(cls, value: str | None) -> str | None:
+        return _strip_optional_text(value)
+
+    @model_validator(mode="after")
+    def _shipping_complete_when_provided(self) -> "AdminOrderUpdateRequest":
+        if not (self.model_fields_set & _ADMIN_SHIPPING_FIELDS):
+            return self
+        parts = parts_from_shipping_payload(self)
+        if parts and parts.has_location_fields():
+            if not parts.is_complete():
+                raise ValueError(INCOMPLETE_STRUCTURED_ADDRESS_MESSAGE)
+            return self
+        if self.shipping_address:
+            return self
+        raise ValueError(MISSING_ADDRESS_MESSAGE)
 
 
 class AdminGiftOrderResponse(GiftOrderResponse):
@@ -2482,6 +2533,71 @@ def admin_get_gift_order(
     return _admin_gift_order_response(order, owner, prospect)
 
 
+def _admin_shipping_provided(payload: AdminOrderUpdateRequest) -> bool:
+    return bool(payload.model_fields_set & _ADMIN_SHIPPING_FIELDS)
+
+
+def _admin_apply_shipping_address(
+    order: GiftOrderModel,
+    payload: AdminOrderUpdateRequest,
+    db: Session,
+) -> GiftOrderModel:
+    """Set or correct ship-to. Capture / queue when the order was waiting on address."""
+    if order.status == "canceled":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot set shipping address on a canceled order.",
+        )
+
+    values = shipping_address_values(
+        parts=parts_from_shipping_payload(payload),
+        blob=payload.shipping_address,
+    )
+    if not (values.get("shipping_address") or "").strip():
+        raise HTTPException(status_code=400, detail=MISSING_ADDRESS_MESSAGE)
+
+    was_waiting = order.status == "no_address" and not (order.shipping_address or "").strip()
+    payment_status = order.payment_status
+    apply_shipping_address(order, values)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    if not was_waiting:
+        return order
+
+    if payment_status == "owed":
+        order = queue_owed_order_for_fulfillment(order, db)
+        _clear_address_request_token(order)
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return order
+
+    if payment_status == "authorized":
+        try:
+            order = capture_authorized_order(order, db)
+        except HTTPException:
+            apply_shipping_address(order, empty_shipping_address_values())
+            order.status = "no_address"
+            db.add(order)
+            db.commit()
+            raise
+        _clear_address_request_token(order)
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return order
+
+    if payment_status == "pending":
+        order.status = "pending_payment"
+        _clear_address_request_token(order)
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+    return order
+
+
 @app.patch("/admin/gift-orders/{order_id}", response_model=AdminGiftOrderResponse)
 def admin_update_gift_order(
     order_id: int,
@@ -2494,6 +2610,10 @@ def admin_update_gift_order(
         raise HTTPException(status_code=404, detail="Gift order not found.")
 
     previous_status = order.status
+
+    # Address first so admin can add ship-to and advance status in one save.
+    if _admin_shipping_provided(payload):
+        order = _admin_apply_shipping_address(order, payload, db)
 
     if payload.status is not None:
         # Unpaid orders stay in pre-pay statuses (or can be canceled). Paid
@@ -2515,10 +2635,11 @@ def admin_update_gift_order(
             order.payment_status = "canceled"
             _clear_address_request_token(order)
         order.status = payload.status
-    if payload.tracking_number is not None:
-        order.tracking_number = payload.tracking_number.strip() or None
-    if payload.admin_notes is not None:
-        order.admin_notes = payload.admin_notes.strip() or None
+    # Use fields_set so blank strings (stripped to None) still clear the column.
+    if "tracking_number" in payload.model_fields_set:
+        order.tracking_number = payload.tracking_number
+    if "admin_notes" in payload.model_fields_set:
+        order.admin_notes = payload.admin_notes
 
     db.add(order)
     db.commit()

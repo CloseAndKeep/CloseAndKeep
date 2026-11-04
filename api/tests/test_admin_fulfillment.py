@@ -158,6 +158,134 @@ def test_clearing_tracking_number_sets_null(admin_client, make_client, stripe_st
     assert cleared.json()["tracking_number"] is None
 
 
+def _shipping_payload(**overrides) -> dict:
+    payload = {
+        "shipping_company": "Acme Tower",
+        "shipping_street": "456 Oak Ave",
+        "shipping_street2": "Suite 9",
+        "shipping_city": "Austin",
+        "shipping_state": "TX",
+        "shipping_postal_code": "78701",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_admin_can_correct_shipping_address_on_queued_order(
+    admin_client, make_client, stripe_stub
+):
+    _, order = _paid_order(make_client)
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json=_shipping_payload(),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["shipping_street"] == "456 Oak Ave"
+    assert body["shipping_city"] == "Austin"
+    assert body["shipping_state"] == "TX"
+    assert body["shipping_postal_code"] == "78701"
+    assert body["shipping_company"] == "Acme Tower"
+    assert "456 Oak Ave" in (body["shipping_address"] or "")
+    assert body["status"] == "queued"
+    assert body["payment_status"] == "paid"
+
+
+def test_admin_rejects_incomplete_shipping_address(admin_client, make_client, stripe_stub):
+    _, order = _paid_order(make_client)
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json={"shipping_street": "123 Main", "shipping_city": "Austin"},
+    )
+    assert resp.status_code == 422
+
+
+def test_admin_cannot_set_shipping_on_canceled_order(admin_client, make_client, stripe_stub):
+    _, order = _paid_order(make_client)
+    canceled = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}", json={"status": "canceled"}
+    )
+    assert canceled.status_code == 200
+
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json=_shipping_payload(),
+    )
+    assert resp.status_code == 400
+    assert "canceled" in resp.json()["detail"].lower()
+
+
+def test_admin_adding_address_to_authorized_order_captures(
+    admin_client, make_client, stripe_stub, monkeypatch
+):
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(sp, "send_recipient_address_request", lambda **kw: None)
+    monkeypatch.setattr(sp, "send_orderer_receipt", lambda **kw: None)
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_order_notification",
+        lambda **kw: None,
+    )
+
+    owner = signup(make_client(), "owner-addr@example.com")
+    prospect = create_prospect(owner, email="wait@example.com")
+    created = owner.post(
+        "/gift-orders",
+        json={
+            "prospect_id": prospect["id"],
+            "gift_id": "cookies-4",
+            "recipient_name": "Wait For Address",
+            "note": "Thanks!",
+            "request_recipient_address": True,
+            "recipient_email": "wait@example.com",
+        },
+    )
+    assert created.status_code == 201, created.text
+    order = created.json()
+    assert order["status"] == "no_address"
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        sp.fulfill_order_from_checkout_session(
+            {
+                "id": row.stripe_checkout_session_id or "cs_test_created",
+                "mode": "payment",
+                "status": "complete",
+                "payment_status": "unpaid",
+                "payment_intent": "pi_test_admin_addr",
+                "amount_total": 100,
+                "currency": "usd",
+                "metadata": {
+                    "gift_order_id": str(order["id"]),
+                    "defer_capture": "true",
+                },
+            },
+            db,
+        )
+
+    authorized = admin_client.get(f"/admin/gift-orders/{order['id']}").json()
+    assert authorized["payment_status"] == "authorized"
+    assert authorized["status"] == "no_address"
+
+    resp = admin_client.patch(
+        f"/admin/gift-orders/{order['id']}",
+        json=_shipping_payload(),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["shipping_street"] == "456 Oak Ave"
+    assert body["status"] == "queued"
+    assert body["payment_status"] == "paid"
+    assert stripe_stub.payment_intent_capture_calls
+
+    with SessionLocal() as db:
+        row = db.get(GiftOrderModel, order["id"])
+        assert row.address_request_token is None
+        assert row.redeem_code is None
+
+
 # --- Seller status emails (shipped / delivered) ------------------------------
 
 
