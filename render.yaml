@@ -64,8 +64,13 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      # Fallback when a pack-specific price env is unset (prefer COOKIES_4 / COOKIES_12).
       - key: STRIPE_PRICE_ID
-        sync: false
+        value: price_1TwRUwGkVCOXYyTsBAQ8B8Na
+      - key: STRIPE_PRICE_COOKIES_4
+        value: price_1TwRUwGkVCOXYyTsBAQ8B8Na
+      - key: STRIPE_PRICE_COOKIES_12
+        value: price_1TwRWdGkVCOXYyTsE3I8j1h9
       # CRM OAuth apps + webhook secrets (Integrations → Connect Salesforce / HubSpot).
       # Without these, /integrations/*/connect returns 503 "not configured".
       - key: SALESFORCE_CLIENT_ID
@@ -140,11 +145,11 @@ services:
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PRICE_ID
-        sync: false
+        value: price_1TwRUwGkVCOXYyTsBAQ8B8Na
       - key: STRIPE_PRICE_COOKIES_4
-        sync: false
+        value: price_1TwRUwGkVCOXYyTsBAQ8B8Na
       - key: STRIPE_PRICE_COOKIES_12
-        sync: false
+        value: price_1TwRWdGkVCOXYyTsE3I8j1h9
 
   # Hourly: retry ops new-order Resend if the first send died after pay/authorize.
   - type: cron
