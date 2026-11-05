@@ -18,7 +18,7 @@ def test_template_and_example_helpers():
     )
     template = template_csv()
     assert header in template
-    assert NOTE_HEADER == "Note: 105 char"
+    assert NOTE_HEADER == "Note: 150 char"
     assert "Do not rename that column" in template
     assert f"{NOTE_HEADER} is optional" in template
     assert "jane@example.com" not in template
@@ -269,7 +269,7 @@ def test_parse_comment_header_with_char_limit_hint():
     assert rows[0].note == "Thanks for coming by!"
 
     paren = (
-        "Name,Email,Cookies,Comment (105 characters),Address\n"
+        "Name,Email,Cookies,Comment (150 characters),Address\n"
         "Bob,bob@example.com,12,See you next week,2 Oak\n"
     )
     rows, errors = parse_gift_orders_csv(paren)

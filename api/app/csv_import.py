@@ -118,7 +118,7 @@ _HEADER_ALIASES: dict[str, str] = {
     "shipping_postal_code": "postal_code",
 }
 
-# "Note: 105 char" / "Comment (105 characters)" — limit hint in the column name.
+# "Note: 150 char" / "Comment (150 characters)" — limit hint in the column name.
 _COMMENT_HEADER_WITH_HINT = re.compile(
     r"^(?:comment|comments|note|notes|gift note|gift message|message)"
     r"(?:\s*[:(\-].+)?$"

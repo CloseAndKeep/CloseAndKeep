@@ -320,7 +320,7 @@ def _clean_note(note: str | None) -> str:
     cleaned = (note or "").strip()
     if not cleaned:
         return DEFAULT_AUTO_ORDER_NOTE
-    # Truncate long CRM notes so bakery checkout sticker fields still fit.
+    # Truncate long CRM notes so bakery checkout (Crumbl 150-char sticker) still works.
     return cleaned[:GIFT_NOTE_MAX_LENGTH]
 
 
