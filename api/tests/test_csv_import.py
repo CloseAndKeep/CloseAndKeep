@@ -23,12 +23,13 @@ def test_template_and_example_downloads(auth_client):
     assert template.status_code == 200
     assert "text/csv" in template.headers["content-type"]
     assert "cookie-orders-template.csv" in template.headers["content-disposition"]
-    assert (
-        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment"
-        in template.text
+    header = (
+        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,"
+        "Note: 150 char"
     )
+    assert header in template.text
     assert "Do not rename that column" in template.text
-    assert "Comment is optional" in template.text
+    assert "Note: 150 char is optional" in template.text
     # Reminder plus header. No sample orders.
     assert "jane@example.com" not in template.text
     assert template.text.count("\n") == 2
@@ -37,9 +38,7 @@ def test_template_and_example_downloads(auth_client):
     assert example.status_code == 200
     assert "cookie-orders-example.csv" in example.headers["content-disposition"]
     body = example.text
-    assert (
-        "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment" in body
-    )
+    assert header in body
     assert "Do not rename that column" in body
     assert "jane@example.com" in body
     assert "bob@example.com" in body
@@ -326,3 +325,121 @@ def test_import_only_address_rows_still_batch_checkouts(auth_client, stripe_stub
     assert data["batch_checkout_url"]
     assert all(o["checkout_url"] == data["batch_checkout_url"] for o in data["created"])
     assert len(stripe_stub.session_create_calls) == 1
+
+
+def test_mixed_import_sends_address_emails_only_after_authorize(
+    auth_client, stripe_stub, monkeypatch
+):
+    """Rows without an address email the recipient after authorize — not at upload.
+
+    Known-address rows share one paid Checkout and must not get address-request
+    emails. Deferred rows each authorize separately and each get one email.
+    """
+    recipient_mails: list[dict] = []
+    import app.stripe_payments as sp
+    from app.db import SessionLocal
+    from app.models import GiftOrderModel
+
+    monkeypatch.setattr(
+        sp,
+        "send_recipient_address_request",
+        lambda **kw: recipient_mails.append(dict(kw)),
+    )
+    monkeypatch.setattr(sp, "send_orderer_receipt", lambda **kw: None)
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_order_notification",
+        lambda **kw: None,
+    )
+
+    csv_text = (
+        "Name,Email,Cookies,Address\n"
+        "Jane Smith,jane@example.com,4,123 Main St\n"
+        "Bob Jones,bob@example.com,4,\n"
+        "Casey Lee,casey@example.com,12,\n"
+        "Alex Rivera,alex@example.com,12,456 Oak Ave\n"
+    )
+    resp = _upload(auth_client, csv_text)
+    assert resp.status_code == 201, resp.text
+    created = resp.json()["created"]
+    by_email = {order["recipient_email"]: order for order in created}
+
+    assert by_email["jane@example.com"]["status"] == "pending_payment"
+    assert by_email["alex@example.com"]["status"] == "pending_payment"
+    assert by_email["bob@example.com"]["status"] == "no_address"
+    assert by_email["casey@example.com"]["status"] == "no_address"
+    assert recipient_mails == []
+
+    # Batch + two deferred checkouts must not share a Stripe session id.
+    with SessionLocal() as db:
+        session_ids = {
+            email: db.get(GiftOrderModel, by_email[email]["id"]).stripe_checkout_session_id
+            for email in by_email
+        }
+    assert session_ids["jane@example.com"] == session_ids["alex@example.com"]
+    assert session_ids["bob@example.com"] != session_ids["jane@example.com"]
+    assert session_ids["casey@example.com"] != session_ids["jane@example.com"]
+    assert session_ids["bob@example.com"] != session_ids["casey@example.com"]
+
+    for email in ("bob@example.com", "casey@example.com"):
+        order = by_email[email]
+        with SessionLocal() as db:
+            row = db.get(GiftOrderModel, order["id"])
+            sp.fulfill_order_from_checkout_session(
+                {
+                    "id": row.stripe_checkout_session_id,
+                    "mode": "payment",
+                    "status": "complete",
+                    "payment_status": "unpaid",
+                    "payment_intent": f"pi_test_{order['id']}",
+                    "amount_total": 100,
+                    "currency": "usd",
+                    "metadata": {
+                        "gift_order_id": str(order["id"]),
+                        "gift_order_ids": str(order["id"]),
+                        "defer_capture": "true",
+                    },
+                },
+                db,
+            )
+
+    assert {mail["recipient_email"] for mail in recipient_mails} == {
+        "bob@example.com",
+        "casey@example.com",
+    }
+    for mail in recipient_mails:
+        assert "/ship/" in mail["address_form_url"]
+        assert mail["redeem_code"]
+        assert mail["sender_name"] == "Test Seller"
+
+    for email in ("bob@example.com", "casey@example.com"):
+        fetched = auth_client.get(f"/gift-orders/{by_email[email]['id']}").json()
+        assert fetched["payment_status"] == "authorized"
+        assert fetched["status"] == "no_address"
+
+    before = len(recipient_mails)
+    jane = by_email["jane@example.com"]
+    alex = by_email["alex@example.com"]
+    with SessionLocal() as db:
+        jane_row = db.get(GiftOrderModel, jane["id"])
+        sp.fulfill_order_from_checkout_session(
+            {
+                "id": jane_row.stripe_checkout_session_id,
+                "mode": "payment",
+                "status": "complete",
+                "payment_status": "paid",
+                "amount_total": 200,
+                "currency": "usd",
+                "metadata": {
+                    "gift_order_id": str(jane["id"]),
+                    "gift_order_ids": f"{jane['id']},{alex['id']}",
+                    "defer_capture": "false",
+                },
+            },
+            db,
+        )
+
+    assert len(recipient_mails) == before
+    for email in ("jane@example.com", "alex@example.com"):
+        fetched = auth_client.get(f"/gift-orders/{by_email[email]['id']}").json()
+        assert fetched["payment_status"] == "paid"
+        assert fetched["status"] == "queued"

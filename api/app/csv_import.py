@@ -35,14 +35,18 @@ ALLOWED_COOKIE_COUNTS = frozenset(COOKIE_COUNT_TO_GIFT_ID)
 
 # Title row above the header. Import already skips a line that is not the header.
 # No commas, so this stays one cell and is not read as column names.
+# Column name embeds the gift-note limit so the sheet itself is clear.
+NOTE_HEADER = f"Note: {GIFT_NOTE_MAX_LENGTH} char"
+# Backward-compatible export name used by older tests/imports.
+COMMENT_HEADER = NOTE_HEADER
+
 CSV_TEMPLATE_NOTE = (
     "Keep these column names. Put 4 or 12 under Cookies. "
     "Do not rename that column to Number of Cookies (4 or 12). "
-    "Comment is optional; leave it blank for the default gift note. "
-    f"Comment max {GIFT_NOTE_MAX_LENGTH} characters (Crumbl gift-note limit).\n"
+    f"{NOTE_HEADER} is optional; leave it blank for the default gift note.\n"
 )
 CSV_TEMPLATE_HEADERS = (
-    "Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment\n"
+    f"Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,{NOTE_HEADER}\n"
 )
 
 # Filled example rows so users can see both known-address and request-address cases.
@@ -113,6 +117,12 @@ _HEADER_ALIASES: dict[str, str] = {
     "zipcode": "postal_code",
     "shipping_postal_code": "postal_code",
 }
+
+# "Note: 150 char" / "Comment (150 characters)" — limit hint in the column name.
+_COMMENT_HEADER_WITH_HINT = re.compile(
+    r"^(?:comment|comments|note|notes|gift note|gift message|message)"
+    r"(?:\s*[:(\-].+)?$"
+)
 
 _EXCEL_SAVE_AS = (
     "In Excel choose File → Save As and pick CSV UTF-8 (Comma delimited) (*.csv). "
@@ -215,7 +225,12 @@ def _clean_cell(value: str) -> str:
 def _normalize_header(raw: str) -> str | None:
     spaced = re.sub(r"\s+", " ", _strip_format_chars(raw).strip().lower().replace("_", " "))
     underscored = spaced.replace(" ", "_")
-    return _HEADER_ALIASES.get(spaced) or _HEADER_ALIASES.get(underscored)
+    mapped = _HEADER_ALIASES.get(spaced) or _HEADER_ALIASES.get(underscored)
+    if mapped:
+        return mapped
+    if _COMMENT_HEADER_WITH_HINT.match(spaced):
+        return "comment"
+    return None
 
 
 def _header_map_from_cells(cells: list[str]) -> dict[str, int]:
@@ -293,7 +308,7 @@ def _missing_header_error(cells: list[str]) -> RowError:
     ]
     parts = [
         "Missing required column(s): " + ", ".join(missing_labels) + ".",
-        "Use the header Name, Email, Cookies. Comment, Company, Street, Street2, City, State, and Postal Code are optional.",
+        f"Use the header Name, Email, Cookies. {NOTE_HEADER}, Company, Street, Street2, City, State, and Postal Code are optional.",
     ]
     cookie_like = [name for name in unrecognized if "cookie" in name.lower()]
     if "cookies" in missing and cookie_like:
@@ -458,7 +473,7 @@ def parse_gift_orders_csv(
         note = comment_raw if comment_raw else DEFAULT_IMPORT_NOTE
         if len(note) > NOTE_MAX_LENGTH:
             row_errors.append(
-                f"Comment must be at most {NOTE_MAX_LENGTH} characters "
+                f"Note must be at most {NOTE_MAX_LENGTH} characters "
                 f"(got {len(note)})."
             )
 

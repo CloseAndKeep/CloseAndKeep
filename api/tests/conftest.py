@@ -104,6 +104,9 @@ class StripeStub:
             "id": "cs_test_created",
             "url": "https://checkout.stripe.test/pay/cs_test_created",
         }
+        # Mixed CSV imports create a batch session plus one deferred session per
+        # no-address row. Unique ids keep sibling lookups from colliding.
+        self._payment_session_seq = 0
         self.created_setup_session = {
             "id": "cs_test_setup",
             "url": "https://checkout.stripe.test/setup/cs_test_setup",
@@ -146,7 +149,15 @@ class StripeStub:
         self.session_create_calls.append(params)
         if params.get("mode") == "setup":
             return dict(self.created_setup_session)
-        return dict(self.created_session)
+        self._payment_session_seq += 1
+        session = dict(self.created_session)
+        # Uniquify only while the stub still uses the default id. Tests that
+        # override created_session keep full control of the returned id/url.
+        if self._payment_session_seq > 1 and session.get("id") == "cs_test_created":
+            session_id = f"cs_test_created_{self._payment_session_seq}"
+            session["id"] = session_id
+            session["url"] = f"https://checkout.stripe.test/pay/{session_id}"
+        return session
 
     def _session_retrieve(self, session_id, **_kwargs):
         result = dict(self.retrieved_session)
