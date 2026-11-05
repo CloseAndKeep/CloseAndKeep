@@ -1,2 +1,2 @@
-/** Crumbl gift-note sticker/checkout limit; Levain notes stay in the same budget. */
-export const GIFT_NOTE_MAX_LENGTH = 150;
+/** Gift-note / bakery sticker field limit — keep in sync with api/app/gift_notes.py */
+export const GIFT_NOTE_MAX_LENGTH = 105;

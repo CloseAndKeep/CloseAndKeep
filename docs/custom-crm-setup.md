@@ -135,7 +135,7 @@ Keep reps in your CRM. Do **not** add a CloseAndKeep deal stage — stages are a
 
 | Field (label in the CRM) | Suggested internal name | Type | Required? | Used for |
 |--------------------------|-------------------------|------|-----------|----------|
-| Cookie note | `cookie_note` | Long text (max 150 chars) | Strongly recommended | Personal message on the gift (Crumbl gift-note limit). If blank, use: `Thanks for meeting with us — enjoy these cookies!` |
+| Cookie note | `cookie_note` | Long text (max 105 chars) | Strongly recommended | Personal message on the gift. If blank, use: `Thanks for meeting with us — enjoy these cookies!` |
 | Cookie company | `cookie_company` | Text | Optional | Workplace / building name for office deliveries |
 | Cookie street | `cookie_street` | Text | Optional* | Street address |
 | Cookie street 2 | `cookie_street2` | Text | Optional | Apt, suite, unit |

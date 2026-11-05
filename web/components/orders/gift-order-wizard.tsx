@@ -471,7 +471,7 @@ export function GiftOrderWizard() {
                 placeholder="Short personal message required before fulfillment."
               />
               <p className="mt-1 text-xs text-stone-500">
-                {note.length}/{GIFT_NOTE_MAX_LENGTH} characters (Crumbl gift-note limit)
+                {note.length}/{GIFT_NOTE_MAX_LENGTH} characters
               </p>
               <NoteTemplates note={note} onApply={setNote} />
             </div>

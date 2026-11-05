@@ -184,18 +184,18 @@ export default function ImportOrdersPage() {
             <strong>12</strong>. Do not put that note in the header. A column named{" "}
             <span className="font-medium text-espresso">Number of Cookies (4 or 12)</span> is
             rejected.{" "}
-            <span className="font-medium text-espresso">Comment: 150 char</span> is optional
-            (blank uses the default gift note; 150 characters fits Crumbl&apos;s gift note).
-            Company is optional. Street, city, state, and ZIP are optional together.
+            <span className="font-medium text-espresso">Note: 105 char</span> is optional
+            (blank uses the default gift note; max 105 characters). Company is optional. Street,
+            city, state, and ZIP are optional together.
           </p>
           <p className="mt-2 text-xs text-stone-500">
             The template download starts with a one-line reminder, then this header. You can
             delete the reminder; import skips it. Cookie count and Number of cookies also work
             as that column name, as long as nothing else is added. Comment, Note, and Gift note
-            also work for the comment column.
+            also work for the note column.
           </p>
           <div className="mt-3 overflow-x-auto rounded-xl border border-stone-200 bg-cream/40">
-            <pre className="px-4 py-3 text-xs text-stone-700 sm:text-sm">{`Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment: 150 char
+            <pre className="px-4 py-3 text-xs text-stone-700 sm:text-sm">{`Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Note: 105 char
 Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704,Thanks for the great meeting!
 Bob Jones,bob@example.com,12,,,,,,,`}</pre>
           </div>

@@ -21,7 +21,7 @@ The Dashboard shows open, won, and lost counts plus your overall win rate. It al
 
 1. **Prospects** → add someone you’re working. Search by name or email, and filter the list by Open, Won, or Lost.
 2. **Orders** → **Send cookies** (or start from the prospect — name, email, and pack are filled in).
-3. Choose pack size (**4** or **12** cookies), add a note up to **150 characters** (Crumbl’s gift-note limit; you can save cookie-note templates and reuse them on new orders), enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
+3. Choose pack size (**4** or **12** cookies), add a note up to **105 characters** (you can save cookie-note templates and reuse them on new orders), enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
 4. Pay at Stripe Checkout. Have a code? Enter it on the Stripe checkout page. After you pay — or if you leave checkout — you stay signed in and land on **Orders** (`/orders`). If Pay monthly is on, you skip Stripe and go straight to Orders.
 
 **After you send a gift:**
@@ -64,7 +64,7 @@ Use CSV when you want to create many cookie orders at once.
 | **City** | Optional* | City |
 | **State** | Optional* | 2-letter state (e.g. IL) |
 | **Postal Code** | Optional* | ZIP / postal code |
-| **Comment: 150 char** | Optional | Gift note on the cookie order (max **150** characters). Leave blank for the default. Plain **Comment**, **Note**, or **Gift note** also work as the column name. |
+| **Note: 105 char** | Optional | Gift note on the cookie order (max **105** characters). Leave blank for the default. Plain **Note**, **Comment**, or **Gift note** also work as the column name. |
 
 \*Street, City, State, and Postal Code are required **together**. Leave all of them blank to request the address after you authorize payment. A single **Address** column still works for older files.
 
@@ -73,7 +73,7 @@ The **Cookies** column is the one people rename. `Number of Cookies (4 or 12)` i
 Example:
 
 ```csv
-Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Comment: 150 char
+Name,Email,Cookies,Company,Street,Street2,City,State,Postal Code,Note: 105 char
 Jane Smith,jane@example.com,4,,123 Main St,,Springfield,IL,62704,Thanks for the great meeting!
 Bob Jones,bob@example.com,12,,,,,,,
 ```
@@ -93,8 +93,8 @@ From Excel, use **File → Save As** and choose **CSV UTF-8 (Comma delimited) (*
 
 - Max about **100 data rows** and **256 KB** per file.
 - Must be signed in (not guest).
-- Default gift note when **Comment: 150 char** is blank or missing: *“Enjoy these cookies — a small thank-you from us.”*
-- Gift note max **150 characters** (same as the website; matches Crumbl’s printed gift note). Longer comments reject that row.
+- Default gift note when **Note: 105 char** is blank or missing: *“Enjoy these cookies — a small thank-you from us.”*
+- Gift note max **105 characters** (same as the website). Longer notes reject that row.
 - CSV is for **importing gift orders only** (not exporting prospects/orders).
 
 ---
@@ -147,7 +147,7 @@ Create these on the **Opportunity** (Salesforce) or **Deal** (HubSpot). Reps fil
 - If street, city, state, and ZIP are all filled → order is created ready to pay (and can ship after payment / monthly queue).
 - If those fields are blank → we still create the order and email the recipient for shipping after you authorize/pay. A legacy **Cookie_Address__c** / **cookie_address** long-text field is still read if the split fields are empty.
 - If **Cookie Note** is blank → we use: *“Thanks for meeting with us — enjoy these cookies!”*
-- Cookie Note / gift notes are capped at **150 characters** (Crumbl’s limit). Longer CRM notes are shortened when we auto-create the order.
+- Cookie Note / gift notes are capped at **105 characters**. Longer CRM notes are shortened when we auto-create the order.
 
 Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`, `SALESFORCE_COOKIE_COMPANY_FIELD`, `SALESFORCE_COOKIE_STREET_FIELD`, `SALESFORCE_COOKIE_CITY_FIELD`, `SALESFORCE_COOKIE_STATE_FIELD`, `SALESFORCE_COOKIE_POSTAL_CODE_FIELD`, and the HubSpot `HUBSPOT_COOKIE_*_PROPERTY` equivalents).
 
