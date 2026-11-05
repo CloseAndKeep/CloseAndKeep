@@ -1,0 +1,9 @@
+{
+  "name": "closeandkeep-hubspot-card",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@hubspot/ui-extensions": "0.17.1",
+    "react": "18.3.1"
+  }
+}

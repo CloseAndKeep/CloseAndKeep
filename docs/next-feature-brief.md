@@ -10,7 +10,7 @@ CloseAndKeep is post-pitch cookie gifts for salespeople. Solo-user first.
 - Billing: **one-time Stripe Checkout per gift order** (`mode: payment`). No subscriptions.
 - Deferred address: authorize/hold → public `/ship/[token]` → capture → `queued`. Token/hold ~7 days.
 - Checkout already has `allow_promotion_codes: True`. Amounts **below** catalog are allowed (promos). Amounts **above** catalog are rejected.
-- CRM: Salesforce + HubSpot OAuth auto-order on a trigger stage (default Demo Completed). Custom CRM = API keys + Send cookies. Auto-order-on-stage is OAuth-only.
+- CRM: Salesforce + HubSpot OAuth auto-order on a trigger stage (default Demo Completed). HubSpot Marketplace app is in `hubspot-closeandkeep/` (deal card, settings, dealstage webhook); listing steps in `docs/hubspot-marketplace.md`. Custom CRM = API keys + Send cookies. Auto-order-on-stage is OAuth-only.
 - Fulfillment is **manual** via `/admin`. Do not start a bakery vendor API. Parked ops idea (not an API): Crumbl-first Cursor autofill — `docs/bakery-fulfill-later.md`.
 - Cards stay with Stripe. Never store PAN. Tests must not call live Stripe.
 - Prefer `AGENTS.md`, `DECISIONS.md`, and `Architecture.MD` §0 over speculative Architecture sections.
