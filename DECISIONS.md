@@ -101,4 +101,4 @@ Locked behaviors after medium-severity review:
 
 ## Gift note length (2026-11)
 
-- Cap gift notes at **150 characters** (`GIFT_NOTE_MAX_LENGTH`) to match Crumbl’s printed gift-note / checkout field. Website + CSV reject longer notes; CRM auto-order truncates. DB columns stay `String(1000)` so older rows remain valid.
+- Cap gift notes at **150 characters** (`GIFT_NOTE_MAX_LENGTH`) to match Crumbl’s printed gift-note / checkout field. Website + CSV reject longer notes; CRM auto-order truncates. DB columns stay `String(1000)` so older rows remain valid. CSV preferred header is **Note: 150 char** (Comment / Gift note still alias).
