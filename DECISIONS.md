@@ -87,7 +87,7 @@ Locked behaviors after medium-severity review:
 - **Trigger:** Opportunity/Deal stage matches configured name (default **Demo Completed**).
 - **Timing:** Reminder email to the connected salesperson is sent **immediately**.
 - **CTA:** Deep link to `/orders/new?prospect_id=…&from=sf_reminder` (Salesforce) or `from=hs_reminder` (HubSpot) with note prompt.
-- **Intake:** `POST /integrations/{salesforce|hubspot}/events` (webhook secret) preferred; `POST /integrations/{salesforce|hubspot}/sync` polls as fallback.
+- **Intake:** `POST /integrations/{salesforce|hubspot}/events` (webhook secret) preferred; `POST /integrations/{salesforce|hubspot}/sync` polls as fallback. HubSpot events must include `portal_id` or `connection_id`. The portal id is read from HubSpot’s access-token info after connect. Sync selects deals that **entered** a recipe stage. Each deal can send once per recipe stage; a different deal for the same person inside 90 days is skipped.
 - OAuth tokens encrypted at rest with `INTEGRATION_TOKEN_FERNET_KEY`.
 - v1: one CRM org/portal connection per CloseAndKeep user (no shared team connections).
 
