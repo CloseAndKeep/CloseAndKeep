@@ -1,0 +1,39 @@
+{
+  "uid": "CloseAndKeep_send_cookies",
+  "type": "workflow-action",
+  "config": {
+    "actionUrl": "https://closeandkeep-api.onrender.com/integrations/hubspot/workflow-action",
+    "isPublished": true,
+    "supportedClients": [
+      {
+        "client": "WORKFLOWS"
+      }
+    ],
+    "inputFields": [
+      {
+        "typeDefinition": {
+          "name": "stage_name",
+          "type": "string",
+          "fieldType": "text"
+        },
+        "supportedValueTypes": ["STATIC_VALUE", "OBJECT_PROPERTY"],
+        "isRequired": false
+      }
+    ],
+    "labels": {
+      "en": {
+        "actionName": "Send CloseAndKeep cookies",
+        "actionDescription": "Queue a cookie gift (or reminder) from this deal using Cookie Note and street/city/state/ZIP. Does not require Data Hub webhook actions.",
+        "actionCardContent": "Send CloseAndKeep cookies{{#if stage_name}} ({{stage_name}}){{/if}}",
+        "appDisplayName": "CloseAndKeep",
+        "inputFieldLabels": {
+          "stage_name": "Stage name override (optional)"
+        },
+        "inputFieldDescriptions": {
+          "stage_name": "Leave blank to use the deal's current stage label. Must match a CloseAndKeep stage recipe (e.g. Demo Completed)."
+        }
+      }
+    },
+    "objectTypes": ["DEAL"]
+  }
+}

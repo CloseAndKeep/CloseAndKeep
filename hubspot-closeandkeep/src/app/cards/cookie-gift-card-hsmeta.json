@@ -1,0 +1,11 @@
+{
+  "uid": "CloseAndKeep_cookie_gift_card",
+  "type": "card",
+  "config": {
+    "name": "CloseAndKeep cookies",
+    "description": "Edit cookie gift note and shipping fields on the deal, then queue a gift.",
+    "location": "crm.record.sidebar",
+    "entrypoint": "/app/cards/CookieGiftCard.jsx",
+    "objectTypes": ["deals"]
+  }
+}
