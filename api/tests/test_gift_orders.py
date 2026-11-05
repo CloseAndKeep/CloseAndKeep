@@ -43,6 +43,24 @@ def test_rejects_whitespace_only_note(auth_client, prospect_id, stripe_stub):
     assert auth_client.post("/gift-orders", json=payload).status_code == 422
 
 
+def test_rejects_note_over_crumbl_limit(auth_client, prospect_id, stripe_stub):
+    from app.gift_notes import GIFT_NOTE_MAX_LENGTH
+
+    payload = make_order_payload(prospect_id)
+    payload["note"] = "x" * (GIFT_NOTE_MAX_LENGTH + 1)
+    assert auth_client.post("/gift-orders", json=payload).status_code == 422
+
+
+def test_accepts_note_at_crumbl_limit(auth_client, prospect_id, stripe_stub):
+    from app.gift_notes import GIFT_NOTE_MAX_LENGTH
+
+    payload = make_order_payload(prospect_id)
+    payload["note"] = "x" * GIFT_NOTE_MAX_LENGTH
+    resp = auth_client.post("/gift-orders", json=payload)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["note"] == payload["note"]
+
+
 def test_order_for_foreign_prospect_returns_404(make_client, stripe_stub):
     from conftest import signup
 

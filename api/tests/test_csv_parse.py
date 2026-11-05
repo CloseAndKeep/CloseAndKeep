@@ -263,4 +263,15 @@ def test_parse_comment_rejects_too_long():
     )
     rows, errors = parse_gift_orders_csv(csv_text)
     assert rows == []
-    assert any("at most 1000" in error.message for error in errors)
+    assert any(f"at most {NOTE_MAX_LENGTH}" in error.message for error in errors)
+
+
+def test_parse_comment_accepts_max_length():
+    note = "x" * NOTE_MAX_LENGTH
+    csv_text = (
+        "Name,Email,Cookies,Comment,Address\n"
+        f"Jane,jane@example.com,4,{note},1 Main\n"
+    )
+    rows, errors = parse_gift_orders_csv(csv_text)
+    assert errors == []
+    assert rows[0].note == note

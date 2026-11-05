@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..gift_notes import GIFT_NOTE_MAX_LENGTH
 from ..models import (
     CrmReminderEventModel,
     GiftOrderModel,
@@ -319,7 +320,8 @@ def _clean_note(note: str | None) -> str:
     cleaned = (note or "").strip()
     if not cleaned:
         return DEFAULT_AUTO_ORDER_NOTE
-    return cleaned[:1000]
+    # Truncate long CRM notes so bakery checkout (Crumbl 150-char sticker) still works.
+    return cleaned[:GIFT_NOTE_MAX_LENGTH]
 
 
 def _create_auto_order(

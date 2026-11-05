@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cookiePacks, labelForGiftId } from "@/lib/gift-catalog";
+import { GIFT_NOTE_MAX_LENGTH } from "@/lib/gift-notes";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -465,9 +466,13 @@ export function GiftOrderWizard() {
               <textarea
                 className="mt-2 field-input min-h-[88px]"
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => setNote(e.target.value.slice(0, GIFT_NOTE_MAX_LENGTH))}
+                maxLength={GIFT_NOTE_MAX_LENGTH}
                 placeholder="Short personal message required before fulfillment."
               />
+              <p className="mt-1 text-xs text-stone-500">
+                {note.length}/{GIFT_NOTE_MAX_LENGTH} characters (Crumbl gift-note limit)
+              </p>
               <NoteTemplates note={note} onApply={setNote} />
             </div>
           </div>

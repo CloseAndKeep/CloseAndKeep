@@ -44,7 +44,7 @@ From the admin order:
 
 - Recipient name, company, street, street2, city, state, ZIP, country
 - Recipient email if the bakery asks for it
-- Gift note → bakery gift message
+- Gift note → bakery gift message (app caps notes at **150** characters to match Crumbl’s sticker/checkout field)
 - Pack: `cookies-4` → 4 cookies, `cookies-12` → 12 cookies
 
 **Crumbl first:** https://crumblcookies.com/order/delivery — enter the recipient address first. If a store will deliver, add 4 or 12 from this week’s menu (classics + featured). If delivery is unavailable, stop and go to Levain. DevTools cannot enlarge the radius.

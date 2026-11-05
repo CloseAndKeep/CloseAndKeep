@@ -98,3 +98,7 @@ Locked behaviors after medium-severity review:
 - **Auto-order:** uses CRM note (or default thank-you note); street+city+state+ZIP present → `pending_payment` (or monthly queue); blank address → existing address-request flow.
 - Webhook payloads may include optional `cookie_note`, `cookie_company`, and `cookie_street` / `cookie_city` / `cookie_state` / `cookie_postal_code` (or legacy `cookie_address`).
 - Custom CRMs use API keys + `POST /gift-orders` with `note` and structured shipping fields (no OAuth adapter). Creating an API key unlocks **monthly billing** on Profile (same as Salesforce/HubSpot). Auto-order-on-stage remains OAuth-only; custom CRMs use a Send cookies button.
+
+## Gift note length (2026-11)
+
+- Cap gift notes at **150 characters** (`GIFT_NOTE_MAX_LENGTH`) to match Crumbl’s printed gift-note / checkout field. Website + CSV reject longer notes; CRM auto-order truncates. DB columns stay `String(1000)` so older rows remain valid.

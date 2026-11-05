@@ -183,8 +183,9 @@ export default function ImportOrdersPage() {
             Keep the header names below. In <strong>Cookies</strong>, type <strong>4</strong> or{" "}
             <strong>12</strong>. Do not put that note in the header. A column named{" "}
             <span className="font-medium text-espresso">Number of Cookies (4 or 12)</span> is
-            rejected. Comment is optional (blank uses the default gift note). Company is
-            optional. Street, city, state, and ZIP are optional together.
+            rejected. Comment is optional (blank uses the default gift note; max 150 characters
+            to fit Crumbl&apos;s gift note). Company is optional. Street, city, state, and ZIP
+            are optional together.
           </p>
           <p className="mt-2 text-xs text-stone-500">
             The template download starts with a one-line reminder, then this header. You can

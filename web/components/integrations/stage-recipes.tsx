@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { cookiePacks, labelForGiftId } from "@/lib/gift-catalog";
+import { GIFT_NOTE_MAX_LENGTH } from "@/lib/gift-notes";
 
 export type StageRecipe = {
   stage_name: string;
@@ -99,9 +100,17 @@ export function StageRecipes({ recipes, saving, onSave }: StageRecipesProps) {
               <input
                 className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"
                 value={row.note || ""}
-                onChange={(e) => update(index, { note: e.target.value })}
+                onChange={(e) =>
+                  update(index, {
+                    note: e.target.value.slice(0, GIFT_NOTE_MAX_LENGTH),
+                  })
+                }
+                maxLength={GIFT_NOTE_MAX_LENGTH}
                 placeholder="Used when Cookie Note is blank"
               />
+              <span className="mt-1 block text-xs text-stone-500">
+                {(row.note || "").length}/{GIFT_NOTE_MAX_LENGTH} characters
+              </span>
             </label>
           </div>
         ))}
