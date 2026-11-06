@@ -172,7 +172,12 @@ def _session_defers_capture(session: object, order: GiftOrderModel) -> bool:
     )
 
 
-def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
+def mark_order_paid(
+    order: GiftOrderModel,
+    db: Session,
+    *,
+    notify_ops: bool = True,
+) -> GiftOrderModel:
     if order.payment_status == "paid":
         return order
 
@@ -195,7 +200,7 @@ def mark_order_paid(order: GiftOrderModel, db: Session) -> GiftOrderModel:
             shipping_address=order.shipping_address,
             order_url=f"{settings.web_base_url.rstrip('/')}/orders/{order.id}",
         )
-    if prospect and owner and not already_queued:
+    if prospect and owner and not already_queued and notify_ops:
         # Payment is done; hand off to fulfillment (email today, bakery API later).
         from .fulfillment import dispatch_queued_fulfillment
 
@@ -234,7 +239,12 @@ def send_address_request_for_order(order: GiftOrderModel, db: Session) -> GiftOr
     return order
 
 
-def queue_owed_order_for_fulfillment(order: GiftOrderModel, db: Session) -> GiftOrderModel:
+def queue_owed_order_for_fulfillment(
+    order: GiftOrderModel,
+    db: Session,
+    *,
+    notify_ops: bool = True,
+) -> GiftOrderModel:
     """Move a monthly owed order to queued and notify ops (payment stays owed)."""
     if order.payment_status != "owed":
         raise HTTPException(status_code=400, detail="Order is not on monthly billing.")
@@ -259,7 +269,7 @@ def queue_owed_order_for_fulfillment(order: GiftOrderModel, db: Session) -> Gift
 
     prospect = db.get(ProspectModel, order.prospect_id)
     owner = db.get(UserModel, order.owner_user_id)
-    if prospect and owner:
+    if prospect and owner and notify_ops:
         from .fulfillment import dispatch_queued_fulfillment
 
         dispatch_queued_fulfillment(order, prospect=prospect, owner=owner, db=db)
@@ -359,7 +369,12 @@ def assert_spending_limit_allows(
     )
 
 
-def prepare_monthly_owed_order(order: GiftOrderModel, db: Session) -> GiftOrderModel:
+def prepare_monthly_owed_order(
+    order: GiftOrderModel,
+    db: Session,
+    *,
+    notify_ops: bool = True,
+) -> GiftOrderModel:
     """Stamp an order as monthly owed and send the address request when needed."""
     owner = db.get(UserModel, order.owner_user_id)
     if owner is not None:
@@ -378,10 +393,21 @@ def prepare_monthly_owed_order(order: GiftOrderModel, db: Session) -> GiftOrderM
     db.refresh(order)
 
     if order.status == "no_address" and not (order.shipping_address or "").strip():
-        return send_address_request_for_order(order, db)
+        order = send_address_request_for_order(order, db)
+        if notify_ops and owner is not None:
+            prospect = db.get(ProspectModel, order.prospect_id)
+            if prospect is not None:
+                from .fulfillment import dispatch_queued_fulfillment
+
+                dispatch_queued_fulfillment(
+                    order, prospect=prospect, owner=owner, db=db
+                )
+        return order
 
     if (order.shipping_address or "").strip():
-        return queue_owed_order_for_fulfillment(order, db)
+        return queue_owed_order_for_fulfillment(
+            order, db, notify_ops=notify_ops
+        )
     return order
 
 
@@ -390,11 +416,13 @@ def mark_order_authorized(
     db: Session,
     *,
     payment_intent_id: str | None = None,
+    notify_ops: bool = True,
 ) -> GiftOrderModel:
     """Record a successful card authorization (funds held, not captured yet)."""
     if order.payment_status == "paid":
         return order
 
+    already_authorized = order.payment_status == "authorized"
     if payment_intent_id:
         order.stripe_payment_intent_id = payment_intent_id
     order.payment_status = "authorized"
@@ -406,7 +434,19 @@ def mark_order_authorized(
     db.refresh(order)
 
     # Email the recipient only after authorization succeeds (and only once).
-    return send_address_request_for_order(order, db)
+    order = send_address_request_for_order(order, db)
+
+    # Ops still needs a heads-up when money is held but we have no address yet.
+    if notify_ops and not already_authorized:
+        prospect = db.get(ProspectModel, order.prospect_id)
+        owner = db.get(UserModel, order.owner_user_id)
+        if prospect is not None and owner is not None:
+            from .fulfillment import dispatch_queued_fulfillment
+
+            dispatch_queued_fulfillment(
+                order, prospect=prospect, owner=owner, db=db
+            )
+    return order
 
 
 def capture_authorized_order(order: GiftOrderModel, db: Session) -> GiftOrderModel:
@@ -1381,13 +1421,32 @@ def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
     defer = _field(metadata, "defer_capture") == "true"
     payment_status = _field(session, "payment_status")
 
+    # CSV / multi-order Checkout: one ops email listing every address (or
+    # missing-address marker) instead of one email per line item.
+    batch_notify = len(orders) > 1
+    paid_for_ops: list[tuple[GiftOrderModel, ProspectModel]] = []
+    authorized_for_ops: list[tuple[GiftOrderModel, ProspectModel]] = []
+    owner_for_batch: UserModel | None = None
+
     for order in orders:
         use_defer = defer or _session_defers_capture(session, order)
         if use_defer:
             # Manual capture: Checkout reports unpaid until capture. If the
             # session is already paid, treat it as a completed charge.
             if payment_status == "paid":
-                mark_order_paid(order, db)
+                already_queued = order.status in {
+                    "queued",
+                    "ordered",
+                    "shipped",
+                    "delivered",
+                }
+                mark_order_paid(order, db, notify_ops=not batch_notify)
+                if batch_notify and not already_queued:
+                    prospect = db.get(ProspectModel, order.prospect_id)
+                    owner = db.get(UserModel, order.owner_user_id)
+                    if prospect is not None and owner is not None:
+                        owner_for_batch = owner
+                        paid_for_ops.append((order, prospect))
                 continue
             if payment_status not in ("unpaid", "no_payment_required"):
                 continue
@@ -1396,10 +1455,39 @@ def fulfill_order_from_checkout_session(session: dict, db: Session) -> None:
                 pi_status = _field(pi, "status")
                 if pi_status and pi_status not in ("requires_capture", "succeeded"):
                     continue
-            # Funds are held; do not charge or notify ops until address + capture.
-            mark_order_authorized(order, db, payment_intent_id=pi_id)
+            # Funds are held; ops still gets a "no address yet" email.
+            already_authorized = order.payment_status == "authorized"
+            mark_order_authorized(
+                order, db, payment_intent_id=pi_id, notify_ops=not batch_notify
+            )
+            if batch_notify and not already_authorized:
+                prospect = db.get(ProspectModel, order.prospect_id)
+                owner = db.get(UserModel, order.owner_user_id)
+                if prospect is not None and owner is not None:
+                    owner_for_batch = owner
+                    authorized_for_ops.append((order, prospect))
         else:
             if payment_status != "paid":
                 # Defense in depth: do not queue fulfillment on incomplete payment.
                 continue
-            mark_order_paid(order, db)
+            already_queued = order.status in {
+                "queued",
+                "ordered",
+                "shipped",
+                "delivered",
+            }
+            mark_order_paid(order, db, notify_ops=not batch_notify)
+            if batch_notify and not already_queued:
+                prospect = db.get(ProspectModel, order.prospect_id)
+                owner = db.get(UserModel, order.owner_user_id)
+                if prospect is not None and owner is not None:
+                    owner_for_batch = owner
+                    paid_for_ops.append((order, prospect))
+
+    batch_items = paid_for_ops or authorized_for_ops
+    if batch_notify and batch_items and owner_for_batch is not None:
+        from .fulfillment import dispatch_queued_fulfillment_batch
+
+        dispatch_queued_fulfillment_batch(
+            batch_items, owner=owner_for_batch, db=db
+        )

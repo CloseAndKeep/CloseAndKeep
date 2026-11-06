@@ -15,6 +15,8 @@ type AdminGiftOrder = {
   tracking_number: string | null;
   requested_at: string;
   owner_email: string;
+  owner_name?: string | null;
+  owner_company?: string | null;
   prospect_name: string;
 };
 
@@ -112,7 +114,7 @@ export default function AdminQueuePage() {
               <th className="px-4 py-3">Order</th>
               <th className="px-4 py-3 hidden sm:table-cell">Recipient</th>
               <th className="px-4 py-3 hidden md:table-cell">Cookies</th>
-              <th className="px-4 py-3 hidden lg:table-cell">Placed by</th>
+              <th className="px-4 py-3 hidden md:table-cell">Ordered by</th>
               <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
@@ -150,8 +152,16 @@ export default function AdminQueuePage() {
                 <td className="px-4 py-3 text-stone-600 hidden md:table-cell">
                   {labelForGiftId(order.gift_id)}
                 </td>
-                <td className="px-4 py-3 text-stone-500 hidden lg:table-cell">
-                  {order.owner_email}
+                <td className="px-4 py-3 text-stone-600 hidden md:table-cell">
+                  <div className="font-medium text-espresso">
+                    {order.owner_name?.trim() || order.owner_email}
+                  </div>
+                  {order.owner_name?.trim() ? (
+                    <div className="text-xs text-stone-500">{order.owner_email}</div>
+                  ) : null}
+                  {order.owner_company?.trim() ? (
+                    <div className="text-xs text-stone-500">{order.owner_company}</div>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">
                   <span
