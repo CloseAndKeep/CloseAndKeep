@@ -497,6 +497,8 @@ class AdminGiftOrderResponse(GiftOrderResponse):
     admin_notes: str | None = None
     owner_user_id: int
     owner_email: str
+    owner_name: str | None = None
+    owner_company: str | None = None
     prospect_name: str
     prospect_email: str
 
@@ -925,6 +927,8 @@ def _admin_gift_order_response(
         requested_at=order.requested_at,
         owner_user_id=order.owner_user_id,
         owner_email=owner.email if owner else "",
+        owner_name=owner.name if owner else None,
+        owner_company=owner.company if owner else None,
         prospect_name=prospect.name if prospect else "",
         prospect_email=prospect.email if prospect else "",
     )
@@ -2149,9 +2153,26 @@ async def import_gift_orders_csv(
                     order.recipient_name for order in staged_orders
                 ],
             )
+            # One ops digest for the whole CSV — including rows still waiting
+            # on a recipient address — instead of one email per line.
+            notify_each = len(staged_orders) == 1
             for order in staged_orders:
-                order = prepare_monthly_owed_order(order, db)
+                order = prepare_monthly_owed_order(
+                    order, db, notify_ops=notify_each
+                )
                 checkout_by_id[order.id] = None
+            if not notify_each:
+                from .fulfillment import dispatch_queued_fulfillment_batch
+
+                batch_items = []
+                for order in staged_orders:
+                    db.refresh(order)
+                    prospect = db.get(ProspectModel, order.prospect_id)
+                    if prospect is not None:
+                        batch_items.append((order, prospect))
+                dispatch_queued_fulfillment_batch(
+                    batch_items, owner=current_user, db=db
+                )
         else:
             known_address = [
                 o

@@ -346,9 +346,15 @@ def test_mixed_import_sends_address_emails_only_after_authorize(
         lambda **kw: recipient_mails.append(dict(kw)),
     )
     monkeypatch.setattr(sp, "send_orderer_receipt", lambda **kw: None)
+    ops_singles: list[dict] = []
+    ops_batches: list[dict] = []
     monkeypatch.setattr(
         "app.fulfillment.send_new_order_notification",
-        lambda **kw: None,
+        lambda **kw: ops_singles.append(dict(kw)) or True,
+    )
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_orders_batch_notification",
+        lambda **kw: ops_batches.append(dict(kw)) or True,
     )
 
     csv_text = (
@@ -416,6 +422,12 @@ def test_mixed_import_sends_address_emails_only_after_authorize(
         assert fetched["payment_status"] == "authorized"
         assert fetched["status"] == "no_address"
 
+    # Each deferred authorize gets its own ops email (no address yet).
+    assert len(ops_singles) == 2
+    assert {mail["recipient_name"] for mail in ops_singles} == {"Bob Jones", "Casey Lee"}
+    assert all(mail["shipping_address"] == "" for mail in ops_singles)
+    assert ops_batches == []
+
     before = len(recipient_mails)
     jane = by_email["jane@example.com"]
     alex = by_email["alex@example.com"]
@@ -443,3 +455,13 @@ def test_mixed_import_sends_address_emails_only_after_authorize(
         fetched = auth_client.get(f"/gift-orders/{by_email[email]['id']}").json()
         assert fetched["payment_status"] == "paid"
         assert fetched["status"] == "queued"
+
+    # Known-address CSV rows share one Checkout → one ops digest with both addresses.
+    assert len(ops_singles) == 2
+    assert len(ops_batches) == 1
+    batch_names = {row["recipient_name"] for row in ops_batches[0]["orders"]}
+    assert batch_names == {"Jane Smith", "Alex Rivera"}
+    assert all(
+        (row.get("shipping_address") or "").strip()
+        for row in ops_batches[0]["orders"]
+    )
