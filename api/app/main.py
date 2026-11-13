@@ -33,7 +33,7 @@ from .csv_import import (
     template_csv,
     workbook_upload_message,
 )
-from .gift_notes import GIFT_NOTE_MAX_LENGTH
+from .gift_notes import GIFT_NOTE_MAX_LENGTH, note_with_from_line
 from .db import SessionLocal
 from .integrations import hubspot as hs
 from .integrations import salesforce as sf
@@ -497,6 +497,8 @@ class AdminGiftOrderResponse(GiftOrderResponse):
     admin_notes: str | None = None
     owner_user_id: int
     owner_email: str
+    owner_name: str | None = None
+    owner_company: str | None = None
     prospect_name: str
     prospect_email: str
 
@@ -925,6 +927,8 @@ def _admin_gift_order_response(
         requested_at=order.requested_at,
         owner_user_id=order.owner_user_id,
         owner_email=owner.email if owner else "",
+        owner_name=(owner.name or None) if owner else None,
+        owner_company=(owner.company or None) if owner else None,
         prospect_name=prospect.name if prospect else "",
         prospect_email=prospect.email if prospect else "",
     )
@@ -1891,7 +1895,11 @@ def create_gift_order(
                 if payload.recipient_email
                 else None
             ),
-            note=payload.note.strip(),
+            note=note_with_from_line(
+                payload.note,
+                company=current_user.company,
+                name=current_user.name,
+            ),
             status="no_address",
             payment_status="pending",
             address_request_token=token,
@@ -1940,7 +1948,11 @@ def create_gift_order(
         gift_id=payload.gift_id.strip(),
         recipient_name=payload.recipient_name.strip(),
         **address_values,
-        note=payload.note.strip(),
+        note=note_with_from_line(
+            payload.note,
+            company=current_user.company,
+            name=current_user.name,
+        ),
         status="pending_payment",
         payment_status="pending",
     )
@@ -2108,7 +2120,11 @@ async def import_gift_orders_csv(
                     recipient_name=row.recipient_name,
                     **empty_shipping_address_values(),
                     recipient_email=row.recipient_email,
-                    note=row.note,
+                    note=note_with_from_line(
+                        row.note,
+                        company=current_user.company,
+                        name=current_user.name,
+                    ),
                     status="no_address",
                     payment_status="pending",
                     address_request_token=token,
@@ -2127,7 +2143,11 @@ async def import_gift_orders_csv(
                         blob=row.shipping_address,
                     ),
                     recipient_email=row.recipient_email,
-                    note=row.note,
+                    note=note_with_from_line(
+                        row.note,
+                        company=current_user.company,
+                        name=current_user.name,
+                    ),
                     status="pending_payment",
                     payment_status="pending",
                 )

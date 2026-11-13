@@ -21,7 +21,7 @@ The Dashboard shows open, won, and lost counts plus your overall win rate. It al
 
 1. **Prospects** → add someone you’re working. Search by name or email, and filter the list by Open, Won, or Lost.
 2. **Orders** → **Send cookies** (or start from the prospect — name, email, and pack are filled in).
-3. Choose pack size (**4** or **12** cookies), add a note up to **150 characters** (Crumbl’s gift-note limit; you can save cookie-note templates and reuse them on new orders), enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
+3. Choose pack size (**4** or **12** cookies), add a note up to **150 characters** (Crumbl’s gift-note limit; you can save cookie-note templates and reuse them on new orders). We add a last line, **From {your company}** (or **From {your name}** if the company on your account is blank). That line counts toward the 150 characters. Enter shipping (company is optional — use it for office / building delivery) or skip address so we email them for it. If they never reply, that link lasts about **7 days** (same window as the card hold); we email you if it expires and the order is canceled.
 4. Pay at Stripe Checkout. Have a code? Enter it on the Stripe checkout page. After you pay — or if you leave checkout — you stay signed in and land on **Orders** (`/orders`). If Pay monthly is on, you skip Stripe and go straight to Orders.
 
 **After you send a gift:**
@@ -94,7 +94,7 @@ From Excel, use **File → Save As** and choose **CSV UTF-8 (Comma delimited) (*
 - Max about **100 data rows** and **256 KB** per file.
 - Must be signed in (not guest).
 - Default gift note when **Note: 150 char** is blank or missing: *“Enjoy these cookies — a small thank-you from us.”*
-- Gift note max **150 characters** (same as the website; matches Crumbl’s printed gift note). Longer notes reject that row.
+- Gift note max **150 characters** (same as the website; matches Crumbl’s printed gift note). Longer notes reject that row. After import we add **From {your company}** (or your name if the company is blank). That line counts toward 150, so a note that already uses the full limit is shortened.
 - CSV is for **importing gift orders only** (not exporting prospects/orders).
 
 ---
@@ -147,7 +147,7 @@ Create these on the **Opportunity** (Salesforce) or **Deal** (HubSpot). Reps fil
 - If street, city, state, and ZIP are all filled → order is created ready to pay (and can ship after payment / monthly queue).
 - If those fields are blank → we still create the order and email the recipient for shipping after you authorize/pay. A legacy **Cookie_Address__c** / **cookie_address** long-text field is still read if the split fields are empty.
 - If **Cookie Note** is blank → we use: *“Thanks for meeting with us — enjoy these cookies!”*
-- Cookie Note / gift notes are capped at **150 characters** (Crumbl’s limit). Longer CRM notes are shortened when we auto-create the order.
+- Cookie Note / gift notes are capped at **150 characters** (Crumbl’s limit). Longer CRM notes are shortened when we auto-create the order. We also add **From {your company}** (or your name if the company is blank). That line counts toward the 150 characters.
 
 Field API names can be overridden with env vars (`SALESFORCE_COOKIE_NOTE_FIELD`, `SALESFORCE_COOKIE_COMPANY_FIELD`, `SALESFORCE_COOKIE_STREET_FIELD`, `SALESFORCE_COOKIE_CITY_FIELD`, `SALESFORCE_COOKIE_STATE_FIELD`, `SALESFORCE_COOKIE_POSTAL_CODE_FIELD`, and the HubSpot `HUBSPOT_COOKIE_*_PROPERTY` equivalents).
 
@@ -235,7 +235,7 @@ Your profile shows:
 |-------|--------|
 | **Name** | From signup (display only on Profile today) |
 | **Email** | From signup (display only on Profile today) |
-| **Company** | Shown when you entered one at signup |
+| **Company** | Shown when you entered one at signup. New gift notes end with **From {company}** (your name if this is blank). |
 
 ### Profile photo
 

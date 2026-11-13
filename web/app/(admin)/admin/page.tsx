@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { apiFetch } from "@/lib/api";
 import { labelForGiftId } from "@/lib/gift-catalog";
+import { senderLabel } from "@/lib/gift-notes";
 
 type AdminGiftOrder = {
   id: number;
@@ -15,6 +16,8 @@ type AdminGiftOrder = {
   tracking_number: string | null;
   requested_at: string;
   owner_email: string;
+  owner_name?: string | null;
+  owner_company?: string | null;
   prospect_name: string;
 };
 
@@ -131,7 +134,9 @@ export default function AdminQueuePage() {
                 </td>
               </tr>
             ) : null}
-            {orders.map((order) => (
+            {orders.map((order) => {
+              const fromLabel = senderLabel(order.owner_company, order.owner_name);
+              return (
               <tr key={order.id} className="hover:bg-cream/40">
                 <td className="px-4 py-3">
                   <Link
@@ -140,6 +145,9 @@ export default function AdminQueuePage() {
                   >
                     #{order.id}
                   </Link>
+                  {fromLabel ? (
+                    <div className="text-xs text-stone-700">From {fromLabel}</div>
+                  ) : null}
                   <div className="text-xs text-stone-500">
                     {new Date(order.requested_at).toLocaleDateString()}
                   </div>
@@ -168,7 +176,8 @@ export default function AdminQueuePage() {
                   ) : null}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

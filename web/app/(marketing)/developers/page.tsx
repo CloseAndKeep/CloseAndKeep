@@ -107,6 +107,11 @@ export default function DevelopersDocsPage() {
           for shipping.
         </p>
         <p>
+          The stored <code className="text-xs">note</code> adds a last line,{" "}
+          <code className="text-xs">From {"{your company}"}</code> (or your name if the company on
+          the account is blank). That line counts toward the 150-character gift-note limit.
+        </p>
+        <p>
           Response includes <code className="text-xs">checkout_url</code>. Open it in a browser to
           pay. If Pay monthly is on in Profile, <code className="text-xs">checkout_url</code> is
           null and the order is billed at month end. Poll{" "}

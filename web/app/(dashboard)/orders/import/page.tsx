@@ -185,7 +185,10 @@ export default function ImportOrdersPage() {
             <span className="font-medium text-espresso">Number of Cookies (4 or 12)</span> is
             rejected.{" "}
             <span className="font-medium text-espresso">Note: 150 char</span> is optional
-            (blank uses the default gift note; max 150 characters). Company is optional. Street,
+            (blank uses the default gift note; max 150 characters). We add a line such as{" "}
+            <span className="font-medium text-espresso">From Acme Corp</span> using your company,
+            or your name if the company is blank. That line counts toward 150 characters, so a
+            note that already fills the limit is shortened. Company is optional. Street,
             city, state, and ZIP are optional together.
           </p>
           <p className="mt-2 text-xs text-stone-500">

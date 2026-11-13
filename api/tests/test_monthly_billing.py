@@ -398,7 +398,13 @@ def test_auto_order_uses_crm_note_and_address(auth_client, stripe_stub, monkeypa
 
     orders = auth_client.get("/gift-orders").json()
     match = next(o for o in orders if o["id"] == body["order_id"])
-    assert match["note"] == "Great demo — enjoy these!"
+    from app.gift_notes import note_with_from_line
+
+    assert match["note"] == note_with_from_line(
+        "Great demo — enjoy these!",
+        company="CloseAndKeep Test",
+        name="Test Seller",
+    )
     assert "123 Main St" in (match["shipping_address"] or "")
     assert match["status"] == "queued"
     assert match["payment_status"] == "owed"

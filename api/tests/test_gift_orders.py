@@ -52,13 +52,18 @@ def test_rejects_note_over_crumbl_limit(auth_client, prospect_id, stripe_stub):
 
 
 def test_accepts_note_at_crumbl_limit(auth_client, prospect_id, stripe_stub):
-    from app.gift_notes import GIFT_NOTE_MAX_LENGTH
+    from app.gift_notes import GIFT_NOTE_MAX_LENGTH, note_with_from_line
 
     payload = make_order_payload(prospect_id)
     payload["note"] = "x" * GIFT_NOTE_MAX_LENGTH
     resp = auth_client.post("/gift-orders", json=payload)
     assert resp.status_code == 201, resp.text
-    assert resp.json()["note"] == payload["note"]
+    stored = resp.json()["note"]
+    assert stored == note_with_from_line(
+        payload["note"], company="CloseAndKeep Test", name="Test Seller"
+    )
+    assert len(stored) == GIFT_NOTE_MAX_LENGTH
+    assert stored.endswith("From CloseAndKeep Test")
 
 
 def test_order_for_foreign_prospect_returns_404(make_client, stripe_stub):
@@ -85,7 +90,11 @@ def test_order_persists_all_fields_and_prospect_fk(auth_client, prospect_id, str
     assert order["gift_id"] == "cookies-4"
     assert order["recipient_name"] == payload["recipient_name"]
     assert order["shipping_address"] == payload["shipping_address"]
-    assert order["note"] == payload["note"]
+    from app.gift_notes import note_with_from_line
+
+    assert order["note"] == note_with_from_line(
+        payload["note"], company="CloseAndKeep Test", name="Test Seller"
+    )
     assert order["status"] == "pending_payment"
     assert order["payment_status"] == "pending"
 
@@ -170,7 +179,11 @@ def test_payment_triggers_notification_with_order_details(
     assert captured["order_id"] == order["id"]
     assert captured["recipient_name"] == payload["recipient_name"]
     assert captured["shipping_address"] == payload["shipping_address"]
-    assert captured["note"] == payload["note"]
+    from app.gift_notes import note_with_from_line
+
+    assert captured["note"] == note_with_from_line(
+        payload["note"], company="CloseAndKeep Test", name="Test Seller"
+    )
 
 
 def test_create_requires_authentication(client, stripe_stub):

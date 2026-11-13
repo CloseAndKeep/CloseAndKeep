@@ -31,6 +31,9 @@ def test_admin_sees_queued_order_with_fulfillment_fields(admin_client, make_clie
     assert row["note"] == order["note"]
     # Admin view is enriched with owner/prospect context.
     assert row["owner_email"] == "owner@example.com"
+    assert row["owner_name"] == "Test User"
+    assert row["owner_company"] == "Acme Corp"
+    assert row["note"].endswith("From Acme Corp")
     assert row["prospect_email"] == "p@example.com"
 
 
@@ -140,6 +143,9 @@ def test_admin_detail_includes_owner_and_prospect_context(
     assert detail.status_code == 200
     body = detail.json()
     assert body["owner_email"] == "owner@example.com"
+    assert body["owner_name"] == "Test User"
+    assert body["owner_company"] == "Acme Corp"
+    assert body["note"].endswith("From Acme Corp")
     assert body["prospect_email"] == "p@example.com"
     assert body["prospect_name"]
 

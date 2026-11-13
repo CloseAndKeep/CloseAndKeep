@@ -63,7 +63,13 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     jane = by_email["jane@example.com"]
     assert jane["gift_id"] == "cookies-4"
     assert jane["status"] == "pending_payment"
-    assert jane["note"] == "Thanks for the demo!"
+    from app.gift_notes import note_with_from_line
+
+    def stamped(text: str) -> str:
+        return note_with_from_line(
+            text, company="CloseAndKeep Test", name="Test Seller"
+        )
+    assert jane["note"] == stamped("Thanks for the demo!")
     assert "123 Main St" in (jane["shipping_address"] or "")
     assert jane["checkout_url"] == data["batch_checkout_url"]
 
@@ -71,13 +77,13 @@ def test_import_creates_orders_with_and_without_address(auth_client, stripe_stub
     assert bob["gift_id"] == "cookies-4"
     assert bob["status"] == "no_address"
     assert bob["shipping_address"] is None
-    assert bob["note"] == "Enjoy these cookies — a small thank-you from us."
+    assert bob["note"] == stamped("Enjoy these cookies — a small thank-you from us.")
     assert bob["checkout_url"]
 
     alex = by_email["alex@example.com"]
     assert alex["gift_id"] == "cookies-12"
     assert alex["status"] == "pending_payment"
-    assert alex["note"] == "Enjoy these cookies — a small thank-you from us."
+    assert alex["note"] == stamped("Enjoy these cookies — a small thank-you from us.")
     assert alex["checkout_url"] == data["batch_checkout_url"]
 
     # One batched immediate-capture session for Jane+Alex, one manual-capture for Bob.

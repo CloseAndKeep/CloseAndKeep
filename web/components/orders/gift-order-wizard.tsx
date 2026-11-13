@@ -5,7 +5,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cookiePacks, labelForGiftId } from "@/lib/gift-catalog";
-import { GIFT_NOTE_MAX_LENGTH } from "@/lib/gift-notes";
+import {
+  fromLineForSender,
+  GIFT_NOTE_MAX_LENGTH,
+  noteWithFromLine,
+  personalNoteLimit,
+} from "@/lib/gift-notes";
 import { formatGiftPrice, useGiftPrices } from "@/lib/gifts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -54,6 +59,8 @@ export function GiftOrderWizard() {
   const [addressMode, setAddressMode] = useState<AddressMode>("known");
   const [address, setAddress] = useState<ShippingAddressValue>(EMPTY_SHIPPING_ADDRESS);
   const [note, setNote] = useState("");
+  const [senderName, setSenderName] = useState<string | null>(null);
+  const [senderCompany, setSenderCompany] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [loadingProspects, setLoadingProspects] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -71,7 +78,12 @@ export function GiftOrderWizard() {
       try {
         const [data, me] = await Promise.all([
           apiFetch<Prospect[]>("/prospects", { errorMessage: "Unable to load prospects." }),
-          apiFetch<{ role?: string; is_guest?: boolean }>("/auth/me", {
+          apiFetch<{
+            role?: string;
+            is_guest?: boolean;
+            name?: string | null;
+            company?: string | null;
+          }>("/auth/me", {
             errorMessage: "Unable to load session.",
           }).catch(() => null),
         ]);
@@ -89,6 +101,8 @@ export function GiftOrderWizard() {
         if (me) {
           const guest = me.role === "guest" || me.is_guest === true;
           setIsGuest(guest);
+          setSenderName(me.name ?? null);
+          setSenderCompany(me.company ?? null);
           if (guest) {
             setAddressMode("known");
           }
@@ -119,6 +133,15 @@ export function GiftOrderWizard() {
   const selectedPack = useMemo(() => cookiePacks.find((p) => p.id === giftId), [giftId]);
   const selectedPriceLabel = formatGiftPrice(priceById.get(giftId));
   const requestAddress = !isGuest && addressMode === "request";
+  const fromLine = fromLineForSender(senderCompany, senderName);
+  const messageLimit = personalNoteLimit(senderCompany, senderName);
+  const printableNote = noteWithFromLine(note, senderCompany, senderName);
+
+  useEffect(() => {
+    if (note.length > messageLimit) {
+      setNote(note.slice(0, messageLimit));
+    }
+  }, [messageLimit, note]);
 
   const canNext =
     step === 0
@@ -126,7 +149,7 @@ export function GiftOrderWizard() {
       : step === 1
         ? Boolean(
             recipientName.trim() &&
-              note.trim() &&
+              (messageLimit === 0 ? Boolean(fromLine) : Boolean(note.trim())) &&
               (requestAddress ? true : isCompleteShippingAddress(address)),
           )
         : true;
@@ -183,7 +206,7 @@ export function GiftOrderWizard() {
         prospect_id: selectedProspect.id,
         gift_id: selectedPack.id,
         recipient_name: recipientName.trim(),
-        note: note.trim(),
+        note: note.trim() || fromLine || "",
       };
       if (requestAddress) {
         body.request_recipient_address = true;
@@ -466,14 +489,31 @@ export function GiftOrderWizard() {
               <textarea
                 className="mt-2 field-input min-h-[88px]"
                 value={note}
-                onChange={(e) => setNote(e.target.value.slice(0, GIFT_NOTE_MAX_LENGTH))}
-                maxLength={GIFT_NOTE_MAX_LENGTH}
-                placeholder="Short personal message required before fulfillment."
+                onChange={(e) => setNote(e.target.value.slice(0, messageLimit))}
+                maxLength={messageLimit}
+                placeholder={
+                  fromLine
+                    ? "Short personal message. We add who it's from."
+                    : "Short personal message required before fulfillment."
+                }
               />
               <p className="mt-1 text-xs text-stone-500">
-                {note.length}/{GIFT_NOTE_MAX_LENGTH} characters (Crumbl gift-note limit)
+                {note.length}/{messageLimit} characters for your message
+                {fromLine
+                  ? ` · ${printableNote.length}/${GIFT_NOTE_MAX_LENGTH} with the from line`
+                  : " (Crumbl gift-note limit)"}
               </p>
-              <NoteTemplates note={note} onApply={setNote} />
+              {fromLine ? (
+                <p className="mt-1 text-xs text-stone-500">
+                  We add <span className="font-medium text-espresso">{fromLine}</span> from your{" "}
+                  {senderCompany?.trim() ? "company" : "name"}. It counts toward the{" "}
+                  {GIFT_NOTE_MAX_LENGTH}-character bakery limit.
+                </p>
+              ) : null}
+              <NoteTemplates
+                note={note}
+                onApply={(body) => setNote(body.slice(0, messageLimit))}
+              />
             </div>
           </div>
         )}
@@ -510,7 +550,7 @@ export function GiftOrderWizard() {
             </div>
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Note</p>
-              <p className="text-stone-700 whitespace-pre-line">{note}</p>
+              <p className="text-stone-700 whitespace-pre-line">{printableNote}</p>
             </div>
             <p className="text-stone-500">
               {requestAddress

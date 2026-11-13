@@ -341,7 +341,13 @@ def test_recipe_note_used_when_crm_note_blank(auth_client, stripe_stub):
     body = resp.json()
     orders = auth_client.get("/gift-orders").json()
     match = next(o for o in orders if o["id"] == body["order_id"])
-    assert match["note"] == "Congrats — cookies on us!"
+    from app.gift_notes import note_with_from_line
+
+    assert match["note"] == note_with_from_line(
+        "Congrats — cookies on us!",
+        company="CloseAndKeep Test",
+        name="Test Seller",
+    )
 
 
 def test_crm_note_wins_over_recipe_note(auth_client, stripe_stub):
@@ -375,7 +381,13 @@ def test_crm_note_wins_over_recipe_note(auth_client, stripe_stub):
     body = resp.json()
     orders = auth_client.get("/gift-orders").json()
     match = next(o for o in orders if o["id"] == body["order_id"])
-    assert match["note"] == "Great close — enjoy these!"
+    from app.gift_notes import note_with_from_line
+
+    assert match["note"] == note_with_from_line(
+        "Great close — enjoy these!",
+        company="CloseAndKeep Test",
+        name="Test Seller",
+    )
 
 
 def test_reminder_url_includes_recipe_pack(auth_client):

@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { labelForGiftId } from "@/lib/gift-catalog";
+import { noteWithFromLine, senderLabel } from "@/lib/gift-notes";
 
 type AdminGiftOrder = {
   id: number;
@@ -22,6 +23,8 @@ type AdminGiftOrder = {
   admin_notes: string | null;
   requested_at: string;
   owner_email: string;
+  owner_name?: string | null;
+  owner_company?: string | null;
   prospect_name: string;
   prospect_email: string;
 };
@@ -109,6 +112,11 @@ export default function AdminOrderDetailPage() {
     return <p className="text-sm text-stone-500">Loading order...</p>;
   }
 
+  const fromLabel = order ? senderLabel(order.owner_company, order.owner_name) : null;
+  const printableNote = order
+    ? noteWithFromLine(order.note, order.owner_company, order.owner_name)
+    : "";
+
   if (!order) {
     return (
       <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -121,7 +129,9 @@ export default function AdminOrderDetailPage() {
     <>
       <PageHeader
         title={`Order #${order.id}`}
-        description={`Placed by ${order.owner_email} · ${new Date(order.requested_at).toLocaleString()}`}
+        description={`${
+          fromLabel ? `From ${fromLabel} · ` : "Placed by "
+        }${order.owner_email} · ${new Date(order.requested_at).toLocaleString()}`}
       />
 
       {savedNotice ? (
@@ -180,7 +190,12 @@ export default function AdminOrderDetailPage() {
           <h3 className="mt-5 text-sm font-semibold uppercase tracking-wide text-stone-500">
             Note on gift
           </h3>
-          <p className="mt-2 whitespace-pre-line text-sm text-stone-700">{order.note}</p>
+          <p className="mt-2 whitespace-pre-line text-sm text-stone-700">{printableNote}</p>
+          {fromLabel ? (
+            <p className="mt-2 text-xs text-stone-500">
+              From {fromLabel} is included so the bakery sticker names who sent the cookies.
+            </p>
+          ) : null}
         </section>
       </div>
 

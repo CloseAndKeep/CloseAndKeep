@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..gift_notes import GIFT_NOTE_MAX_LENGTH
+from ..gift_notes import GIFT_NOTE_MAX_LENGTH, note_with_from_line
 from ..models import (
     CrmReminderEventModel,
     GiftOrderModel,
@@ -352,7 +352,11 @@ def _create_auto_order(
     email_junk = is_junk_crm_email(recipient_email)
     order_email = None if email_junk else (recipient_email or None)
 
-    note = _clean_note(cookie_note)
+    note = note_with_from_line(
+        _clean_note(cookie_note),
+        company=owner.company,
+        name=owner.name,
+    )
     address_quality = crm_address_quality(
         company=cookie_company,
         street=cookie_street,

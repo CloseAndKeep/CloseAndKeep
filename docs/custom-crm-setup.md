@@ -135,7 +135,7 @@ Keep reps in your CRM. Do **not** add a CloseAndKeep deal stage — stages are a
 
 | Field (label in the CRM) | Suggested internal name | Type | Required? | Used for |
 |--------------------------|-------------------------|------|-----------|----------|
-| Cookie note | `cookie_note` | Long text (max 150 chars) | Strongly recommended | Personal message on the gift (Crumbl gift-note limit). If blank, use: `Thanks for meeting with us — enjoy these cookies!` |
+| Cookie note | `cookie_note` | Long text (max 150 chars) | Strongly recommended | Personal message on the gift (Crumbl gift-note limit). If blank, use: `Thanks for meeting with us — enjoy these cookies!` CloseAndKeep adds `From {your company}` (or your name if the company is blank); that line counts toward 150 characters. |
 | Cookie company | `cookie_company` | Text | Optional | Workplace / building name for office deliveries |
 | Cookie street | `cookie_street` | Text | Optional* | Street address |
 | Cookie street 2 | `cookie_street2` | Text | Optional | Apt, suite, unit |
@@ -277,6 +277,7 @@ Default note if cookie_note is blank:
 "Thanks for meeting with us — enjoy these cookies!"
 
 note and recipient_name must not be blank/whitespace.
+CloseAndKeep appends `From {account company}` (or the account name if company is blank) and keeps the stored note within 150 characters.
 gift_id must be cookies-4 or cookies-12.
 
 ### 3) Show checkout or monthly success
