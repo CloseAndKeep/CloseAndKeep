@@ -35,6 +35,8 @@ type AdminGiftOrder = {
   admin_notes: string | null;
   requested_at: string;
   owner_email: string;
+  owner_name?: string | null;
+  owner_company?: string | null;
   prospect_name: string;
   prospect_email: string;
 };
@@ -167,7 +169,7 @@ export default function AdminOrderDetailPage() {
     <>
       <PageHeader
         title={`Order #${order.id}`}
-        description={`Placed by ${order.owner_email} · ${new Date(order.requested_at).toLocaleString()}`}
+        description={`${new Date(order.requested_at).toLocaleString()}`}
       />
 
       {savedNotice ? (
@@ -180,6 +182,21 @@ export default function AdminOrderDetailPage() {
           {error}
         </p>
       ) : null}
+
+      <section className="mb-6 rounded-2xl border border-stone-200/90 bg-white/90 p-6 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+          Ordered by
+        </h2>
+        <p className="mt-2 font-medium text-espresso">
+          {order.owner_name?.trim() || order.owner_email}
+        </p>
+        {order.owner_name?.trim() ? (
+          <p className="mt-1 text-sm text-stone-500">{order.owner_email}</p>
+        ) : null}
+        {order.owner_company?.trim() ? (
+          <p className="mt-1 text-sm text-stone-500">{order.owner_company}</p>
+        ) : null}
+      </section>
 
       <div className="grid gap-6 md:grid-cols-2">
         <section className="rounded-2xl border border-stone-200/90 bg-white/90 p-6 shadow-sm">
