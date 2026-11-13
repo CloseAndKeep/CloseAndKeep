@@ -296,8 +296,8 @@ Billing is **one-time per gift order** via Stripe Checkout (`mode: payment`). No
 ## Notifications (email)
 
 - [x] Send email: new gift order placed (internal ops notification on payment, via Resend)
-- [ ] Send email: gift shipped (when admin sets shipped) — **deferred**
-- [ ] Send email: gift delivered — **deferred**
+- [x] Send email: gift shipped (when admin sets shipped) — AE / order owner via Resend
+- [x] Send email: gift delivered — AE / order owner via Resend
 - [ ] Send email: follow-up reminder — **deferred**
 - [ ] Send email: payment failed — **deferred**
 - [x] Log failed sends for debugging (logged in `order_email.py`)

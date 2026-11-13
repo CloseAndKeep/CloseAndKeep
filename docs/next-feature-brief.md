@@ -19,18 +19,11 @@ CloseAndKeep is post-pitch cookie gifts for salespeople. Solo-user first.
 
 Four independent idea passes (growth, seller UX, fulfillment, CRM) produced 32 raw ideas. Duplicates were merged. The owner then vetoed several items. Numbers below are the original IDs; gaps are cuts.
 
+## Done (recent)
+
+**#1 — Seller pings: shipped, delivered, and address-hold expired** — Admin status → shipped/delivered emails the AE (order owner), not the prospect. Expired `/ship/[token]` holds email the AE too. See `api/app/fulfillment.py`, `api/app/order_email.py`, `USER_GUIDE.md`.
+
 ## Next build (do this)
-
-**#1 — Seller pings: shipped, delivered, and address-hold expired**
-
-The AE is not emailed when admin marks shipped/delivered, or when the `/ship/[token]` hold dies. Only the internal new-order Resend exists.
-
-- Email the **seller (AE)**, not the prospect.
-- Hook Resend into admin status transitions (`api/app/fulfillment.py` / admin PATCH) and address-token expiry (`api/app/jobs/address_request_followups.py`). Existing mail helpers live near `api/app/order_email.py`.
-- Update `USER_GUIDE.md` in the same change (see `.cursor/rules/user-guide.mdc`).
-- After a durable pitfall, record a lab note via `.cursor/skills/lab-notes/SKILL.md`.
-
-## Liked, later (not this build)
 
 **D — Discount / 1¢ test code** — App/docs/tests done; Dashboard remaining (`TEST1C` amount-off = catalog − 1¢, test mode).
 
@@ -40,7 +33,7 @@ App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to
 
 ## Still in play (later)
 
-3. Address-hold expiry queue + one-click resend (in-app, not just the email in #1)
+3. Address-hold expiry queue + one-click resend (in-app, not just the email in #1) — largely shipped; confirm gaps before rebuilding
 4. Gifted vs ungifted close-rate on the dashboard
 5. Dashboard “needs you today” (unpaid, no-address, just shipped)
 6. Prospect search and Open / Won / Lost filters
@@ -71,7 +64,7 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 
 ## Owner calls
 
-- Next: **#1 seller status emails**
-- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
+- Done: **#1 seller status emails** (shipped / delivered / address-hold expired)
+- Next: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
 - Parked: Crumbl-first / Levain-fallback Cursor fulfill (`docs/bakery-fulfill-later.md`)
 - Do not like: 2, 9, 13, 16, 17, 18, 20
