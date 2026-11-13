@@ -5,6 +5,13 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import {
+  EMPTY_SHIPPING_ADDRESS,
+  ShippingAddressFields,
+  ShippingAddressValue,
+  isCompleteShippingAddress,
+  shippingAddressPayload,
+} from "@/components/orders/shipping-address-fields";
 import { apiFetch } from "@/lib/api";
 import { labelForGiftId } from "@/lib/gift-catalog";
 
@@ -13,6 +20,12 @@ type AdminGiftOrder = {
   prospect_id: number;
   gift_id: string;
   recipient_name: string;
+  shipping_company: string | null;
+  shipping_street: string | null;
+  shipping_street2: string | null;
+  shipping_city: string | null;
+  shipping_state: string | null;
+  shipping_postal_code: string | null;
   shipping_address: string | null;
   recipient_email?: string | null;
   note: string;
@@ -36,6 +49,17 @@ const STATUS_OPTIONS = [
   "canceled",
 ];
 
+function addressFromOrder(order: AdminGiftOrder): ShippingAddressValue {
+  return {
+    company: order.shipping_company ?? "",
+    street: order.shipping_street ?? "",
+    street2: order.shipping_street2 ?? "",
+    city: order.shipping_city ?? "",
+    state: order.shipping_state ?? "",
+    postalCode: order.shipping_postal_code ?? "",
+  };
+}
+
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
   const [order, setOrder] = useState<AdminGiftOrder | null>(null);
@@ -47,6 +71,15 @@ export default function AdminOrderDetailPage() {
   const [status, setStatus] = useState("queued");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
+  const [address, setAddress] = useState<ShippingAddressValue>(EMPTY_SHIPPING_ADDRESS);
+
+  const applyOrder = useCallback((data: AdminGiftOrder) => {
+    setOrder(data);
+    setStatus(data.status);
+    setTrackingNumber(data.tracking_number ?? "");
+    setAdminNotes(data.admin_notes ?? "");
+    setAddress(addressFromOrder(data));
+  }, []);
 
   const loadOrder = useCallback(async () => {
     setLoading(true);
@@ -55,10 +88,7 @@ export default function AdminOrderDetailPage() {
       const data = await apiFetch<AdminGiftOrder>(`/admin/gift-orders/${params.id}`, {
         errorMessage: "Unable to load order.",
       });
-      setOrder(data);
-      setStatus(data.status);
-      setTrackingNumber(data.tracking_number ?? "");
-      setAdminNotes(data.admin_notes ?? "");
+      applyOrder(data);
     } catch (loadError) {
       const message =
         loadError instanceof Error ? loadError.message : "Unable to load order.";
@@ -66,7 +96,7 @@ export default function AdminOrderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [params.id, applyOrder]);
 
   useEffect(() => {
     if (params.id) {
@@ -81,20 +111,29 @@ export default function AdminOrderDetailPage() {
     setError(null);
     setSavedNotice(false);
     try {
+      const body: Record<string, unknown> = {
+        status,
+        tracking_number: trackingNumber,
+        admin_notes: adminNotes,
+      };
+      const addressTouched =
+        Boolean(address.company.trim()) ||
+        Boolean(address.street.trim()) ||
+        Boolean(address.street2.trim()) ||
+        Boolean(address.city.trim()) ||
+        Boolean(address.state.trim()) ||
+        Boolean(address.postalCode.trim());
+      if (isCompleteShippingAddress(address) || addressTouched) {
+        Object.assign(body, shippingAddressPayload(address));
+      }
+
       const data = await apiFetch<AdminGiftOrder>(`/admin/gift-orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status,
-          tracking_number: trackingNumber,
-          admin_notes: adminNotes,
-        }),
+        body: JSON.stringify(body),
         errorMessage: "Unable to update order.",
       });
-      setOrder(data);
-      setStatus(data.status);
-      setTrackingNumber(data.tracking_number ?? "");
-      setAdminNotes(data.admin_notes ?? "");
+      applyOrder(data);
       setSavedNotice(true);
     } catch (saveError) {
       const message =
@@ -116,6 +155,13 @@ export default function AdminOrderDetailPage() {
       </div>
     );
   }
+
+  const legacyOnlyAddress =
+    Boolean(order.shipping_address) &&
+    !order.shipping_street &&
+    !order.shipping_city &&
+    !order.shipping_state &&
+    !order.shipping_postal_code;
 
   return (
     <>
@@ -144,9 +190,6 @@ export default function AdminOrderDetailPage() {
           {order.recipient_email ? (
             <p className="mt-1 text-sm text-stone-500">{order.recipient_email}</p>
           ) : null}
-          <p className="mt-3 whitespace-pre-line text-sm text-stone-700">
-            {order.shipping_address || "No address yet"}
-          </p>
           <p className="mt-4 text-sm text-stone-600">
             Status:{" "}
             <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium capitalize text-stone-700">
@@ -217,6 +260,29 @@ export default function AdminOrderDetailPage() {
               onChange={(event) => setTrackingNumber(event.target.value)}
             />
           </label>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="text-sm font-medium text-espresso">Shipping address</h3>
+          <p className="mt-1 text-xs text-stone-500">
+            Add or correct the ship-to. For authorized address-request orders, saving a
+            complete address captures payment and moves the order to queued.
+          </p>
+          {legacyOnlyAddress ? (
+            <p className="mt-2 whitespace-pre-line rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Current saved address (enter structured fields below to replace it):
+              {"\n"}
+              {order.shipping_address}
+            </p>
+          ) : null}
+          <div className="mt-3">
+            <ShippingAddressFields
+              idPrefix="admin-shipping"
+              value={address}
+              onChange={setAddress}
+              required={false}
+            />
+          </div>
         </div>
 
         <label className="mt-4 block text-sm">
