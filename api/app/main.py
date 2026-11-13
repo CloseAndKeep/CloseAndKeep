@@ -2541,6 +2541,79 @@ def admin_update_gift_order(
     return _admin_gift_order_response(order, owner, prospect)
 
 
+def _admin_require_structured_address(payload: AddressSubmitRequest) -> None:
+    parts = parts_from_shipping_payload(payload)
+    if parts is None or not parts.is_complete():
+        raise HTTPException(
+            status_code=422,
+            detail=INCOMPLETE_STRUCTURED_ADDRESS_MESSAGE,
+        )
+
+
+@app.post(
+    "/admin/gift-orders/{order_id}/shipping-address",
+    response_model=AdminGiftOrderResponse,
+)
+def admin_set_shipping_address(
+    order_id: int,
+    payload: AddressSubmitRequest,
+    _admin: UserModel = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> AdminGiftOrderResponse:
+    """Save a ship-to from the admin queue.
+
+    A waiting order (no address, card hold or monthly owed) follows the same
+    path as the public form: store the address, capture or queue, and burn
+    the redeem code. An order that already has an address only updates the
+    ship-to.
+    """
+    order = db.get(GiftOrderModel, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Gift order not found.")
+
+    _admin_require_structured_address(payload)
+
+    awaiting = order.status == "no_address" and not (order.shipping_address or "").strip()
+    if awaiting:
+        if order.payment_status not in {"authorized", "owed"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Authorize payment before saving a shipping address.",
+            )
+        _submit_shipping_for_order(order, payload, db)
+        db.refresh(order)
+        saved_street = (order.shipping_street or "").strip().casefold()
+        wanted_street = (payload.shipping_street or "").strip().casefold()
+        if (
+            order.status == "no_address"
+            or not (order.shipping_address or "").strip()
+            or saved_street != wanted_street
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="This order already has a shipping address.",
+            )
+    else:
+        if order.status == "canceled" or order.payment_status not in {"paid", "owed"}:
+            raise HTTPException(
+                status_code=400,
+                detail="This order cannot take a shipping address.",
+            )
+        if payload.recipient_name:
+            order.recipient_name = payload.recipient_name.strip()
+        apply_shipping_address(
+            order,
+            shipping_address_values(parts=parts_from_shipping_payload(payload)),
+        )
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+
+    owner = db.get(UserModel, order.owner_user_id)
+    prospect = db.get(ProspectModel, order.prospect_id)
+    return _admin_gift_order_response(order, owner, prospect)
+
+
 def _integration_response(
     row: IntegrationConnectionModel,
     *,

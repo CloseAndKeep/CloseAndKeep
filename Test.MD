@@ -269,6 +269,7 @@ Confirm signup/login, one-time Checkout, **prospect → gift** flows (including 
 
 - [ ] (E) Admin sees queued orders with recipient name, address, note on gift
 - [x] (I) Status update persists; optional tracking number saved
+- [x] (I) Admin enters a structured address: authorized orders capture and queue; owed orders queue; paid orders update the ship-to
 
 ### 8.2 Notifications
 

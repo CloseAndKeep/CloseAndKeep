@@ -5,6 +5,13 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import {
+  EMPTY_SHIPPING_ADDRESS,
+  ShippingAddressFields,
+  isCompleteShippingAddress,
+  shippingAddressPayload,
+  type ShippingAddressValue,
+} from "@/components/orders/shipping-address-fields";
 import { apiFetch } from "@/lib/api";
 import { labelForGiftId } from "@/lib/gift-catalog";
 
@@ -13,6 +20,12 @@ type AdminGiftOrder = {
   prospect_id: number;
   gift_id: string;
   recipient_name: string;
+  shipping_company?: string | null;
+  shipping_street?: string | null;
+  shipping_street2?: string | null;
+  shipping_city?: string | null;
+  shipping_state?: string | null;
+  shipping_postal_code?: string | null;
   shipping_address: string | null;
   recipient_email?: string | null;
   note: string;
@@ -25,6 +38,17 @@ type AdminGiftOrder = {
   prospect_name: string;
   prospect_email: string;
 };
+
+function addressFromOrder(order: AdminGiftOrder): ShippingAddressValue {
+  return {
+    company: order.shipping_company ?? "",
+    street: order.shipping_street ?? "",
+    street2: order.shipping_street2 ?? "",
+    city: order.shipping_city ?? "",
+    state: order.shipping_state ?? "",
+    postalCode: order.shipping_postal_code ?? "",
+  };
+}
 
 const STATUS_OPTIONS = [
   "no_address",
@@ -47,6 +71,16 @@ export default function AdminOrderDetailPage() {
   const [status, setStatus] = useState("queued");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
+  const [address, setAddress] = useState<ShippingAddressValue>(EMPTY_SHIPPING_ADDRESS);
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  const applyOrder = useCallback((data: AdminGiftOrder) => {
+    setOrder(data);
+    setStatus(data.status);
+    setTrackingNumber(data.tracking_number ?? "");
+    setAdminNotes(data.admin_notes ?? "");
+    setAddress(addressFromOrder(data));
+  }, []);
 
   const loadOrder = useCallback(async () => {
     setLoading(true);
@@ -55,10 +89,7 @@ export default function AdminOrderDetailPage() {
       const data = await apiFetch<AdminGiftOrder>(`/admin/gift-orders/${params.id}`, {
         errorMessage: "Unable to load order.",
       });
-      setOrder(data);
-      setStatus(data.status);
-      setTrackingNumber(data.tracking_number ?? "");
-      setAdminNotes(data.admin_notes ?? "");
+      applyOrder(data);
     } catch (loadError) {
       const message =
         loadError instanceof Error ? loadError.message : "Unable to load order.";
@@ -66,7 +97,7 @@ export default function AdminOrderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [params.id, applyOrder]);
 
   useEffect(() => {
     if (params.id) {
@@ -91,10 +122,7 @@ export default function AdminOrderDetailPage() {
         }),
         errorMessage: "Unable to update order.",
       });
-      setOrder(data);
-      setStatus(data.status);
-      setTrackingNumber(data.tracking_number ?? "");
-      setAdminNotes(data.admin_notes ?? "");
+      applyOrder(data);
       setSavedNotice(true);
     } catch (saveError) {
       const message =
@@ -102,6 +130,33 @@ export default function AdminOrderDetailPage() {
       setError(message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onSaveAddress(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!order || !isCompleteShippingAddress(address)) return;
+    setSavingAddress(true);
+    setError(null);
+    setSavedNotice(false);
+    try {
+      const data = await apiFetch<AdminGiftOrder>(
+        `/admin/gift-orders/${order.id}/shipping-address`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(shippingAddressPayload(address)),
+          errorMessage: "Unable to save the address.",
+        },
+      );
+      applyOrder(data);
+      setSavedNotice(true);
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error ? saveError.message : "Unable to save the address.";
+      setError(message);
+    } finally {
+      setSavingAddress(false);
     }
   }
 
@@ -116,6 +171,27 @@ export default function AdminOrderDetailPage() {
       </div>
     );
   }
+
+  const awaitingAddress = order.status === "no_address" && !order.shipping_address;
+  const canEnterAddress =
+    awaitingAddress &&
+    (order.payment_status === "authorized" || order.payment_status === "owed");
+  const canUpdateAddress =
+    !awaitingAddress &&
+    order.status !== "canceled" &&
+    (order.payment_status === "paid" || order.payment_status === "owed") &&
+    ["queued", "ordered", "shipped", "delivered"].includes(order.status);
+  const showAddressForm = canEnterAddress || canUpdateAddress;
+  const addressHelp = canEnterAddress
+    ? order.payment_status === "authorized"
+      ? "Saving charges the card hold and queues this order. The redeem code stops working."
+      : "Saving queues this monthly order. The redeem code stops working."
+    : "Saving replaces the ship-to on this order.";
+  const addressButtonLabel = canEnterAddress
+    ? order.payment_status === "authorized"
+      ? "Save address and charge"
+      : "Save address and queue"
+    : "Update address";
 
   return (
     <>
@@ -183,6 +259,43 @@ export default function AdminOrderDetailPage() {
           <p className="mt-2 whitespace-pre-line text-sm text-stone-700">{order.note}</p>
         </section>
       </div>
+
+      <form
+        onSubmit={onSaveAddress}
+        className="mt-6 rounded-2xl border border-stone-200/90 bg-white/90 p-6 shadow-sm"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+          Shipping address
+        </h2>
+        {showAddressForm ? (
+          <>
+            <p className="mt-2 text-sm text-stone-600">{addressHelp}</p>
+            <div className="mt-4">
+              <ShippingAddressFields
+                idPrefix="admin-address"
+                value={address}
+                onChange={setAddress}
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="primary"
+              className="mt-4"
+              disabled={savingAddress || !isCompleteShippingAddress(address)}
+            >
+              {savingAddress ? "Saving..." : addressButtonLabel}
+            </Button>
+          </>
+        ) : awaitingAddress ? (
+          <p className="mt-2 text-sm text-stone-600">
+            Complete payment authorization before entering an address.
+          </p>
+        ) : (
+          <p className="mt-2 whitespace-pre-line text-sm text-stone-700">
+            {order.shipping_address || "No address yet"}
+          </p>
+        )}
+      </form>
 
       <form
         onSubmit={onSave}
