@@ -17,7 +17,7 @@ from app.integrations.contact_quality import (
     is_junk_crm_email,
 )
 from app.integrations.crypto import encrypt_token
-from app.integrations.reminders import process_stage_completed_reminder
+from app.integrations.reminders import process_stage_completed_reminder, stage_event_key
 from app.models import CrmReminderEventModel, GiftOrderModel, IntegrationConnectionModel, UserModel
 
 
@@ -176,7 +176,8 @@ def _event_status(opportunity_id: str) -> str | None:
     try:
         return db.scalar(
             select(CrmReminderEventModel.status).where(
-                CrmReminderEventModel.external_event_key == opportunity_id
+                CrmReminderEventModel.external_event_key
+                == stage_event_key(opportunity_id, "Demo Completed")
             )
         )
     finally:

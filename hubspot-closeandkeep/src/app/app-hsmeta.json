@@ -13,8 +13,8 @@
       "requiredScopes": [
         "oauth",
         "crm.objects.deals.read",
-        "crm.objects.contacts.read",
-        "crm.objects.companies.read"
+        "crm.schemas.deals.read",
+        "crm.objects.contacts.read"
       ],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []

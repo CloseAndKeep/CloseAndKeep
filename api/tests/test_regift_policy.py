@@ -264,3 +264,52 @@ def test_retry_scoped_to_owner(auth_client, make_client, stripe_stub, monkeypatc
     other = signup(make_client(), "regift-other@example.com")
     assert other.get("/integrations/events").json() == []
     assert other.post(f"/integrations/events/{event_id}/retry").status_code == 404
+
+
+def test_later_stage_on_same_deal_sends_its_pack(auth_client, stripe_stub, monkeypatch):
+    """Recipe stages on one deal each send. A different deal for the same person waits."""
+    from app.integrations.reminders import default_stage_recipes
+
+    me = auth_client.get("/auth/me").json()
+    connection_id = _seed_crm(me["user_id"])
+    _enable_auto_order(me["user_id"])
+    monkeypatch.setattr(
+        "app.stripe_payments.send_recipient_address_request",
+        lambda **_kwargs: None,
+    )
+    db = SessionLocal()
+    try:
+        row = db.get(IntegrationConnectionModel, connection_id)
+        assert row is not None
+        row.stage_recipes = default_stage_recipes()
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+
+    demo = _post_stage(auth_client, connection_id, "006SAMEDEAL")
+    assert demo.status_code == 200, demo.text
+    assert demo.json()["status"] == "auto_ordered"
+
+    with patch("app.main.sf.verify_webhook_secret", return_value=True):
+        won = auth_client.post(
+            "/integrations/salesforce/events",
+            json={
+                "connection_id": connection_id,
+                "opportunity_id": "006SAMEDEAL",
+                "stage_name": "Closed Won",
+                "contact_name": "Alex Buyer",
+                "contact_email": "alex@acme.com",
+            },
+        )
+    assert won.status_code == 200, won.text
+    assert won.json()["status"] == "auto_ordered"
+    orders = auth_client.get("/gift-orders").json()
+    assert len(orders) == 2
+    packs = sorted(order["gift_id"] for order in orders)
+    assert packs == ["cookies-12", "cookies-4"]
+
+    other_deal = _post_stage(auth_client, connection_id, "006OTHERDEAL")
+    assert other_deal.status_code == 200, other_deal.text
+    assert other_deal.json()["status"] == "skipped_regift"
+    assert len(auth_client.get("/gift-orders").json()) == 2
