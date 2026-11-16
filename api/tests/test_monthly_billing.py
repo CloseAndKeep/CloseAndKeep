@@ -187,6 +187,11 @@ def test_monthly_create_skips_checkout_and_address_queues_ops(
     assert body["status"] == "no_address"
     assert not stripe_stub.session_create_calls
     assert len(address_mails) == 1
+    # Ops hears about the owed hold even before an address exists.
+    assert len(ops) == 1
+    assert ops[0]["payment_status"] == "owed"
+    assert ops[0]["shipping_address"] == ""
+    assert ops[0]["status"] == "no_address"
 
     db = SessionLocal()
     try:
@@ -206,8 +211,9 @@ def test_monthly_create_skips_checkout_and_address_queues_ops(
     detail = auth_client.get(f"/gift-orders/{body['id']}").json()
     assert detail["payment_status"] == "owed"
     assert detail["status"] == "queued"
-    assert len(ops) == 1
-    assert ops[0]["payment_status"] == "owed"
+    assert len(ops) == 2
+    assert ops[1]["payment_status"] == "owed"
+    assert "123 Main St" in ops[1]["shipping_address"]
 
 
 def test_monthly_known_address_queues_immediately(auth_client, stripe_stub, monkeypatch):
