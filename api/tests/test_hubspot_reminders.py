@@ -147,6 +147,25 @@ def test_webhook_rejects_bad_secret(auth_client, monkeypatch):
     assert resp.status_code == 401
 
 
+def test_webhook_fails_closed_without_secret_outside_development(auth_client, monkeypatch):
+    me = auth_client.get("/auth/me").json()
+    connection_id = _seed_connection(me["user_id"])
+    monkeypatch.setattr("app.integrations.hubspot.settings.hubspot_webhook_secret", "")
+    monkeypatch.setattr("app.integrations.hubspot.settings.app_env", "staging")
+
+    resp = auth_client.post(
+        "/integrations/hubspot/events",
+        json={
+            "connection_id": connection_id,
+            "deal_id": "deal-x",
+            "stage_name": "Demo Completed",
+            "contact_name": "Sam",
+            "contact_email": "sam@example.com",
+        },
+    )
+    assert resp.status_code == 401
+
+
 def test_connect_requires_hubspot_config(auth_client, monkeypatch):
     monkeypatch.setattr("app.config.settings.hubspot_client_id", "")
     monkeypatch.setattr("app.config.settings.hubspot_client_secret", "")

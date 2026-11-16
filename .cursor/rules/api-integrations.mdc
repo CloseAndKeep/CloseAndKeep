@@ -31,6 +31,7 @@ alwaysApply: false
 ## Lab notes
 
 ### Successes
+- Fail closed on missing `INTEGRATION_TOKEN_FERNET_KEY` and CRM webhook secrets outside development; never ship a public Fernet fallback in production.
 - Same stage-trigger pattern for Salesforce and HubSpot kept the adapter thin.
 - Structured shipping fields replaced a single address blob for auto-order.
 

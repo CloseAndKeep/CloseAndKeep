@@ -8,6 +8,16 @@ Scanned 2026-11-16 across all local refs (~98 commits). Goal: find credentials o
 
 No committed `.env` / `.env.local` / `.pem` files in history.
 
+## Code hardening from the same pass
+
+Applied on the hygiene branch (not history rewrite):
+
+- `INTEGRATION_TOKEN_FERNET_KEY` required when `APP_ENV=production` (no public Fernet fallback in prod)
+- OAuth state HMAC no longer uses `"dev"` in production
+- CRM webhook secrets fail closed unless `APP_ENV=development`
+- FastAPI `/docs` / OpenAPI disabled in production
+- CSV fixture address anonymized
+
 ## Findings (non-secret but worth knowing)
 
 ### 1. Live Stripe Price IDs on an unmerged branch (low)

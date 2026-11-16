@@ -46,7 +46,7 @@ def test_template_and_example_helpers():
 def test_parse_names_cookie_header_to_rename():
     csv_text = (
         "Name,Email,Number of Cookies(4 or 12),Company,Street,Street 2,City,State,Postal Code\n"
-        "Ashlyn Hamilton,ashlyn@example.com,4,Hamilton Homes,39789 Yorktown Ter,,Elizabeth,CO,80107\n"
+        "Alex Example,alex@example.com,4,Example Homes,123 Main St,,Springfield,IL,62704\n"
     )
     rows, errors = parse_gift_orders_csv(csv_text)
     assert rows == []

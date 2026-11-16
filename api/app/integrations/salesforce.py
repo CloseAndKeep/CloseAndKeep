@@ -42,7 +42,14 @@ def redirect_uri() -> str:
 
 
 def _state_secret() -> bytes:
-    raw = settings.integration_token_fernet_key or settings.salesforce_client_secret or "dev"
+    raw = settings.integration_token_fernet_key or settings.salesforce_client_secret
+    if not raw:
+        if settings.app_env.lower() == "production":
+            raise RuntimeError(
+                "Set INTEGRATION_TOKEN_FERNET_KEY or SALESFORCE_CLIENT_SECRET "
+                "before signing Salesforce OAuth state in production."
+            )
+        raw = "dev"
     return hashlib.sha256(raw.encode("utf-8")).digest()
 
 
@@ -481,9 +488,9 @@ def poll_demo_completed(connection: IntegrationConnectionModel, db: Session) -> 
 def verify_webhook_secret(provided: str | None) -> bool:
     expected = settings.salesforce_webhook_secret
     if not expected:
-        # In development, allow events when no secret is configured so local
-        # testing works; production should always set SALESFORCE_WEBHOOK_SECRET.
-        return settings.app_env.lower() != "production"
+        # Only local development may skip the webhook secret. Staging/production
+        # must set SALESFORCE_WEBHOOK_SECRET (fail closed if APP_ENV is wrong).
+        return settings.app_env.lower() == "development"
     if not provided:
         return False
     return hmac.compare_digest(provided.strip(), expected)
