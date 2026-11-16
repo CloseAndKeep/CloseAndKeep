@@ -38,6 +38,8 @@ Checkout already accepts Stripe promotion codes. A `TEST1C` (or similar) code th
 
 App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to pay CTAs only — no in-app code field.
 
+**H — Headless AI orders (API + portable skill)** — Draft only: [`docs/headless-ai-orders.md`](headless-ai-orders.md). Reuse live `cak_` keys + `POST /prospects` / `POST /gift-orders`. Ship a `closeandkeep-orders` skill sellers install in Cursor / Claude / ChatGPT (etc.) to place gifts conversationally; human still pays via Stripe Checkout (or monthly). Not a bakery vendor API; distinct from custom-CRM button paste and from parked bakery autofill.
+
 ## Still in play (later)
 
 3. Address-hold expiry queue + one-click resend (in-app, not just the email in #1)
@@ -72,6 +74,6 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 ## Owner calls
 
 - Next: **#1 seller status emails**
-- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
+- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining); headless AI orders draft (`docs/headless-ai-orders.md`)
 - Parked: Crumbl-first / Levain-fallback Cursor fulfill (`docs/bakery-fulfill-later.md`)
 - Do not like: 2, 9, 13, 16, 17, 18, 20
