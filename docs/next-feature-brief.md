@@ -38,7 +38,7 @@ Checkout already accepts Stripe promotion codes. A `TEST1C` (or similar) code th
 
 App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to pay CTAs only — no in-app code field.
 
-**H — Headless AI orders (API + portable skill)** — Draft only: [`docs/headless-ai-orders.md`](headless-ai-orders.md). Reuse live `cak_` keys + `POST /prospects` / `POST /gift-orders`. Ship a `closeandkeep-orders` skill sellers install in Cursor / Claude / ChatGPT (etc.) to place gifts conversationally; human still pays via Stripe Checkout (or monthly). Not a bakery vendor API; distinct from custom-CRM button paste and from parked bakery autofill.
+**H — Headless AI orders (API + portable skill)** — Draft only: [`docs/headless-ai-orders.md`](headless-ai-orders.md). Reuse live `cak_` keys + `POST /prospects` / `POST /gift-orders`. Ship a `closeandkeep-orders` skill (confirm-before-create, key hygiene, host matrix, OpenAPI for Actions). Human pays via Stripe Checkout (prefer over monthly for AI). Not a bakery vendor API; distinct from custom-CRM button paste and from parked bakery autofill.
 
 ## Still in play (later)
 
