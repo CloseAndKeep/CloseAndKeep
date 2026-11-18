@@ -9,4 +9,7 @@ web/node_modules/
 web/.next/
 web/.env.local
 
+hubspot-closeandkeep/**/node_modules/
+hubspot-closeandkeep/**/local.json
+
 .DS_Store

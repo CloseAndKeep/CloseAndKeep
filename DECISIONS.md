@@ -87,9 +87,11 @@ Locked behaviors after medium-severity review:
 - **Trigger:** Opportunity/Deal stage matches configured name (default **Demo Completed**).
 - **Timing:** Reminder email to the connected salesperson is sent **immediately**.
 - **CTA:** Deep link to `/orders/new?prospect_id=…&from=sf_reminder` (Salesforce) or `from=hs_reminder` (HubSpot) with note prompt.
-- **Intake:** `POST /integrations/{salesforce|hubspot}/events` (webhook secret) preferred; `POST /integrations/{salesforce|hubspot}/sync` polls as fallback.
+- **Intake:** Salesforce and custom HubSpot workflows use `POST /integrations/{salesforce|hubspot}/events` (webhook secret). Marketplace installs also receive `POST /integrations/hubspot/webhooks` (HubSpot signature v3). `POST .../sync` polls as fallback.
 - OAuth tokens encrypted at rest with `INTEGRATION_TOKEN_FERNET_KEY`.
 - v1: one CRM org/portal connection per CloseAndKeep user (no shared team connections).
+- **HubSpot Marketplace app** lives in `hubspot-closeandkeep/` (`distribution: marketplace`, OAuth only). Installs that start in HubSpot do not carry our signed user id. The callback stores encrypted tokens behind a one-time code and the user claims them at `/integrations/hubspot/finish/{code}` (30 minutes, single use). A portal already linked to another user is rejected.
+- **Native HubSpot webhooks:** `POST /integrations/hubspot/webhooks` subscribes to `deal.propertyChange` / `dealstage`, verifies `X-HubSpot-Signature-v3` with `HUBSPOT_CLIENT_SECRET`, and uses the same stage-recipe intake as Sync now. The workflow-style `POST /integrations/hubspot/events` endpoint stays for custom payloads. The deal card calls `GET /integrations/hubspot/card` with the same signature. Listing steps: `docs/hubspot-marketplace.md`.
 
 ## CRM cookie note + address → auto-order (2026-08)
 

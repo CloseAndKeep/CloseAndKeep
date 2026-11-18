@@ -96,8 +96,11 @@ See `.env.example` for the full list. Important knobs:
 - `POST /integrations/salesforce/sync` — poll Opportunities in recipe stages
 - `POST /integrations/salesforce/check-setup` — advisory Cookie_* field + stage-label report
 - `GET /integrations/hubspot/connect` — OAuth authorize URL
-- `GET /integrations/hubspot/callback` — OAuth callback (redirects to web)
-- `POST /integrations/hubspot/events` — immediate stage-recipe webhook intake
+- `GET /integrations/hubspot/callback` — OAuth callback. A signed CloseAndKeep state links the portal immediately. A Marketplace install (no signed state) redirects to the web finish page.
+- `POST /integrations/hubspot/claim` — signed-in user claims a Marketplace install code
+- `GET /integrations/hubspot/card` — deal card / settings status (HubSpot signature v3)
+- `POST /integrations/hubspot/webhooks` — native `dealstage` subscription (HubSpot signature v3)
+- `POST /integrations/hubspot/events` — immediate stage-recipe webhook intake (shared secret)
 - `POST /integrations/hubspot/sync` — poll Deals in recipe stages
 - `POST /integrations/hubspot/check-setup` — advisory cookie_* property + stage-label report
 - `PATCH|DELETE /integrations/{id}` — update stage recipes / disconnect
