@@ -57,6 +57,8 @@ App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to
 
 **Bakery autofill — Crumbl first, Levain if out of area.** Cursor on the owner’s machine fills bakery checkout from a **queued** order with a **full address**, then pays on the logged-in Crumbl (or Levain) account. Not a vendor API; do not change bakery websites. Full write-up: [`docs/bakery-fulfill-later.md`](bakery-fulfill-later.md).
 
+**HubSpot GTM (after HubSpot-native install is proven in sandbox):** website ROI calculator, “cookies with your face” marketing, onboarding/training fee. Do not block Marketplace prep on these. HubSpot card + workflow action + private→Marketplace checklist: [`docs/hubspot-marketplace-prep.md`](hubspot-marketplace-prep.md).
+
 ## Cut (do not build)
 
 - 2 CRM write-back (status/tracking onto the Salesforce/HubSpot deal)

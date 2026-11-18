@@ -97,10 +97,14 @@ See `.env.example` for the full list. Important knobs:
 - `POST /integrations/salesforce/check-setup` — advisory Cookie_* field + stage-label report
 - `GET /integrations/hubspot/connect` — OAuth authorize URL
 - `GET /integrations/hubspot/callback` — OAuth callback (redirects to web)
-- `POST /integrations/hubspot/events` — immediate stage-recipe webhook intake
-- `POST /integrations/hubspot/sync` — poll Deals in recipe stages
+- `POST /integrations/hubspot/workflow-action` — HubSpot custom workflow actionUrl (signature v2)
+- `POST /integrations/hubspot/card/properties` — Deal app card saves cookie_* on the deal
+- `POST /integrations/hubspot/card/send` — Deal app card queues gift / reminder
+- `POST /integrations/hubspot/events` — DIY stage-recipe webhook intake (optional; Data Hub)
+- `POST /integrations/hubspot/sync` — poll Deals in recipe stages (fallback)
 - `POST /integrations/hubspot/check-setup` — advisory cookie_* property + stage-label report
 - `PATCH|DELETE /integrations/{id}` — update stage recipes / disconnect
+- HubSpot project (card + workflow action): `hubspot-closeandkeep/`; Marketplace gate: `docs/hubspot-marketplace-prep.md`
 
 **Admin**
 

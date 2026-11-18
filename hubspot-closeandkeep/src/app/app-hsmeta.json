@@ -2,7 +2,7 @@
   "uid": "CloseAndKeep_app",
   "type": "app",
   "config": {
-    "description": "CloseAndKeep Demo Completed cookie reminders for HubSpot deals.",
+    "description": "CloseAndKeep cookie gifts for HubSpot deals: Deal card for cookie fields, workflow action to queue gifts without Data Hub webhooks.",
     "name": "CloseAndKeep-App",
     "distribution": "private",
     "auth": {
@@ -13,6 +13,7 @@
       "requiredScopes": [
         "oauth",
         "crm.objects.deals.read",
+        "crm.objects.deals.write",
         "crm.objects.contacts.read",
         "crm.objects.companies.read"
       ],
@@ -21,7 +22,8 @@
     },
     "permittedUrls": {
       "fetch": [
-        "https://api.hubapi.com"
+        "https://api.hubapi.com",
+        "https://closeandkeep-api.onrender.com"
       ],
       "iframe": [],
       "img": []
