@@ -19,10 +19,10 @@ export const metadata: Metadata = {
 };
 
 const steps = [
-  "Add a few CloseAndKeep fields to the CRM your reps already use",
-  "We collect the shipping address automatically — no manual entry required",
-  "We ship quality cookies with your personal note so you stay human, not generic",
-  "Track every send and watch conversion rates rise",
+  "Create an account here",
+  "Upload a CSV with your recipients (try asking your internal AI product to identify targets for you)",
+  "CloseAndKeep asks your contact for a shipping address or gathers it automatically",
+  "You stay human with a physical gift and a real note — and watch conversion rise",
 ];
 
 const jsonLd = {
@@ -63,19 +63,19 @@ export default function HomePage() {
               CloseAndKeep
             </p>
             <h1 className="mt-4 max-w-xl font-display text-4xl leading-tight tracking-tight text-espresso sm:text-5xl">
-              Close more deals.{" "}
-              <span className="text-wood-dark">Keep more customers.</span>
+              Send a box of cookies to{" "}
+              <span className="text-wood-dark">clients and prospects.</span>
             </h1>
             <p className="mt-6 max-w-lg text-lg text-stone-600">
-              Pay once to send cookies after a pitch — with a personal note and address
-              collection built in. No subscription.
+              CloseAndKeep gathers their address and fulfills the order with a couple of
+              clicks. No subscription, only ROI.
             </p>
             <div className="mt-10 flex flex-wrap items-center gap-3">
               <Link
                 href="/signup"
                 className="inline-flex items-center gap-2 rounded-full bg-wood px-6 py-3 text-sm font-medium text-white shadow-md transition hover:bg-wood-dark"
               >
-                Get started
+                Send cookies
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -94,11 +94,13 @@ export default function HomePage() {
             />
             <div className="relative rounded-[1.25rem] border border-white/50 bg-white/80 p-6 shadow-lg backdrop-blur-sm sm:p-7">
               <p className="font-display text-2xl text-espresso sm:text-3xl">
-                Cookies + a note that sounds like you
+                Cookies + a personal note from you
               </p>
               <p className="mt-3 text-sm leading-relaxed text-stone-600">
-                Track the prospect, collect their address, ship once — all without leaving
-                your workflow.
+                Increase close rates by 10% and reduce churn by 15%.
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-stone-500">
+                Not guaranteed — based on results we&apos;ve seen in the past.
               </p>
             </div>
           </div>
