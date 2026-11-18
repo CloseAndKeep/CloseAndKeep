@@ -131,13 +131,34 @@ export default function HomePage() {
         </h2>
         <ul className="mt-8 grid gap-6 sm:grid-cols-3">
           {[
-            "Stand out in a market flooded with AI-generated outreach",
-            "Built for reps, right inside the CRM they already use",
-            "450% average ROI, driven by higher close rates and stronger retention",
-          ].map((text) => (
+            {
+              text: "Stand out in a market flooded with AI-generated outreach",
+            },
+            {
+              text: "Built for reps, right inside the CRM they already use",
+            },
+            {
+              text: "450% average ROI, driven by higher close rates and stronger retention",
+              href: "/roi",
+              linkLabel: "Try the ROI calculator",
+            },
+          ].map(({ text, href, linkLabel }) => (
             <li key={text} className="flex gap-3 text-sm text-stone-700">
               <Check className="h-5 w-5 shrink-0 text-wood" strokeWidth={2} />
-              {text}
+              <span>
+                {text}
+                {href && linkLabel ? (
+                  <>
+                    {" "}
+                    <Link
+                      href={href}
+                      className="font-medium text-wood-dark underline-offset-2 hover:underline"
+                    >
+                      {linkLabel}
+                    </Link>
+                  </>
+                ) : null}
+              </span>
             </li>
           ))}
         </ul>
