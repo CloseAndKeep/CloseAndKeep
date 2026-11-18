@@ -272,7 +272,8 @@ export function RoiCalculator() {
           </div>
 
           <div className="space-y-3 rounded-3xl border border-stone-200/90 bg-cream/60 p-6 sm:p-8">
-            <h3 className="font-display text-xl text-espresso">Results</h3>
+            <h3 className="font-display text-xl text-espresso">Estimated results</h3>
+            <p className="text-xs text-stone-500">Estimate only — not a guarantee.</p>
             <div className="space-y-2.5">
               <ResultRow
                 label="Prospects sent cookies"
@@ -291,7 +292,7 @@ export function RoiCalculator() {
                 value={formatNumber(result.newBusiness.incrementalOutcome)}
               />
               <ResultRow
-                label="Incremental revenue"
+                label="Estimated incremental revenue"
                 value={formatMoney(result.newBusiness.incrementalRevenue)}
               />
               <ResultRow
@@ -299,17 +300,17 @@ export function RoiCalculator() {
                 value={formatMoney(result.newBusiness.investment)}
               />
               <ResultRow
-                label="Net revenue impact"
+                label="Estimated net revenue impact"
                 value={formatMoney(result.newBusiness.netRevenue)}
                 emphasize
               />
               <ResultRow
-                label="ROI %"
+                label="Estimated ROI %"
                 value={formatRoiPercent(result.newBusiness.roiRatio)}
                 emphasize
               />
               <ResultRow
-                label="ROI multiple"
+                label="Estimated ROI multiple"
                 value={formatMultiple(result.newBusiness.roiMultiple)}
               />
             </div>
@@ -379,7 +380,8 @@ export function RoiCalculator() {
           </div>
 
           <div className="space-y-3 rounded-3xl border border-stone-200/90 bg-cream/60 p-6 sm:p-8">
-            <h3 className="font-display text-xl text-espresso">Results</h3>
+            <h3 className="font-display text-xl text-espresso">Estimated results</h3>
+            <p className="text-xs text-stone-500">Estimate only — not a guarantee.</p>
             <div className="space-y-2.5">
               <ResultRow
                 label="Customers sent cookies"
@@ -398,7 +400,7 @@ export function RoiCalculator() {
                 value={formatNumber(result.retention.incrementalOutcome)}
               />
               <ResultRow
-                label="Retained revenue"
+                label="Estimated retained revenue"
                 value={formatMoney(result.retention.incrementalRevenue)}
               />
               <ResultRow
@@ -406,17 +408,17 @@ export function RoiCalculator() {
                 value={formatMoney(result.retention.investment)}
               />
               <ResultRow
-                label="Net revenue impact"
+                label="Estimated net revenue impact"
                 value={formatMoney(result.retention.netRevenue)}
                 emphasize
               />
               <ResultRow
-                label="ROI %"
+                label="Estimated ROI %"
                 value={formatRoiPercent(result.retention.roiRatio)}
                 emphasize
               />
               <ResultRow
-                label="ROI multiple"
+                label="Estimated ROI multiple"
                 value={formatMultiple(result.retention.roiMultiple)}
               />
             </div>
@@ -426,29 +428,30 @@ export function RoiCalculator() {
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-3 rounded-3xl border border-stone-200/90 bg-white/90 p-6 shadow-sm sm:p-8">
             <h2 className="font-display text-2xl text-espresso">
-              Combined program
+              Combined program estimate
             </h2>
+            <p className="text-xs text-stone-500">Estimate only — not a guarantee.</p>
             <div className="mt-4 space-y-2.5">
               <ResultRow
                 label="Total cookie investment"
                 value={formatMoney(result.combined.totalInvestment)}
               />
               <ResultRow
-                label="Total incremental revenue"
+                label="Estimated total incremental revenue"
                 value={formatMoney(result.combined.totalIncrementalRevenue)}
               />
               <ResultRow
-                label="Total net revenue impact"
+                label="Estimated total net revenue impact"
                 value={formatMoney(result.combined.totalNetRevenue)}
                 emphasize
               />
               <ResultRow
-                label="Blended ROI %"
+                label="Estimated blended ROI %"
                 value={formatRoiPercent(result.combined.blendedRoiRatio)}
                 emphasize
               />
               <ResultRow
-                label="Blended ROI multiple"
+                label="Estimated blended ROI multiple"
                 value={formatMultiple(result.combined.blendedRoiMultiple)}
               />
             </div>

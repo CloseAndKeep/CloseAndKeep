@@ -141,8 +141,9 @@ export default function HomePage() {
               text: "450% average ROI, driven by higher close rates and stronger retention",
               href: "/roi",
               linkLabel: "Try the ROI calculator",
+              note: "Estimate based on past results — not guaranteed.",
             },
-          ].map(({ text, href, linkLabel }) => (
+          ].map(({ text, href, linkLabel, note }) => (
             <li key={text} className="flex gap-3 text-sm text-stone-700">
               <Check className="h-5 w-5 shrink-0 text-wood" strokeWidth={2} />
               <span>
@@ -157,6 +158,9 @@ export default function HomePage() {
                       {linkLabel}
                     </Link>
                   </>
+                ) : null}
+                {note ? (
+                  <span className="mt-1 block text-xs text-stone-500">{note}</span>
                 ) : null}
               </span>
             </li>

@@ -9,9 +9,20 @@ export default function RoiPage() {
           ROI Calculator
         </h1>
         <p className="mt-4 text-lg text-stone-600">
-          Plug in your pipeline and retention numbers. Watch net revenue impact
-          and ROI update live — same math as our sales workbook, rebuilt for the
-          web.
+          Estimate your incremental revenue and ROI from cookie gifts after demos
+          and for existing customers. Plug in your numbers and watch the estimate
+          update live.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-stone-600">
+          Teams often model a close-rate lift around{" "}
+          <span className="font-medium text-espresso">10%</span> and a churn cut
+          around <span className="font-medium text-espresso">15%</span> — adjust
+          the inputs to match your pipeline.
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-stone-500">
+          Estimates only — not guaranteed. Based on results we&apos;ve seen in the
+          past. Default inputs below are illustrative starting points you can
+          replace with your own figures.
         </p>
         <nav className="mt-6 flex flex-wrap gap-3 text-sm" aria-label="On this page">
           <a
@@ -40,9 +51,10 @@ export default function RoiPage() {
             the defaults with your own program results when you have them.
           </li>
           <li>
-            Pause on <span className="font-medium text-espresso">net revenue</span>{" "}
-            and <span className="font-medium text-espresso">ROI %</span> as the
-            numbers update.
+            Pause on the <span className="font-medium text-espresso">estimated</span>{" "}
+            <span className="font-medium text-espresso">net revenue</span> and{" "}
+            <span className="font-medium text-espresso">ROI %</span> as the numbers
+            update.
           </li>
           <li>
             Breakeven answers “is this worth it?” — any deal or customer value
@@ -53,9 +65,8 @@ export default function RoiPage() {
           </li>
         </ol>
         <p className="mt-4 text-xs leading-relaxed text-stone-500">
-          Figures are revenue-based (no margin). Default lift and churn numbers
-          are illustrative starting points, not guaranteed outcomes — past
-          results do not guarantee future performance.
+          Figures are revenue-based (no margin). Outputs are estimates, not
+          guarantees — past results do not guarantee future performance.
         </p>
       </aside>
 
