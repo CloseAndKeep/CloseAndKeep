@@ -32,7 +32,15 @@ export default function DevelopersDocsPage() {
         Prefer a conversational agent?{" "}
         <Link href="/developers/ai" className="font-medium text-wood-dark hover:underline">
           Use with your AI
-        </Link>
+        </Link>{" "}
+        — download{" "}
+        <a
+          href="/skills/closeandkeep-orders.zip"
+          download="closeandkeep-orders.zip"
+          className="font-medium text-wood-dark hover:underline"
+        >
+          closeandkeep-orders.zip
+        </a>
         . Wiring a CRM button instead? See the custom CRM setup guide in the repo.
       </p>
 

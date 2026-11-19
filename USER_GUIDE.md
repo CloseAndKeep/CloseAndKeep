@@ -215,7 +215,7 @@ After you connect a CRM, billing and auto-order controls also appear on **Profil
 There is no OAuth “Connect” for a home-grown CRM. Use the API:
 
 1. Sign up at closeandkeep.com (not guest), verify email, then **API keys** → create a `cak_…` key (shown once).
-2. See **/developers** for HTTP examples, or **/developers/ai** to install the portable orders skill in Cursor / Claude / ChatGPT. Full CRM button walkthrough: `docs/custom-crm-setup.md`.
+2. See **/developers** for HTTP examples, or **/developers/ai** to install the portable orders skill in Cursor / Claude / ChatGPT (download **closeandkeep-orders.zip** on that page, or open `/skills/closeandkeep-orders.zip` directly). Full CRM button walkthrough: `docs/custom-crm-setup.md`.
 3. In your CRM, add a **Send cookies** button plus **Cookie note**, optional **company**, and street / city / state / ZIP fields. Do not require a deal-stage change. When the rep clicks the button, call:
    - `POST /prospects` with name + email
    - `POST /gift-orders` with `gift_id`, `recipient_name`, **`note`**, and either **`shipping_street` + `shipping_city` + `shipping_state` + `shipping_postal_code`** (optional **`shipping_company`**) or `request_recipient_address: true` (and `recipient_email` so we can ask for shipping)
