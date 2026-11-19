@@ -11,7 +11,7 @@ alwaysApply: false
 **Owns:** FastAPI app in `api/app/` (auth, prospects, gift orders, CSV import, address-request, admin fulfillment, API keys, billing webhook). CRM adapters and Alembic have their own rules.
 
 - Gift ids: `app/config.py` `GIFT_CATALOG`. Routes: `app/main.py`. Payments: `app/stripe_payments.py`.
-- Sessions are DB-backed (`sessions` table), HttpOnly cookie. `ADMIN_EMAILS` plus `*@closeandkeep.com` → admin.
+- Sessions are DB-backed (`sessions` table), HttpOnly cookie. Admin role from `ADMIN_EMAILS` allowlist only (no domain catch-all).
 - Billing: one-time Checkout (`mode: payment`). Deferred address: authorize/hold → `/public/address-requests/{token}` → capture → `queued`.
 - Reject Checkout `amount_total` **above** catalog sum (below catalog allowed). Admin cancel of `requires_capture` fails closed (502, local state unchanged).
 - Pointers: `api/README.md`, `api/.env.example`, `DECISIONS.md`.

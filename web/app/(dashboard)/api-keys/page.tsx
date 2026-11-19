@@ -116,7 +116,11 @@ export default function ApiKeysPage() {
         <Link href="/developers" className="font-medium text-wood-dark hover:underline">
           API docs
         </Link>
-        .
+        . Prefer Cursor / Claude / ChatGPT?{" "}
+        <Link href="/developers/ai" className="font-medium text-wood-dark hover:underline">
+          Use with your AI
+        </Link>
+        — create a dedicated key per host and revoke if it leaks.
       </p>
 
       {error ? (

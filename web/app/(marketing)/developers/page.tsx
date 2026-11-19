@@ -28,6 +28,13 @@ export default function DevelopersDocsPage() {
         Create prospects and gift orders from an agent or script. CloseAndKeep returns a Stripe
         Checkout URL a human completes payment. Card numbers never touch your key or our API.
       </p>
+      <p className="mt-4 text-sm text-stone-600">
+        Prefer a conversational agent?{" "}
+        <Link href="/developers/ai" className="font-medium text-wood-dark hover:underline">
+          Use with your AI
+        </Link>
+        . Wiring a CRM button instead? See the custom CRM setup guide in the repo.
+      </p>
 
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
         <h2 className="font-display text-2xl text-espresso">How it works</h2>

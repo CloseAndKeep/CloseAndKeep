@@ -10,3 +10,10 @@ web/.next/
 web/.env.local
 
 .DS_Store
+
+# Stripe CLI binary — download from https://stripe.com/docs/stripe-cli (do not commit).
+tools/stripe-cli/stripe.exe
+tools/stripe-cli/stripe
+
+# Large CRM setup PDF (markdown in docs/custom-crm-setup.md is the source of truth).
+docs/CloseAndKeep-custom-CRM-setup.pdf
