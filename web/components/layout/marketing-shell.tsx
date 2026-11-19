@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 const headerLinks = [
   { href: "/pricing", label: "Pricing" },
   { href: "/roi", label: "ROI" },
+  { href: "/developers/ai", label: "Use with AI" },
   { href: "/support", label: "Support" },
 ] as const;
 

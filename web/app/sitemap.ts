@@ -43,6 +43,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.6,
     },
     {
+      url: `${siteUrl}/developers/ai`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.65,
+    },
+    {
       url: `${siteUrl}/support`,
       lastModified,
       changeFrequency: "monthly",

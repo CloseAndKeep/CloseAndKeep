@@ -111,24 +111,30 @@ export default function ApiKeysPage() {
         description="Create keys so agents or scripts can open gift orders. Payment still happens on Stripe Checkout card data never hits CloseAndKeep."
       />
 
-      <p className="mb-8 text-sm text-stone-600">
-        Request examples:{" "}
-        <Link href="/developers" className="font-medium text-wood-dark hover:underline">
-          API docs
-        </Link>
-        . Prefer Cursor / Claude / ChatGPT?{" "}
-        <Link href="/developers/ai" className="font-medium text-wood-dark hover:underline">
+      <div className="mb-8 flex flex-wrap items-center gap-3">
+        <Link
+          href="/developers/ai"
+          className="inline-flex items-center rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark"
+        >
           Use with your AI
-        </Link>{" "}
-        or download{" "}
+        </Link>
         <a
           href="/skills/closeandkeep-orders.zip"
           download="closeandkeep-orders.zip"
-          className="font-medium text-wood-dark hover:underline"
+          className="inline-flex items-center rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-espresso transition hover:border-wood hover:text-wood-dark"
         >
-          closeandkeep-orders.zip
+          Download skill zip
         </a>
-        — create a dedicated key per host and revoke if it leaks.
+        <Link
+          href="/developers"
+          className="text-sm font-medium text-wood-dark hover:underline"
+        >
+          API docs
+        </Link>
+      </div>
+      <p className="mb-8 text-sm text-stone-600">
+        Create a dedicated key per host (for example <code className="text-xs">Cursor AI</code>) and
+        revoke it if it leaks.
       </p>
 
       {error ? (

@@ -16,6 +16,7 @@ ${siteName} helps sales and customer teams send thoughtful cookie follow-up gift
 - [Home](${siteUrl}/): Product overview and how it works
 - [Pricing](${siteUrl}/pricing): Per-order cookie pack pricing (no subscription required)
 - [API](${siteUrl}/developers): Create gift orders via API key; humans pay on Stripe Checkout
+- [Use with AI](${siteUrl}/developers/ai): Download the orders skill zip for Cursor, Claude, or ChatGPT
 - [Sign up](${siteUrl}/signup): Create an account
 - [Support](${siteUrl}/support): Help with orders, shipping, and accounts
 - [Privacy](${siteUrl}/privacy): Privacy policy

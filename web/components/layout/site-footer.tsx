@@ -5,6 +5,7 @@ const footerLinks = [
   { href: "/pricing", label: "Pricing" },
   { href: "/roi", label: "ROI" },
   { href: "/developers", label: "API" },
+  { href: "/developers/ai", label: "Use with AI" },
   { href: "/support", label: "Support" },
   { href: "/contact", label: "Contact" },
   { href: "/privacy", label: "Privacy" },
