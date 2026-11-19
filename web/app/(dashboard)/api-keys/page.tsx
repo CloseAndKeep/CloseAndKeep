@@ -119,7 +119,15 @@ export default function ApiKeysPage() {
         . Prefer Cursor / Claude / ChatGPT?{" "}
         <Link href="/developers/ai" className="font-medium text-wood-dark hover:underline">
           Use with your AI
-        </Link>
+        </Link>{" "}
+        or download{" "}
+        <a
+          href="/skills/closeandkeep-orders.zip"
+          download="closeandkeep-orders.zip"
+          className="font-medium text-wood-dark hover:underline"
+        >
+          closeandkeep-orders.zip
+        </a>
         — create a dedicated key per host and revoke if it leaks.
       </p>
 

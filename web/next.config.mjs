@@ -47,6 +47,28 @@ const nextConfig = {
       },
     ];
   },
+  async headers() {
+    // Force download (not inline preview) — mobile browsers otherwise show zip bytes.
+    return [
+      {
+        source: "/skills/:path*.zip",
+        headers: [
+          {
+            key: "Content-Disposition",
+            value: 'attachment; filename="closeandkeep-orders.zip"',
+          },
+          {
+            key: "Content-Type",
+            value: "application/zip",
+          },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

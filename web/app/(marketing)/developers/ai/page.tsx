@@ -33,6 +33,25 @@ export default function DevelopersAiPage() {
         billing) handles payment. Card numbers never enter the chat.
       </p>
 
+      <p className="mt-8">
+        <a
+          href="/skills/closeandkeep-orders.zip"
+          download="closeandkeep-orders.zip"
+          className="inline-flex items-center rounded-full bg-wood px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark"
+        >
+          Download closeandkeep-orders.zip
+        </a>
+      </p>
+      <p className="mt-3 text-sm text-stone-500">
+        Direct link:{" "}
+        <a
+          href="https://www.closeandkeep.com/skills/closeandkeep-orders.zip"
+          className="break-all font-medium text-wood-dark hover:underline"
+        >
+          closeandkeep.com/skills/closeandkeep-orders.zip
+        </a>
+      </p>
+
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
         <h2 className="font-display text-2xl text-espresso">Privacy</h2>
         <p>
@@ -57,11 +76,13 @@ export default function DevelopersAiPage() {
             Download the skill zip:{" "}
             <a
               href="/skills/closeandkeep-orders.zip"
+              download="closeandkeep-orders.zip"
               className="font-medium text-wood-dark hover:underline"
             >
               closeandkeep-orders.zip
             </a>
-            .
+            . Unzip it, then drop the <code className="text-xs">closeandkeep-orders</code> folder
+            into your Cursor (or Claude) skills directory.
           </li>
           <li>Store the key as secret <code className="text-xs">CLOSEANDKEEP_API_KEY</code> only.</li>
           <li>
