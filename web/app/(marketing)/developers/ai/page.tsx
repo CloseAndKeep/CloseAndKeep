@@ -57,11 +57,13 @@ export default function DevelopersAiPage() {
             Download the skill zip:{" "}
             <a
               href="/skills/closeandkeep-orders.zip"
+              download="closeandkeep-orders.zip"
               className="font-medium text-wood-dark hover:underline"
             >
               closeandkeep-orders.zip
             </a>
-            .
+            . Unzip it, then drop the <code className="text-xs">closeandkeep-orders</code> folder
+            into your Cursor (or Claude) skills directory.
           </li>
           <li>Store the key as secret <code className="text-xs">CLOSEANDKEEP_API_KEY</code> only.</li>
           <li>
