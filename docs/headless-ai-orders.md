@@ -1,6 +1,6 @@
 # Draft: Headless orders via preferred AI
 
-Draft 2026-11-16 (updated same day after review). **Not built yet** — design only. The HTTP API already supports agent/script orders; this draft packages that as a portable **skill** so sellers place gifts from an AI that can call HTTPS and hold a secret.
+Draft 2026-11-16; **shipped** 2026-11-19 as `skills/closeandkeep-orders/` + `/developers/ai` + public zip. This file remains the design/safety write-up. The HTTP API already supported agent/script orders; the skill packages that for sellers’ preferred AIs.
 
 Fulfillment stays manual in `/admin` for now. Owner bakery autofill (Crumbl → Levain) remains parked separately in [`bakery-fulfill-later.md`](bakery-fulfill-later.md). Do not start a bakery vendor API here.
 

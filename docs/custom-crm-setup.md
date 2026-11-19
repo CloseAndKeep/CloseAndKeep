@@ -1,6 +1,6 @@
 # CloseAndKeep setup for a custom CRM
 
-**For Zack** (account + API key) and **Claude** (the changes to your CRM).
+**For the account owner** (CloseAndKeep account + API key) and **your coding agent** (the changes to your CRM).
 
 CloseAndKeep does not have a one-click “Connect” button for home-grown CRMs. Salesforce and HubSpot use OAuth on the Integrations page. A custom CRM connects with an **API key** and two HTTP calls: create a prospect, then create a cookie order.
 
@@ -10,7 +10,7 @@ API docs: [https://www.closeandkeep.com/developers](https://www.closeandkeep.com
 
 ---
 
-## Part 1 — Zack: create your CloseAndKeep account
+## Part 1 — Create your CloseAndKeep account
 
 Do this in a browser. Do **not** use “Continue as guest.” Guest sessions cannot create API keys or keep your history.
 
@@ -80,7 +80,7 @@ In the left nav, click **API keys**.
 
 ![API keys page](images/09-api-keys.png)
 
-1. Under **Create an API key**, set **Label** to something like `Zack CRM`.
+1. Under **Create an API key**, set **Label** to something like `Custom CRM`.
 2. Click **Create key**.
 3. Copy the full key immediately. It starts with `cak_` and is shown **only once**.
 4. Store it like a password (password manager or your CRM’s secret/env settings). Do not put it in a public git repo or a screenshot.
@@ -167,8 +167,8 @@ Also make sure the deal has a **contact name** and **contact email**. Email is r
 
 1. Your CRM creates (or reuses) a CloseAndKeep **prospect**.
 2. Your CRM creates a **gift order** with the note, optional company, and street/city/state/ZIP (or address-request).
-3. If Zack pays **per order**, CloseAndKeep returns a **Stripe Checkout URL**. The CRM shows **Pay for cookies**.
-4. If Zack turned on **Pay monthly** in CloseAndKeep Profile, `checkout_url` is null. The order is queued and billed at month end. The CRM should show success, not an error.
+3. If the account pays **per order**, CloseAndKeep returns a **Stripe Checkout URL**. The CRM shows **Pay for cookies**.
+4. If **Pay monthly** is on in CloseAndKeep Profile, `checkout_url` is null. The order is queued and billed at month end. The CRM should show success, not an error.
 
 Card numbers never go through your CRM or the CloseAndKeep API.
 

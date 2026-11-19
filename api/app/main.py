@@ -897,11 +897,9 @@ def _public_address_response(order: GiftOrderModel) -> AddressRequestPublicRespo
 
 
 def _is_admin_email(email: str) -> bool:
-    """True for ADMIN_EMAILS allowlist or any @closeandkeep.com account."""
+    """True only for emails listed in ``ADMIN_EMAILS`` (no domain catch-all)."""
     normalized = email.strip().lower()
-    return normalized in settings.admin_emails or normalized.endswith(
-        "@closeandkeep.com"
-    )
+    return normalized in settings.admin_emails
 
 
 def _sync_admin_role(user: UserModel, db: Session) -> UserModel:

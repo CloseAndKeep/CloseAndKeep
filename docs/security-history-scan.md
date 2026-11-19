@@ -29,7 +29,7 @@ Branch `origin/cursor/stripe-pack-price-ids-4d7d` (closed PR #11) embeds real Pr
 
 These are **not** secret keys (they cannot charge alone), but they identify your live catalog and should not sit in a public example file. **Not on `main`.** Prefer dashboard/`sync: false` only.
 
-**Action:** Delete the remote branch after making the repo private (or leave it private-only). No Stripe key rotation required for this alone.
+**Action:** Remote branch `cursor/stripe-pack-price-ids-4d7d` was deleted 2026-11-19. Making the repo private + protecting `main` still needs the GitHub UI (API token cannot change visibility).
 
 ### 2. Ops personal emails in `main` (medium / hygiene)
 

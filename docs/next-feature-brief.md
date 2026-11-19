@@ -21,14 +21,13 @@ Four independent idea passes (growth, seller UX, fulfillment, CRM) produced 32 r
 
 ## Next build (do this)
 
-**#1 — Seller pings: shipped, delivered, and address-hold expired**
+Pick from **Still in play** below (or Dashboard `TEST1C`). Seller status emails (#1) and the headless AI skill (H) are shipped.
 
-The AE is not emailed when admin marks shipped/delivered, or when the `/ship/[token]` hold dies. Only the internal new-order Resend exists.
+## Done recently
 
-- Email the **seller (AE)**, not the prospect.
-- Hook Resend into admin status transitions (`api/app/fulfillment.py` / admin PATCH) and address-token expiry (`api/app/jobs/address_request_followups.py`). Existing mail helpers live near `api/app/order_email.py`.
-- Update `USER_GUIDE.md` in the same change (see `.cursor/rules/user-guide.mdc`).
-- After a durable pitfall, record a lab note via `.cursor/skills/lab-notes/SKILL.md`.
+**#1 — Seller pings: shipped, delivered, and address-hold expired** — Shipped. AE emails on admin shipped/delivered and on address-hold expiry (`api/app/fulfillment.py`, `order_email.py`, address-request jobs). Documented in `USER_GUIDE.md`.
+
+**H — Headless AI orders** — Shipped skill + install page: [`skills/closeandkeep-orders/`](../skills/closeandkeep-orders/), [`/developers/ai`](https://www.closeandkeep.com/developers/ai), design notes in [`docs/headless-ai-orders.md`](headless-ai-orders.md).
 
 ## Liked, later (not this build)
 
@@ -37,8 +36,6 @@ The AE is not emailed when admin marks shipped/delivered, or when the `/ship/[to
 Checkout already accepts Stripe promotion codes. A `TEST1C` (or similar) code that leaves **$0.01** on the charge is created in the **Stripe Dashboard** as a fixed amount-off (catalog − 1¢; Stripe has no “set charge to $0.01” type). Restrict it to test mode / a specific customer if possible. Keep a real customer coupon separate so the 1¢ code cannot leak into production volume.
 
 App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to pay CTAs only — no in-app code field.
-
-**H — Headless AI orders (API + portable skill)** — Draft only: [`docs/headless-ai-orders.md`](headless-ai-orders.md). Reuse live `cak_` keys + `POST /prospects` / `POST /gift-orders`. Ship a `closeandkeep-orders` skill (confirm-before-create, key hygiene, host matrix, OpenAPI for Actions). Human pays via Stripe Checkout (prefer over monthly for AI). Not a bakery vendor API; distinct from custom-CRM button paste and from parked bakery autofill.
 
 ## Still in play (later)
 
@@ -77,7 +74,9 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 
 ## Owner calls
 
-- Next: **#1 seller status emails**
-- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining); headless AI orders draft (`docs/headless-ai-orders.md`)
+- Next: pick from Still in play (or Dashboard `TEST1C`)
+- Done: #1 seller status emails; H headless AI skill (`/developers/ai`)
+- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
 - Parked: Crumbl-first / Levain-fallback Cursor fulfill (`docs/bakery-fulfill-later.md`)
 - Do not like: 2, 9, 13, 16, 17, 18, 20
+- Lockdown (you): make the GitHub repo private + protect `main` (stale price-id branch deleted)

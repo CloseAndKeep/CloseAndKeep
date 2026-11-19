@@ -455,10 +455,10 @@ def test_signup_promotes_admin_email(client):
     assert me["is_guest"] is False
 
 
-def test_signup_promotes_closeandkeep_domain(client):
+def test_signup_does_not_promote_closeandkeep_domain_without_allowlist(client):
     signup(client, "ops@closeandkeep.com", "domain-admin-pass-1")
     me = client.get("/auth/me").json()
-    assert me["role"] == "admin"
+    assert me["role"] == "user"
     assert me["email"] == "ops@closeandkeep.com"
 
 
