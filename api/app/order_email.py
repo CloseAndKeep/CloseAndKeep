@@ -108,6 +108,21 @@ def _send(
         return False
 
 
+MISSING_SHIPPING_ADDRESS_LABEL = (
+    "(no shipping address yet — waiting on recipient)"
+)
+
+
+def format_ops_shipping_address(shipping_address: str | None) -> str:
+    """Return the ship-to for ops mail, or a clear missing-address marker."""
+    text = (shipping_address or "").strip()
+    return text if text else MISSING_SHIPPING_ADDRESS_LABEL
+
+
+def _ops_order_has_address(shipping_address: str | None) -> bool:
+    return bool((shipping_address or "").strip())
+
+
 def send_new_order_notification(
     *,
     order_id: int,
@@ -130,11 +145,14 @@ def send_new_order_notification(
         return False
 
     unpaid_monthly = (payment_status or "").strip().lower() == "owed"
-    subject = (
-        f"New cookie order #{order_id} (monthly / unpaid)"
-        if unpaid_monthly
-        else f"New cookie order #{order_id}"
-    )
+    missing_address = not _ops_order_has_address(shipping_address)
+    address_display = format_ops_shipping_address(shipping_address)
+    if missing_address:
+        subject = f"New cookie order #{order_id} — no shipping address yet"
+    elif unpaid_monthly:
+        subject = f"New cookie order #{order_id} (monthly / unpaid)"
+    else:
+        subject = f"New cookie order #{order_id}"
     when = requested_at.isoformat(timespec="seconds")
 
     text_fields: dict[str, str] = {
@@ -147,11 +165,13 @@ def send_new_order_notification(
         "Prospect_email": prospect_email,
         "Prospect_deal_status": prospect_deal_status,
         "Recipient_name": recipient_name,
-        "Shipping_address": shipping_address,
+        "Shipping_address": address_display,
         "Gift_note": note,
     }
     if payment_status:
         text_fields["Payment_status"] = payment_status
+    if missing_address:
+        text_fields["Address_status"] = "MISSING — do not place bakery order yet"
     text_body = _lines(**text_fields)
 
     esc = html.escape
@@ -179,14 +199,31 @@ def send_new_order_notification(
     row("Prospect email", prospect_email)
     row("Prospect deal status", prospect_deal_status)
     row("Recipient name", recipient_name)
-    row("Shipping address", shipping_address, html_multiline=True)
+    if missing_address:
+        row("Address status", "MISSING — do not place bakery order yet")
+    row("Shipping address", address_display, html_multiline=True)
     row("Gift note", note, html_multiline=True)
 
     rows = "".join(rows_parts)
-    heading = "New cookie order (monthly / unpaid)" if unpaid_monthly else "New cookie order"
+    if missing_address:
+        heading = "New cookie order — no shipping address yet"
+    elif unpaid_monthly:
+        heading = "New cookie order (monthly / unpaid)"
+    else:
+        heading = "New cookie order"
+    banner = (
+        "<p style='margin:0 0 12px;padding:10px 12px;background:#fff7ed;border:1px solid #fdba74;"
+        "border-radius:8px;color:#9a3412'>"
+        "<strong>No shipping address yet.</strong> Waiting on the recipient — "
+        "do not place the bakery order until an address arrives."
+        "</p>"
+        if missing_address
+        else ""
+    )
     html_body = (
         "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px'>"
         f"<h2 style='margin:0 0 12px'>{html.escape(heading)}</h2>"
+        f"{banner}"
         "<table style='border-collapse:collapse'>"
         f"{rows}"
         "</table></body></html>"
@@ -198,6 +235,157 @@ def send_new_order_notification(
         text_body=text_body,
         html_body=html_body,
         context=f"ops-new-order order_id={order_id}",
+    )
+
+
+def send_new_orders_batch_notification(
+    *,
+    placed_by_email: str,
+    orders: list[dict[str, Any]],
+) -> bool:
+    """One ops email listing every order in a CSV/batch checkout.
+
+    Each item needs: order_id, requested_at, gift_id, recipient_name,
+    shipping_address, note, status, prospect_name, prospect_email,
+    prospect_deal_status, and optional payment_status.
+    """
+    to = list(settings.order_notification_to or [])
+    if not to:
+        logger.warning(
+            "ORDER_NOTIFICATION_TO is empty; skipping batch new-order notification email."
+        )
+        return False
+    if not orders:
+        return False
+
+    missing_count = sum(
+        1 for item in orders if not _ops_order_has_address(item.get("shipping_address"))
+    )
+    count = len(orders)
+    if missing_count:
+        subject = (
+            f"New cookie orders ({count}) — {missing_count} missing address"
+            f"{'es' if missing_count != 1 else ''}"
+        )
+        heading = "New cookie orders — includes missing addresses"
+    else:
+        subject = f"New cookie orders ({count})"
+        heading = "New cookie orders"
+
+    esc = html.escape
+    text_blocks: list[str] = [
+        f"Placed_by_account: {placed_by_email}",
+        f"Order_count: {count}",
+        f"Missing_address_count: {missing_count}",
+        "",
+    ]
+    html_sections: list[str] = []
+
+    for index, item in enumerate(orders, start=1):
+        order_id = item.get("order_id")
+        requested_at = item.get("requested_at")
+        when = (
+            requested_at.isoformat(timespec="seconds")
+            if isinstance(requested_at, datetime)
+            else str(requested_at or "")
+        )
+        address_display = format_ops_shipping_address(item.get("shipping_address"))
+        missing = not _ops_order_has_address(item.get("shipping_address"))
+        payment_status = item.get("payment_status")
+        text_blocks.extend(
+            [
+                f"--- Order {index} of {count} ---",
+                f"Order_ID: {order_id}",
+                f"Requested_at: {when}",
+                f"Status: {item.get('status') or ''}",
+            ]
+        )
+        if payment_status:
+            text_blocks.append(f"Payment_status: {payment_status}")
+        if missing:
+            text_blocks.append("Address_status: MISSING — do not place bakery order yet")
+        text_blocks.extend(
+            [
+                f"Gift_or_pack_id: {item.get('gift_id') or ''}",
+                f"Prospect_name: {item.get('prospect_name') or ''}",
+                f"Prospect_email: {item.get('prospect_email') or ''}",
+                f"Prospect_deal_status: {item.get('prospect_deal_status') or ''}",
+                f"Recipient_name: {item.get('recipient_name') or ''}",
+                f"Shipping_address: {address_display}",
+                f"Gift_note: {item.get('note') or ''}",
+                "",
+            ]
+        )
+
+        address_html = esc(address_display).replace("\n", "<br/>")
+        note_html = esc(str(item.get("note") or "")).replace("\n", "<br/>")
+        missing_banner = (
+            "<p style='margin:0 0 8px;padding:8px 10px;background:#fff7ed;border:1px solid #fdba74;"
+            "border-radius:8px;color:#9a3412;font-size:13px'>"
+            "<strong>No shipping address yet.</strong> Do not place the bakery order yet."
+            "</p>"
+            if missing
+            else ""
+        )
+        payment_row = (
+            f"<tr><th align='left' style='padding:2px 12px 2px 0'>Payment status</th>"
+            f"<td>{esc(str(payment_status))}</td></tr>"
+            if payment_status
+            else ""
+        )
+        html_sections.append(
+            "<section style='margin:0 0 20px;padding:0 0 16px;border-bottom:1px solid #e7e5e4'>"
+            f"<h3 style='margin:0 0 8px'>Order #{esc(str(order_id))} "
+            f"({index} of {count})</h3>"
+            f"{missing_banner}"
+            "<table style='border-collapse:collapse'>"
+            f"<tr><th align='left' style='padding:2px 12px 2px 0'>Requested at</th>"
+            f"<td>{esc(when)}</td></tr>"
+            f"<tr><th align='left' style='padding:2px 12px 2px 0'>Status</th>"
+            f"<td>{esc(str(item.get('status') or ''))}</td></tr>"
+            f"{payment_row}"
+            f"<tr><th align='left' style='padding:2px 12px 2px 0'>Gift / pack ID</th>"
+            f"<td>{esc(str(item.get('gift_id') or ''))}</td></tr>"
+            f"<tr><th align='left' style='padding:2px 12px 2px 0'>Prospect</th>"
+            f"<td>{esc(str(item.get('prospect_name') or ''))} "
+            f"&lt;{esc(str(item.get('prospect_email') or ''))}&gt;</td></tr>"
+            f"<tr><th align='left' style='padding:2px 12px 2px 0'>Recipient</th>"
+            f"<td>{esc(str(item.get('recipient_name') or ''))}</td></tr>"
+            f"<tr><th align='left' style='padding:2px 12px 2px 0;vertical-align:top'>"
+            "Shipping address</th>"
+            f"<td style='white-space:pre-wrap'>{address_html}</td></tr>"
+            f"<tr><th align='left' style='padding:2px 12px 2px 0;vertical-align:top'>"
+            "Gift note</th>"
+            f"<td style='white-space:pre-wrap'>{note_html}</td></tr>"
+            "</table></section>"
+        )
+
+    text_body = "\n".join(text_blocks)
+    top_banner = (
+        "<p style='margin:0 0 16px;padding:10px 12px;background:#fff7ed;border:1px solid #fdba74;"
+        "border-radius:8px;color:#9a3412'>"
+        f"<strong>{missing_count} of {count} order(s) have no shipping address.</strong> "
+        "Those rows are marked below — do not place bakery orders for them yet."
+        "</p>"
+        if missing_count
+        else ""
+    )
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;font-size:14px'>"
+        f"<h2 style='margin:0 0 8px'>{esc(heading)}</h2>"
+        f"<p style='margin:0 0 16px'>Placed by <strong>{esc(placed_by_email)}</strong> "
+        f"· {count} order(s)</p>"
+        f"{top_banner}"
+        f"{''.join(html_sections)}"
+        "</body></html>"
+    )
+    order_ids = ",".join(str(item.get("order_id")) for item in orders)
+    return _send(
+        to=to,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        context=f"ops-new-order-batch order_ids={order_ids}",
     )
 
 

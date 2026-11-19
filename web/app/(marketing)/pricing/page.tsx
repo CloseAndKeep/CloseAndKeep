@@ -61,7 +61,7 @@ export default function PricingPage() {
           href="/signup"
           className="mt-10 flex w-full justify-center rounded-full bg-wood py-3 text-sm font-medium text-white shadow hover:bg-wood-dark"
         >
-          Get started
+          Send cookies
         </Link>
       </div>
     </div>

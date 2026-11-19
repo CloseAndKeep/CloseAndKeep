@@ -20,7 +20,11 @@ def _fernet() -> Fernet:
         except (ValueError, TypeError):
             digest = hashlib.sha256(raw.encode("utf-8")).digest()
             return Fernet(base64.urlsafe_b64encode(digest))
-    # Dev/test fallback so local suites work without env; never use in production.
+    if settings.app_env.lower() == "production":
+        raise RuntimeError(
+            "INTEGRATION_TOKEN_FERNET_KEY must be set when APP_ENV=production."
+        )
+    # Dev/test fallback so local suites work without env.
     digest = hashlib.sha256(b"closeandkeep-dev-integration-token-key").digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 

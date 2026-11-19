@@ -55,6 +55,10 @@ App hint (“Have a code? Enter it on the Stripe checkout page.”) sits next to
 15. Re-gift policy + retry failed auto-order
 19. Failed-notify dead letter + retry (paid order, Resend to ops died)
 
+## Security hygiene
+
+History scan (2026-11-16): [`docs/security-history-scan.md`](security-history-scan.md) — no live secret keys in git; strip personal ops emails from defaults; delete stale price-id branch when locking the repo down.
+
 ## Parked (remind on next steps; do not build now)
 
 **Bakery autofill — Crumbl first, Levain if out of area.** Cursor on the owner’s machine fills bakery checkout from a **queued** order with a **full address**, then pays on the logged-in Crumbl (or Levain) account. Not a vendor API; do not change bakery websites. Full write-up: [`docs/bakery-fulfill-later.md`](bakery-fulfill-later.md).

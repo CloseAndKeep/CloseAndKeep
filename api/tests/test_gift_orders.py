@@ -182,25 +182,27 @@ def test_get_missing_order_returns_404(auth_client):
     assert auth_client.get("/gift-orders/999999").status_code == 404
 
 
-def test_fulfillment_skips_notify_without_shipping_address(monkeypatch):
-    """Address-request orders must not email ops until an address exists."""
+def test_fulfillment_notifies_without_shipping_address(monkeypatch):
+    """Ops still gets a new-order email when the ship-to is missing."""
     from app.fulfillment import ManualEmailFulfillment
+    from datetime import UTC, datetime
     from types import SimpleNamespace
 
     sent: list = []
     monkeypatch.setattr(
         "app.fulfillment.send_new_order_notification",
-        lambda **kw: sent.append(kw),
+        lambda **kw: sent.append(kw) or True,
     )
     provider = ManualEmailFulfillment()
     order = SimpleNamespace(
         id=1,
         shipping_address=None,
-        requested_at=None,
+        requested_at=datetime.now(UTC),
         gift_id="cookies-4",
         recipient_name="X",
         note="n",
         status="no_address",
+        payment_status="authorized",
     )
     provider.submit_queued_order(
         order,
@@ -210,4 +212,51 @@ def test_fulfillment_skips_notify_without_shipping_address(monkeypatch):
         owner=SimpleNamespace(email="o@x.com"),
         db=None,
     )
-    assert sent == []
+    assert len(sent) == 1
+    assert sent[0]["order_id"] == 1
+    assert sent[0]["shipping_address"] == ""
+
+
+def test_fulfillment_batch_sends_one_email(monkeypatch):
+    """CSV / shared Checkout should produce one ops digest, not N emails."""
+    from app.fulfillment import ManualEmailFulfillment
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    singles: list = []
+    batches: list = []
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_order_notification",
+        lambda **kw: singles.append(kw) or True,
+    )
+    monkeypatch.setattr(
+        "app.fulfillment.send_new_orders_batch_notification",
+        lambda **kw: batches.append(kw) or True,
+    )
+    provider = ManualEmailFulfillment()
+    now = datetime.now(UTC)
+    items = [
+        (
+            SimpleNamespace(
+                id=i,
+                shipping_address="1 Main" if i == 1 else None,
+                requested_at=now,
+                gift_id="cookies-4",
+                recipient_name=f"R{i}",
+                note="n",
+                status="queued" if i == 1 else "no_address",
+                payment_status="paid" if i == 1 else "authorized",
+            ),
+            SimpleNamespace(name=f"P{i}", email=f"p{i}@x.com", deal_status="open"),
+        )
+        for i in (1, 2)
+    ]
+    provider.submit_queued_orders_batch(
+        items,
+        owner=SimpleNamespace(email="o@x.com"),
+        db=None,
+    )
+    assert singles == []
+    assert len(batches) == 1
+    assert batches[0]["placed_by_email"] == "o@x.com"
+    assert [row["order_id"] for row in batches[0]["orders"]] == [1, 2]

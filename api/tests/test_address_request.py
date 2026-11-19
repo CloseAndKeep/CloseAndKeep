@@ -204,14 +204,20 @@ def test_recipient_submit_captures_payment_and_emails(
     monkeypatch.setattr(
         sp, "send_orderer_receipt", lambda **kw: orderer_mail.update(kw)
     )
-    ops_mail: dict = {}
+    ops_mails: list[dict] = []
     monkeypatch.setattr(
-        fulfillment, "send_new_order_notification", lambda **kw: ops_mail.update(kw)
+        fulfillment,
+        "send_new_order_notification",
+        lambda **kw: ops_mails.append(dict(kw)) or True,
     )
 
     order = auth_client.post("/gift-orders", json=_request_payload(prospect_id)).json()
     _authorize_order(auth_client, order["id"], stripe_stub, monkeypatch)
     assert orderer_mail == {}  # no receipt on authorize-only
+    assert len(ops_mails) == 1
+    assert ops_mails[0]["order_id"] == order["id"]
+    assert ops_mails[0]["shipping_address"] == ""
+    assert ops_mails[0]["status"] == "no_address"
 
     with SessionLocal() as db:
         token = db.get(GiftOrderModel, order["id"]).address_request_token
@@ -238,7 +244,9 @@ def test_recipient_submit_captures_payment_and_emails(
     assert orderer_mail["order_id"] == order["id"]
     assert "456 Oak Ave" in (orderer_mail.get("shipping_address") or "")
     assert orderer_mail["gift_label"]
-    assert ops_mail["order_id"] == order["id"]  # ops email after capture
+    assert len(ops_mails) == 2  # authorize (no address) + capture (with address)
+    assert ops_mails[1]["order_id"] == order["id"]
+    assert "456 Oak Ave" in ops_mails[1]["shipping_address"]
 
 
 def test_submit_before_authorization_rejected(

@@ -4,6 +4,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 
 const headerLinks = [
   { href: "/pricing", label: "Pricing" },
+  { href: "/roi", label: "ROI" },
   { href: "/support", label: "Support" },
 ] as const;
 
@@ -33,7 +34,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
               href="/signup"
               className="ml-1 inline-flex items-center rounded-full bg-wood px-3.5 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark sm:px-4"
             >
-              Get started
+              Send cookies
             </Link>
           </nav>
         </div>
