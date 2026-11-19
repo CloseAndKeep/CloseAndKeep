@@ -149,6 +149,25 @@ def test_webhook_rejects_bad_secret(auth_client, monkeypatch):
     assert resp.status_code == 401
 
 
+def test_webhook_fails_closed_without_secret_outside_development(auth_client, monkeypatch):
+    me = auth_client.get("/auth/me").json()
+    connection_id = _seed_connection(me["user_id"])
+    monkeypatch.setattr("app.integrations.salesforce.settings.salesforce_webhook_secret", "")
+    monkeypatch.setattr("app.integrations.salesforce.settings.app_env", "staging")
+
+    resp = auth_client.post(
+        "/integrations/salesforce/events",
+        json={
+            "connection_id": connection_id,
+            "opportunity_id": "006X",
+            "stage_name": "Demo Completed",
+            "contact_name": "Sam",
+            "contact_email": "sam@example.com",
+        },
+    )
+    assert resp.status_code == 401
+
+
 def test_list_and_update_integration(auth_client):
     me = auth_client.get("/auth/me").json()
     connection_id = _seed_connection(me["user_id"])
