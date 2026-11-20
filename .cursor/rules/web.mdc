@@ -35,6 +35,7 @@ alwaysApply: false
 
 ### Failures
 - Seller AI path is **AI Helper: Order Cookies** (paste instructions → prefill `/orders/new`); do not lead with the API skill (keys + host allowlists). Pack with `scripts/pack-ai-helper-order-cookies.sh`; API skill stays Advanced (`scripts/pack-closeandkeep-orders-skill.sh`).
+- Admin must stay in the **primary** nav (sidebar + mobile top strip) for `role=admin` — burying it only in More hid it from the mobile bar.
 - Public skill zips served `Content-Disposition: inline` open as binary on mobile; set `attachment` via `next.config` headers and rebuild the zip with `closeandkeep-orders/` at the root (use `scripts/pack-closeandkeep-orders-skill.sh`).
 - Google Sheets CSV downloads are often typed as Excel and reuse one filename; accept `application/vnd.ms-excel` on the file input and clear its value on click so the next file registers.
 - Promo-code hints belong next to Stripe pay CTAs only — never beside recipient redeem-code copy (address collection, not a discount).
