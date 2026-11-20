@@ -27,7 +27,7 @@ Pick from **Still in play** below (or Dashboard `TEST1C`). Seller status emails 
 
 **#1 — Seller pings: shipped, delivered, and address-hold expired** — Shipped. AE emails on admin shipped/delivered and on address-hold expiry (`api/app/fulfillment.py`, `order_email.py`, address-request jobs). Documented in `USER_GUIDE.md`.
 
-**H — Headless AI orders** — Shipped skill + install page: [`skills/closeandkeep-orders/`](../skills/closeandkeep-orders/), [`/developers/ai`](https://www.closeandkeep.com/developers/ai), design notes in [`docs/headless-ai-orders.md`](headless-ai-orders.md).
+**H — Headless AI orders** — Pivot: seller-facing **AI Helper: Order Cookies** (paste instructions → prefill `/orders/new` link; no API key). Plan + naming: [`docs/ai-helper-order-cookies.md`](ai-helper-order-cookies.md), instructions: [`ai-helper-order-cookies/`](../ai-helper-order-cookies/). API skill [`skills/closeandkeep-orders/`](../skills/closeandkeep-orders/) demoted to Advanced. Earlier design notes: [`docs/headless-ai-orders.md`](headless-ai-orders.md).
 
 ## Liked, later (not this build)
 
@@ -75,7 +75,7 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 ## Owner calls
 
 - Next: pick from Still in play (or Dashboard `TEST1C`)
-- Done: #1 seller status emails; H headless AI skill (`/developers/ai`)
+- Done: #1 seller status emails; H → AI Helper: Order Cookies (`/developers/ai`); API skill demoted
 - Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
 - Parked: Crumbl-first / Levain-fallback Cursor fulfill (`docs/bakery-fulfill-later.md`)
 - Do not like: 2, 9, 13, 16, 17, 18, 20

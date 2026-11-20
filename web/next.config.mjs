@@ -48,7 +48,7 @@ const nextConfig = {
     ];
   },
   async headers() {
-    // Force download (not inline preview) — mobile browsers otherwise show zip bytes.
+    // Force download (not inline preview) — mobile browsers otherwise show zip bytes / raw text.
     return [
       {
         source: "/skills/:path*.zip",
@@ -60,6 +60,23 @@ const nextConfig = {
           {
             key: "Content-Type",
             value: "application/zip",
+          },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+        ],
+      },
+      {
+        source: "/ai-helper-order-cookies/INSTRUCTIONS.txt",
+        headers: [
+          {
+            key: "Content-Disposition",
+            value: 'attachment; filename="ai-helper-order-cookies-INSTRUCTIONS.txt"',
+          },
+          {
+            key: "Content-Type",
+            value: "text/plain; charset=utf-8",
           },
           {
             key: "X-Content-Type-Options",

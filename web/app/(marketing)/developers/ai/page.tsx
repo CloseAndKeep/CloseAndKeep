@@ -2,19 +2,22 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Use with AI",
+  title: "AI Helper: Order Cookies",
   description:
-    "Install the CloseAndKeep orders skill in Cursor, Claude, or ChatGPT Actions. Cards stay on Stripe.",
+    "Paste chat instructions so Claude or ChatGPT hands your team a ready-to-pay CloseAndKeep link. No API key.",
   alternates: {
     canonical: "/developers/ai",
   },
   openGraph: {
     url: "/developers/ai",
-    title: "CloseAndKeep — use with your AI",
+    title: "CloseAndKeep — AI Helper: Order Cookies",
     description:
-      "Portable skill + API key so your preferred agent can place cookie gifts after you confirm.",
+      "Company setup once: paste AI Helper instructions. Sellers chat, click the link, confirm, and pay on Stripe.",
   },
 };
+
+const EXAMPLE_LINK =
+  "https://www.closeandkeep.com/orders/new?name=Alyssa%20Ozer&email=alyssa.ozer%40continuserve.com&pack=4&ask_address=1&note=Thanks%20for%20the%20demo%20%E2%80%94%20enjoy%20these%20cookies%21";
 
 export default function DevelopersAiPage() {
   return (
@@ -24,114 +27,130 @@ export default function DevelopersAiPage() {
           API
         </Link>
         <span className="mx-2">/</span>
-        Use with AI
+        AI Helper
       </p>
-      <h1 className="mt-3 font-display text-4xl tracking-tight text-espresso">Use with your AI</h1>
+      <h1 className="mt-3 font-display text-4xl tracking-tight text-espresso">
+        AI Helper: Order Cookies
+      </h1>
       <p className="mt-4 max-w-2xl text-lg text-stone-600">
-        Install the CloseAndKeep orders skill, store a dedicated API key as a secret, and ask your
-        agent to send cookies after a demo. You confirm the details; Stripe Checkout (or monthly
-        billing) handles payment. Card numbers never enter the chat.
+        Give your team&apos;s Claude or ChatGPT a short set of instructions. When a seller asks to
+        send cookies, the AI replies with a CloseAndKeep link — already filled. They click, confirm,
+        and pay on Stripe. No API key, no app install, no network allowlist.
       </p>
 
-      <p className="mt-8">
+      <div className="mt-8 flex flex-wrap items-center gap-3">
         <a
-          href="/skills/closeandkeep-orders.zip"
-          download="closeandkeep-orders.zip"
+          href="/ai-helper-order-cookies/INSTRUCTIONS.txt"
+          download="ai-helper-order-cookies-INSTRUCTIONS.txt"
           className="inline-flex items-center rounded-full bg-wood px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark"
         >
-          Download closeandkeep-orders.zip
+          Download AI Helper instructions
         </a>
-      </p>
+        <Link
+          href="/developers"
+          className="inline-flex items-center rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-medium text-espresso transition hover:border-wood hover:text-wood-dark"
+        >
+          API docs
+        </Link>
+      </div>
       <p className="mt-3 text-sm text-stone-500">
-        Direct link:{" "}
+        File:{" "}
         <a
-          href="https://www.closeandkeep.com/skills/closeandkeep-orders.zip"
+          href="https://www.closeandkeep.com/ai-helper-order-cookies/INSTRUCTIONS.txt"
           className="break-all font-medium text-wood-dark hover:underline"
         >
-          closeandkeep.com/skills/closeandkeep-orders.zip
+          ai-helper-order-cookies/INSTRUCTIONS.txt
         </a>
       </p>
+
+      <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
+        <h2 className="font-display text-2xl text-espresso">How it works</h2>
+        <ol className="list-decimal space-y-2 pl-5">
+          <li>
+            Seller: “Send 4 cookies to Alyssa Ozer at alyssa@… — thanks for the demo. I don’t have her
+            address.”
+          </li>
+          <li>AI confirms, then returns one prefill link (no order is placed yet).</li>
+          <li>Seller opens the link → Review is filled → Pay on Stripe.</li>
+        </ol>
+        <p className="rounded-xl bg-cream/80 px-4 py-3 text-xs break-all text-stone-600">
+          Example link shape: {EXAMPLE_LINK}
+        </p>
+      </section>
+
+      <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
+        <h2 className="font-display text-2xl text-espresso">Company setup (once)</h2>
+        <ol className="list-decimal space-y-2 pl-5">
+          <li>
+            Download{" "}
+            <a
+              href="/ai-helper-order-cookies/INSTRUCTIONS.txt"
+              download="ai-helper-order-cookies-INSTRUCTIONS.txt"
+              className="font-medium text-wood-dark hover:underline"
+            >
+              AI Helper: Order Cookies
+            </a>
+            .
+          </li>
+          <li>
+            Paste the whole file into your shared <strong className="font-medium">Claude Project</strong>{" "}
+            instructions, a ChatGPT custom GPT, or the equivalent for your host.
+          </li>
+          <li>
+            Sellers only need a CloseAndKeep account (not guest). They chat, click the link, and pay.
+          </li>
+        </ol>
+        <p>
+          Smoke test: ask the AI to send a test 4-pack to you at your email with note “AI Helper
+          test”. It must confirm, then give a link — not place an order itself.
+        </p>
+      </section>
 
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
         <h2 className="font-display text-2xl text-espresso">Privacy</h2>
         <p>
           Recipient name, email, address, and gift note are sent to the AI provider you choose
-          (Cursor, Anthropic, OpenAI, etc.). Prefer per-order Checkout while experimenting. Revoke
-          a leaked key under{" "}
-          <Link href="/api-keys" className="font-medium text-wood-dark hover:underline">
-            API keys
-          </Link>
-          .
+          (Anthropic, OpenAI, etc.) when you type them in chat. Prefer per-order Checkout while
+          trying this out.
         </p>
       </section>
 
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
-        <h2 className="font-display text-2xl text-espresso">Setup</h2>
-        <ol className="list-decimal space-y-2 pl-5">
-          <li>
-            Create a verified account (not guest) and a dedicated key labeled for this host (e.g.{" "}
-            <code className="text-xs">Cursor AI</code>).
-          </li>
-          <li>
-            Download the skill zip:{" "}
-            <a
-              href="/skills/closeandkeep-orders.zip"
-              download="closeandkeep-orders.zip"
-              className="font-medium text-wood-dark hover:underline"
-            >
-              closeandkeep-orders.zip
-            </a>
-            . Unzip it, then drop the <code className="text-xs">closeandkeep-orders</code> folder
-            into your Cursor (or Claude) skills directory.
-          </li>
-          <li>Store the key as secret <code className="text-xs">CLOSEANDKEEP_API_KEY</code> only.</li>
-          <li>
-            Smoke test: “Send a test 4-pack to me at my email with note ‘AI skill test’” — the agent
-            must confirm before calling the API.
-          </li>
-        </ol>
-      </section>
-
-      <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
-        <h2 className="font-display text-2xl text-espresso">Host matrix</h2>
-        <ul className="list-disc space-y-2 pl-5">
-          <li>
-            <strong className="font-medium text-espresso">Cursor</strong> — drop the folder under
-            project/user skills; set the secret.
-          </li>
-          <li>
-            <strong className="font-medium text-espresso">Claude</strong> — skill or project
-            instructions + secret.
-          </li>
-          <li>
-            <strong className="font-medium text-espresso">ChatGPT</strong> — use Actions with{" "}
-            <code className="text-xs">openapi-orders.yaml</code> inside the zip; never bake a key into
-            a shared GPT.
-          </li>
-          <li>
-            <strong className="font-medium text-espresso">Prompt-only</strong> — paste the skill for
-            guidance; you run curl or the dashboard yourself.
-          </li>
-        </ul>
+        <h2 className="font-display text-2xl text-espresso">Advanced: API skill</h2>
+        <p>
+          Agents that should call <code className="text-xs">api.closeandkeep.com</code> directly
+          (Cursor secrets, custom CRM buttons) still use the API key skill — that path needs a{" "}
+          <code className="text-xs">cak_</code> key and host setup. Most sales teams should use AI
+          Helper instead.
+        </p>
+        <p>
+          <a
+            href="/skills/closeandkeep-orders.zip"
+            download="closeandkeep-orders.zip"
+            className="font-medium text-wood-dark hover:underline"
+          >
+            Download closeandkeep-orders.zip
+          </a>
+          {" · "}
+          <Link href="/api-keys" className="font-medium text-wood-dark hover:underline">
+            API keys
+          </Link>
+          {" · "}
+          <Link href="/developers" className="font-medium text-wood-dark hover:underline">
+            HTTP examples
+          </Link>
+        </p>
       </section>
 
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
         <h2 className="font-display text-2xl text-espresso">Also see</h2>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <Link href="/developers" className="font-medium text-wood-dark hover:underline">
-              HTTP API examples
-            </Link>
+            Custom CRM <strong className="font-medium">Send cookies</strong> button walkthrough:{" "}
+            <code className="text-xs">docs/custom-crm-setup.md</code>
           </li>
           <li>
-            <Link href="/api-keys" className="font-medium text-wood-dark hover:underline">
-              API keys
-            </Link>{" "}
-            (create / revoke)
-          </li>
-          <li>
-            Custom CRM <strong className="font-medium">Send cookies</strong> button walkthrough lives
-            in the repo at <code className="text-xs">docs/custom-crm-setup.md</code>
+            Plan and naming: <code className="text-xs">docs/ai-helper-order-cookies.md</code>
           </li>
         </ul>
       </section>

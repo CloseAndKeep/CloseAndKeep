@@ -215,11 +215,20 @@ After you connect a CRM, billing and auto-order controls also appear on **Profil
 There is no OAuth “Connect” for a home-grown CRM. Use the API:
 
 1. Sign up at closeandkeep.com (not guest), verify email, then **API keys** → create a `cak_…` key (shown once).
-2. From the site header or footer, open **Use with AI** (`/developers/ai`) to download **closeandkeep-orders.zip**, or go to **API keys** in the dashboard for the same links. HTTP examples live under footer **API** (`/developers`). Full CRM button walkthrough: `docs/custom-crm-setup.md`.
+2. HTTP examples live under footer **API** (`/developers`). For agents that call the API, download the **Advanced: API skill** zip from **Use with AI** or **API keys**. Full CRM button walkthrough: `docs/custom-crm-setup.md`.
 3. In your CRM, add a **Send cookies** button plus **Cookie note**, optional **company**, and street / city / state / ZIP fields. Do not require a deal-stage change. When the rep clicks the button, call:
    - `POST /prospects` with name + email
    - `POST /gift-orders` with `gift_id`, `recipient_name`, **`note`**, and either **`shipping_street` + `shipping_city` + `shipping_state` + `shipping_postal_code`** (optional **`shipping_company`**) or `request_recipient_address: true` (and `recipient_email` so we can ask for shipping)
 4. If the response has `checkout_url`, open it to pay. If `checkout_url` is null, monthly billing is on (Profile → **Pay monthly** after you create an API key).
+
+### AI Helper: Order Cookies (Claude / ChatGPT)
+
+For everyday sellers, prefer **AI Helper** — no API key.
+
+1. Open **Use with AI** (`/developers/ai`) and download **AI Helper: Order Cookies** instructions (`INSTRUCTIONS.txt`).
+2. Someone on your team pastes that file once into a shared Claude Project (or ChatGPT custom GPT).
+3. Ask the AI to send cookies (name, email, pack, note). After you confirm, it gives a CloseAndKeep link with the form prefilled.
+4. Open the link, confirm on Review, and pay on Stripe. Card numbers never go into the chat.
 
 ---
 

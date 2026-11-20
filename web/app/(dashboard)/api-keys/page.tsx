@@ -116,14 +116,14 @@ export default function ApiKeysPage() {
           href="/developers/ai"
           className="inline-flex items-center rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark"
         >
-          Use with your AI
+          AI Helper: Order Cookies
         </Link>
         <a
           href="/skills/closeandkeep-orders.zip"
           download="closeandkeep-orders.zip"
           className="inline-flex items-center rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-espresso transition hover:border-wood hover:text-wood-dark"
         >
-          Download skill zip
+          Advanced: API skill zip
         </a>
         <Link
           href="/developers"
@@ -133,8 +133,9 @@ export default function ApiKeysPage() {
         </Link>
       </div>
       <p className="mb-8 text-sm text-stone-600">
-        Create a dedicated key per host (for example <code className="text-xs">Cursor AI</code>) and
-        revoke it if it leaks.
+        Prefer <strong className="font-medium">AI Helper</strong> for Claude/ChatGPT (no key). Use
+        keys for agents or CRM scripts that call the API — one dedicated key per host (for example{" "}
+        <code className="text-xs">Cursor AI</code>), and revoke if it leaks.
       </p>
 
       {error ? (
