@@ -11,13 +11,13 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { NoteTemplates } from "@/components/orders/note-templates";
 import {
-  EMPTY_SHIPPING_ADDRESS,
   formatShippingAddress,
   isCompleteShippingAddress,
   shippingAddressPayload,
   ShippingAddressFields,
   type ShippingAddressValue,
 } from "@/components/orders/shipping-address-fields";
+import { parseOrderPrefill, type AddressMode } from "@/lib/order-prefill";
 
 const steps = ["Prospect & cookies", "Shipping & note", "Review"];
 
@@ -28,13 +28,11 @@ type Prospect = {
   deal_status: "open" | "won" | "lost";
 };
 
-type AddressMode = "known" | "request";
-
 export function GiftOrderWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const linkPrefill = useMemo(() => parseOrderPrefill(searchParams), [searchParams]);
   const prefillProspectId = searchParams.get("prospect_id");
-  const prefillGiftId = searchParams.get("gift_id");
   const fromParam = searchParams.get("from");
   const fromCrmReminder =
     fromParam === "sf_reminder" || fromParam === "hs_reminder" || fromParam === "crm_reminder";
@@ -43,23 +41,20 @@ export function GiftOrderWizard() {
   const [step, setStep] = useState(0);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [prospectId, setProspectId] = useState("");
-  const [giftId, setGiftId] = useState(() => {
-    if (prefillGiftId && cookiePacks.some((pack) => pack.id === prefillGiftId)) {
-      return prefillGiftId;
-    }
-    return cookiePacks[0]?.id ?? "";
-  });
-  const [recipientName, setRecipientName] = useState("");
-  const [recipientEmail, setRecipientEmail] = useState("");
-  const [addressMode, setAddressMode] = useState<AddressMode>("known");
-  const [address, setAddress] = useState<ShippingAddressValue>(EMPTY_SHIPPING_ADDRESS);
-  const [note, setNote] = useState("");
+  const [giftId, setGiftId] = useState(linkPrefill.giftId);
+  const [recipientName, setRecipientName] = useState(linkPrefill.name);
+  const [recipientEmail, setRecipientEmail] = useState(linkPrefill.email);
+  const [addressMode, setAddressMode] = useState<AddressMode>(
+    linkPrefill.name || linkPrefill.email ? linkPrefill.addressMode : "known",
+  );
+  const [address, setAddress] = useState<ShippingAddressValue>(linkPrefill.address);
+  const [note, setNote] = useState(linkPrefill.note);
   const [isGuest, setIsGuest] = useState(false);
   const [loadingProspects, setLoadingProspects] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [creatingProspect, setCreatingProspect] = useState(false);
-  const [newProspectName, setNewProspectName] = useState("");
-  const [newProspectEmail, setNewProspectEmail] = useState("");
+  const [newProspectName, setNewProspectName] = useState(linkPrefill.name);
+  const [newProspectEmail, setNewProspectEmail] = useState(linkPrefill.email);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { byId: priceById } = useGiftPrices();
@@ -76,22 +71,48 @@ export function GiftOrderWizard() {
           }).catch(() => null),
         ]);
         setProspects(data);
-        const fromQuery =
-          prefillProspectId && data.some((p) => String(p.id) === prefillProspectId)
-            ? prefillProspectId
-            : null;
-        if (fromQuery) {
-          setProspectId(fromQuery);
-          setStep(1);
-        } else if (data.length > 0) {
-          setProspectId(String(data[0].id));
-        }
+
+        const guest = me ? me.role === "guest" || me.is_guest === true : false;
         if (me) {
-          const guest = me.role === "guest" || me.is_guest === true;
           setIsGuest(guest);
           if (guest) {
             setAddressMode("known");
           }
+        }
+
+        const fromProspectId =
+          prefillProspectId && data.some((p) => String(p.id) === prefillProspectId)
+            ? prefillProspectId
+            : null;
+        const emailKey = linkPrefill.email.trim().toLowerCase();
+        const fromEmail =
+          emailKey && data.find((p) => p.email.trim().toLowerCase() === emailKey);
+
+        if (fromProspectId) {
+          setProspectId(fromProspectId);
+          if (linkPrefill.readyForReview && !guest) {
+            setStep(2);
+          } else {
+            setStep(1);
+          }
+        } else if (fromEmail) {
+          setProspectId(String(fromEmail.id));
+          if (linkPrefill.readyForReview && !(guest && linkPrefill.addressMode === "request")) {
+            setStep(guest ? (isCompleteShippingAddress(linkPrefill.address) ? 2 : 1) : 2);
+          } else if (linkPrefill.name || linkPrefill.note) {
+            setStep(1);
+          }
+        } else if (linkPrefill.readyForReview && linkPrefill.email && !guest) {
+          // No matching prospect yet — Review still works; we create on submit.
+          setProspectId("");
+          setStep(2);
+        } else if (linkPrefill.name || linkPrefill.email) {
+          setProspectId("");
+          setNewProspectName(linkPrefill.name);
+          setNewProspectEmail(linkPrefill.email);
+          setStep(0);
+        } else if (data.length > 0) {
+          setProspectId(String(data[0].id));
         }
       } catch (loadError) {
         const message =
@@ -102,7 +123,7 @@ export function GiftOrderWizard() {
       }
     }
     void loadProspects();
-  }, [prefillProspectId]);
+  }, [prefillProspectId, linkPrefill]);
 
   const selectedProspect = useMemo(
     () => prospects.find((p) => String(p.id) === prospectId),
@@ -111,25 +132,34 @@ export function GiftOrderWizard() {
 
   useEffect(() => {
     if (!selectedProspect) return;
-    setRecipientName(selectedProspect.name);
-    setRecipientEmail(selectedProspect.email);
-    // Name/email only — do not set note here so a later template picker can fill it.
+    // Keep AI Helper / query prefills; only fill blanks from the prospect record.
+    setRecipientName((prev) => prev.trim() || selectedProspect.name);
+    setRecipientEmail((prev) => prev.trim() || selectedProspect.email);
   }, [selectedProspect]);
 
   const selectedPack = useMemo(() => cookiePacks.find((p) => p.id === giftId), [giftId]);
   const selectedPriceLabel = formatGiftPrice(priceById.get(giftId));
   const requestAddress = !isGuest && addressMode === "request";
+  const canSubmitWithoutProspect = Boolean(
+    !prospectId && recipientName.trim() && recipientEmail.trim(),
+  );
 
   const canNext =
     step === 0
-      ? Boolean(prospectId && giftId)
+      ? Boolean((prospectId || canSubmitWithoutProspect) && giftId)
       : step === 1
         ? Boolean(
             recipientName.trim() &&
               note.trim() &&
               (requestAddress ? true : isCompleteShippingAddress(address)),
           )
-        : true;
+        : Boolean(
+            giftId &&
+              recipientName.trim() &&
+              note.trim() &&
+              (prospectId || canSubmitWithoutProspect) &&
+              (requestAddress ? true : isCompleteShippingAddress(address)),
+          );
 
   function next() {
     if (step < steps.length - 1 && canNext) setStep((s) => s + 1);
@@ -171,7 +201,11 @@ export function GiftOrderWizard() {
   }
 
   async function submitOrder() {
-    if (!selectedProspect || !selectedPack) {
+    if (!selectedPack) {
+      return;
+    }
+    if (!selectedProspect && !(recipientName.trim() && recipientEmail.trim())) {
+      setError("Add a prospect or include recipient name and email.");
       return;
     }
 
@@ -179,16 +213,33 @@ export function GiftOrderWizard() {
     setError(null);
     setSuccessMessage(null);
     try {
+      let prospect = selectedProspect;
+      if (!prospect) {
+        prospect = await apiFetch<Prospect>("/prospects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: recipientName.trim(),
+            email: recipientEmail.trim(),
+            deal_status: "open",
+          }),
+          errorMessage: "Unable to create prospect.",
+        });
+        setProspects((prev) => [...prev, prospect!]);
+        setProspectId(String(prospect.id));
+      }
+
       const body: Record<string, unknown> = {
-        prospect_id: selectedProspect.id,
+        prospect_id: prospect.id,
         gift_id: selectedPack.id,
         recipient_name: recipientName.trim(),
         note: note.trim(),
       };
       if (requestAddress) {
         body.request_recipient_address = true;
-        if (recipientEmail.trim()) {
-          body.recipient_email = recipientEmail.trim();
+        const emailForRequest = recipientEmail.trim() || prospect.email;
+        if (emailForRequest) {
+          body.recipient_email = emailForRequest;
         }
       } else {
         Object.assign(body, shippingAddressPayload(address));
@@ -480,10 +531,24 @@ export function GiftOrderWizard() {
 
         {step === 2 && (
           <div className="space-y-4 text-sm">
+            {linkPrefill.readyForReview ? (
+              <p className="rounded-xl bg-wood/10 px-3 py-2 text-sm text-wood-dark">
+                Prefill from your AI Helper link — confirm below, then pay on Stripe.
+              </p>
+            ) : null}
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Prospect</p>
-              <p className="mt-1 font-medium text-espresso">{selectedProspect?.name}</p>
-              <p className="text-stone-600">{selectedProspect?.email}</p>
+              <p className="mt-1 font-medium text-espresso">
+                {selectedProspect?.name ?? recipientName}
+              </p>
+              <p className="text-stone-600">
+                {selectedProspect?.email ?? recipientEmail}
+              </p>
+              {!selectedProspect && recipientEmail ? (
+                <p className="mt-2 text-xs text-stone-500">
+                  We&apos;ll add this prospect when you pay.
+                </p>
+              ) : null}
             </div>
             <div className="rounded-xl bg-cream/80 p-4">
               <p className="text-xs font-semibold uppercase text-stone-500">Cookies</p>

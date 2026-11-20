@@ -107,10 +107,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         !(isGuest && item.href === "/api-keys") &&
         !(isGuest && item.href === "/integrations"),
     ),
+  ];
+
+  // Keep Admin in the primary bar (sidebar + mobile top strip), not buried in More.
+  const primaryWithAdmin: NavItem[] = [
+    ...primaryNav,
     ...(isAdmin ? [adminNavItem] : []),
   ];
 
-  const sidebarNav: NavItem[] = [...primaryNav, ...moreNav];
+  const sidebarNav: NavItem[] = [...primaryWithAdmin, ...moreNav];
 
   async function handleLogout() {
     try {
@@ -183,7 +188,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex h-12 items-center gap-2 px-3">
           <BrandLogo variant="mark" href="/dashboard" className="shrink-0" />
           <nav className="flex flex-1 gap-1 overflow-x-auto text-xs font-medium whitespace-nowrap" aria-label="Primary">
-            {primaryNav.map(({ href, label }) => {
+            {primaryWithAdmin.map(({ href, label }) => {
               const active = isActivePath(pathname, href);
               return (
                 <Link

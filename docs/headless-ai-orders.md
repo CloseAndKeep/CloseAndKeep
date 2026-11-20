@@ -1,6 +1,8 @@
 # Draft: Headless orders via preferred AI
 
-Draft 2026-11-16; **shipped** 2026-11-19 as `skills/closeandkeep-orders/` + `/developers/ai` + public zip. This file remains the design/safety write-up. The HTTP API already supported agent/script orders; the skill packages that for sellers’ preferred AIs.
+Draft 2026-11-16; **shipped** 2026-11-19 as `skills/closeandkeep-orders/` + `/developers/ai` + public zip.
+
+**2026-11-20 pivot:** Seller-facing path is now **AI Helper: Order Cookies** (pasteable chat instructions → prefill `/orders/new` link; no API key / allowlist). See [`ai-helper-order-cookies.md`](ai-helper-order-cookies.md) and `ai-helper-order-cookies/INSTRUCTIONS.md`. The API skill remains for power users / CRM. This file remains the design/safety write-up for the HTTP/agent path.
 
 Fulfillment stays manual in `/admin` for now. Owner bakery autofill (Crumbl → Levain) remains parked separately in [`bakery-fulfill-later.md`](bakery-fulfill-later.md). Do not start a bakery vendor API here.
 

@@ -33,18 +33,20 @@ export default function DevelopersDocsPage() {
           href="/developers/ai"
           className="inline-flex items-center rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark"
         >
-          Use with your AI
+          AI Helper: Order Cookies
         </Link>
         <a
           href="/skills/closeandkeep-orders.zip"
           download="closeandkeep-orders.zip"
           className="inline-flex items-center rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-espresso transition hover:border-wood hover:text-wood-dark"
         >
-          Download skill zip
+          Advanced: API skill zip
         </a>
       </div>
       <p className="mt-4 text-sm text-stone-600">
-        Wiring a CRM button instead? See the custom CRM setup guide in the repo.
+        Most teams should use <strong className="font-medium">AI Helper</strong> (paste
+        instructions — no API key). This page is for scripts and CRM buttons. Custom CRM guide:{" "}
+        <code className="text-xs">docs/custom-crm-setup.md</code>.
       </p>
 
       <section className="mt-12 space-y-3 text-sm leading-relaxed text-stone-700">
