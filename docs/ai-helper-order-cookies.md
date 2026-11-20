@@ -25,14 +25,15 @@ Do not call the helper a “skill” in seller copy. Skills imply tool/API acces
 ## Seller flow (target)
 
 1. Company admin opens `/developers/ai` → **Copy instructions** (or download `.txt`) → paste once into a shared Claude Project / ChatGPT custom GPT.
-2. AE: “Send 4 cookies to Alyssa…” → AI replies with only a `/orders/new?…` link.
+2. AE: “Send 4 cookies to Alyssa…” → AI replies with only a `/send?…` link (alias of `/orders/new`).
 3. AE clicks → login if needed (`?next=` preserves the URL) → Review already filled → Pay.
 
 No API key, no Connect, no Cloud Agent allowlist.
 
 ## Prefill URL contract
 
-Base: `https://www.closeandkeep.com/orders/new`
+Base (preferred): `https://www.closeandkeep.com/send`  
+Equivalent: `https://www.closeandkeep.com/orders/new` (`/send` redirects here, query preserved)
 
 | Param | Meaning | Notes |
 |-------|---------|--------|
@@ -61,7 +62,8 @@ When name + email + note are present and shipping mode is resolvable, open on **
 2. [x] `ai-helper-order-cookies/INSTRUCTIONS.md` (+ public `.txt` via pack script)
 3. [x] Rewrite `/developers/ai` (+ related CTAs / guide / llms)
 4. [x] `/orders/new` query prefill → Review when complete
-5. [ ] Optional later: `/send` alias; one-click “Copy for Claude” analytics; company-branded share page
+5. [x] `/send` alias + one-click **Copy instructions** on `/developers/ai`
+6. [ ] Optional later: copy analytics; company-branded share page
 
 ## Out of scope
 

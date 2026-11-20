@@ -20,7 +20,9 @@ Restate the details in one short sentence and wait for an explicit yes (or clear
 
 Build this URL (URL-encode `name`, `email`, and `note`):
 
-`https://www.closeandkeep.com/orders/new?name=NAME&email=EMAIL&pack=4&ask_address=1&note=NOTE`
+`https://www.closeandkeep.com/send?name=NAME&email=EMAIL&pack=4&ask_address=1&note=NOTE`
+
+(`/send` opens the same prefilled order form as `/orders/new`.)
 
 Rules:
 
@@ -40,7 +42,7 @@ Seller: Send 4 cookies to Alyssa Ozer, alyssa.ozer@continuserve.com. Note: Thank
 
 You confirm → they say yes → you reply with one link like:
 
-https://www.closeandkeep.com/orders/new?name=Alyssa%20Ozer&email=alyssa.ozer%40continuserve.com&pack=4&ask_address=1&note=Thanks%20for%20the%20lease%20demo%20%E2%80%94%20enjoy%20these%20cookies%21%20-%20Casey%20%40%20Netgain
+https://www.closeandkeep.com/send?name=Alyssa%20Ozer&email=alyssa.ozer%40continuserve.com&pack=4&ask_address=1&note=Thanks%20for%20the%20lease%20demo%20%E2%80%94%20enjoy%20these%20cookies%21%20-%20Casey%20%40%20Netgain
 
 Then tell them: open the link, confirm, and pay on Stripe.
 

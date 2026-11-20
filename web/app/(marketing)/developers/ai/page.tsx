@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { CopyInstructionsButton } from "@/components/ai-helper/copy-instructions-button";
 
 export const metadata: Metadata = {
   title: "AI Helper: Order Cookies",
@@ -17,9 +20,18 @@ export const metadata: Metadata = {
 };
 
 const EXAMPLE_LINK =
-  "https://www.closeandkeep.com/orders/new?name=Alyssa%20Ozer&email=alyssa.ozer%40continuserve.com&pack=4&ask_address=1&note=Thanks%20for%20the%20demo%20%E2%80%94%20enjoy%20these%20cookies%21";
+  "https://www.closeandkeep.com/send?name=Alyssa%20Ozer&email=alyssa.ozer%40continuserve.com&pack=4&ask_address=1&note=Thanks%20for%20the%20demo%20%E2%80%94%20enjoy%20these%20cookies%21";
+
+function loadInstructionsText(): string {
+  return readFileSync(
+    join(process.cwd(), "public/ai-helper-order-cookies/INSTRUCTIONS.txt"),
+    "utf8",
+  );
+}
 
 export default function DevelopersAiPage() {
+  const instructionsText = loadInstructionsText();
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
       <p className="text-sm text-stone-500">
@@ -39,16 +51,17 @@ export default function DevelopersAiPage() {
       </p>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">
+        <CopyInstructionsButton text={instructionsText} />
         <a
           href="/ai-helper-order-cookies/INSTRUCTIONS.txt"
           download="ai-helper-order-cookies-INSTRUCTIONS.txt"
-          className="inline-flex items-center rounded-full bg-wood px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark"
+          className="inline-flex items-center rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-medium text-espresso transition hover:border-wood hover:text-wood-dark"
         >
-          Download AI Helper instructions
+          Download .txt
         </a>
         <Link
           href="/developers"
-          className="inline-flex items-center rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-medium text-espresso transition hover:border-wood hover:text-wood-dark"
+          className="text-sm font-medium text-wood-dark hover:underline"
         >
           API docs
         </Link>
@@ -82,18 +95,18 @@ export default function DevelopersAiPage() {
         <h2 className="font-display text-2xl text-espresso">Company setup (once)</h2>
         <ol className="list-decimal space-y-2 pl-5">
           <li>
-            Download{" "}
+            Click <strong className="font-medium">Copy instructions</strong> (or download the{" "}
             <a
               href="/ai-helper-order-cookies/INSTRUCTIONS.txt"
               download="ai-helper-order-cookies-INSTRUCTIONS.txt"
               className="font-medium text-wood-dark hover:underline"
             >
-              AI Helper: Order Cookies
+              .txt
             </a>
-            .
+            ).
           </li>
           <li>
-            Paste the whole file into your shared <strong className="font-medium">Claude Project</strong>{" "}
+            Paste into your shared <strong className="font-medium">Claude Project</strong>{" "}
             instructions, a ChatGPT custom GPT, or the equivalent for your host.
           </li>
           <li>
@@ -102,7 +115,8 @@ export default function DevelopersAiPage() {
         </ol>
         <p>
           Smoke test: ask the AI to send a test 4-pack to you at your email with note “AI Helper
-          test”. It must confirm, then give a link — not place an order itself.
+          test”. It must confirm, then give a{" "}
+          <code className="text-xs">closeandkeep.com/send?…</code> link — not place an order itself.
         </p>
       </section>
 

@@ -47,6 +47,16 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    // Short AI Helper links: /send?... → same prefill as /orders/new?...
+    return [
+      {
+        source: "/send",
+        destination: "/orders/new",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     // Force download (not inline preview) — mobile browsers otherwise show zip bytes / raw text.
     return [

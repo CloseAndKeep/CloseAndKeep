@@ -227,7 +227,7 @@ For everyday sellers, prefer **AI Helper** — no API key.
 
 1. Open **Use with AI** (`/developers/ai`) and download **AI Helper: Order Cookies** instructions (`INSTRUCTIONS.txt`).
 2. Someone on your team pastes that file once into a shared Claude Project (or ChatGPT custom GPT).
-3. Ask the AI to send cookies (name, email, pack, note). After you confirm, it gives a CloseAndKeep link with the form prefilled.
+3. Ask the AI to send cookies (name, email, pack, note). After you confirm, it gives a CloseAndKeep `/send?…` link with the form prefilled.
 4. Open the link, confirm on Review, and pay on Stripe. Card numbers never go into the chat.
 
 ---
