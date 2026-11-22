@@ -23,7 +23,11 @@ export const metadata: Metadata = {
 const EXAMPLE_LINK =
   "https://www.closeandkeep.com/send?name=Alyssa%20Ozer&email=alyssa.ozer%40continuserve.com&pack=4&ask_address=1&note=Thanks%20for%20the%20demo%20%E2%80%94%20enjoy%20these%20cookies%21";
 
-const MCP_URL = "https://api.closeandkeep.com/mcp";
+// Public MCP URL must be reachable by Claude/ChatGPT/Cursor clouds.
+// Production API is the Render service (api.closeandkeep.com is not DNS'd yet).
+const MCP_URL =
+  process.env.NEXT_PUBLIC_MCP_URL?.replace(/\/$/, "") ||
+  "https://closeandkeep-api.onrender.com/mcp";
 
 const CURSOR_DEEPLINK = (() => {
   const config = Buffer.from(

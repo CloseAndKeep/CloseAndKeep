@@ -125,6 +125,33 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="border-b border-stone-200/80 bg-gradient-to-b from-cream/40 to-white/60 py-16">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          <h2 className="font-display text-2xl text-espresso sm:text-3xl">
+            Order cookies from Claude, ChatGPT, or Cursor
+          </h2>
+          <p className="mt-4 max-w-2xl text-stone-600">
+            Connect your AI once, ask it to send a thank-you pack after the demo, confirm the draft,
+            and pay on Stripe. No API key to paste.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link
+              href="/developers/ai"
+              className="inline-flex items-center gap-2 rounded-full bg-wood px-6 py-3 text-sm font-medium text-white shadow-md transition hover:bg-wood-dark"
+            >
+              Use with AI
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/developers/ai#ai-helper"
+              className="inline-flex items-center gap-2 rounded-full border border-wood/40 bg-white/80 px-6 py-3 text-sm font-medium text-wood-dark shadow-sm transition hover:border-wood hover:bg-wood/5"
+            >
+              Prefer a pasteable helper?
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
         <h2 className="font-display text-2xl text-espresso sm:text-3xl">
           Why teams use us
