@@ -31,6 +31,8 @@ Pick from **Still in play** below (or Dashboard `TEST1C`). Seller status emails 
 
 **M — MCP Connect (v1 shipped)** — Hosted remote MCP + OAuth Connect so sellers place orders from Claude / ChatGPT / Cursor without API keys. Plan + as-built: [`docs/mcp-orders.md`](mcp-orders.md). AI Helper stays the no-Connect fallback. Homepage CTA still later. Parked bakery autofill unchanged.
 
+**Claude native directory (in progress)** — N1 tool titles/annotations + privacy MCP section done. Plan: [`docs/claude-native-connector.md`](claude-native-connector.md). Owner: paid Claude for portal; brand DNS + icon still open.
+
 ## Liked, later (not this build)
 
 **D — Discount / 1¢ test code** — App/docs/tests done; Dashboard remaining (`TEST1C` amount-off = catalog − 1¢, test mode).
@@ -76,7 +78,7 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 
 ## Owner calls
 
-- Next: MCP Connect plan [`docs/mcp-orders.md`](mcp-orders.md) (OAuth; Claude + ChatGPT + Cursor UI) when ready to build; else Still in play / Dashboard `TEST1C`
+- Next: Claude directory submit after Premium ([`docs/claude-native-connector.md`](claude-native-connector.md) N2–N5); else Still in play / Dashboard `TEST1C`
 - Done: #1 seller status emails; H → AI Helper: Order Cookies (`/developers/ai`); API skill demoted
 - Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining); MCP Connect as a future main Use with AI story
 - Parked: Crumbl-first / Levain-fallback Cursor fulfill (`docs/bakery-fulfill-later.md`)

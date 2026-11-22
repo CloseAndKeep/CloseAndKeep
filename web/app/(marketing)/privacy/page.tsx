@@ -55,6 +55,12 @@ export default function PrivacyPage() {
               <span className="font-medium text-espresso">Usage data:</span> log data, device/browser
               information, and analytics about how you interact with the Service.
             </li>
+            <li>
+              <span className="font-medium text-espresso">AI connections:</span> if you connect an
+              AI assistant (for example Claude, ChatGPT, or Cursor) via MCP Connect, we store OAuth
+              tokens and connection metadata so that assistant can act on your CloseAndKeep account
+              until you disconnect.
+            </li>
           </ul>
 
           <h3 className="mt-4 font-medium text-espresso">
@@ -225,7 +231,35 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2 className="font-display text-xl text-espresso">9. Third-Party Links</h2>
+          <h2 className="font-display text-xl text-espresso">9. AI Assistants and MCP Connect</h2>
+          <p className="mt-2">
+            CloseAndKeep offers an optional MCP Connect integration so you can place gift drafts from
+            an AI assistant you choose. When you connect:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>
+              Recipient name, email, address, and gift note that you (or the assistant) send to
+              CloseAndKeep are processed by us to create and fulfill orders, under the same rules as
+              orders placed in our web app.
+            </li>
+            <li>
+              The same information may also be processed by the AI provider you use (for example
+              Anthropic, OpenAI, or Cursor) according to that provider&rsquo;s privacy policy, because
+              it appears in your chat with them.
+            </li>
+            <li>
+              We do not receive your card number through MCP Connect. Payments are completed on
+              Stripe Checkout by you.
+            </li>
+            <li>
+              You can disconnect an AI connection at any time from AI connections in the dashboard
+              or from the assistant&rsquo;s connector settings; we revoke the related tokens.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="font-display text-xl text-espresso">10. Third-Party Links</h2>
           <p className="mt-2">
             Our Service may contain links to third-party websites (for example, Stripe&rsquo;s
             checkout pages). This Privacy Policy does not apply to those third-party sites, and we
@@ -234,7 +268,7 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2 className="font-display text-xl text-espresso">10. Changes to This Policy</h2>
+          <h2 className="font-display text-xl text-espresso">11. Changes to This Policy</h2>
           <p className="mt-2">
             We may update this Privacy Policy from time to time. If we make material changes, we will
             update the &ldquo;Last updated&rdquo; date above and, where appropriate, notify customers
@@ -243,7 +277,7 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2 className="font-display text-xl text-espresso">11. Contact Us</h2>
+          <h2 className="font-display text-xl text-espresso">12. Contact Us</h2>
           <p className="mt-2">
             If you have questions about this Privacy Policy or want to exercise your privacy rights,
             contact us at:

@@ -18,17 +18,28 @@ from .mcp_oauth import DRAFT_TTL, McpAuthContext
 from .models import GiftOrderModel, McpOrderDraftModel, ProspectModel, UserModel
 
 
+def _read_annotations() -> dict[str, Any]:
+    return {"readOnlyHint": True, "destructiveHint": False}
+
+
+def _write_annotations(*, destructive: bool) -> dict[str, Any]:
+    return {"readOnlyHint": False, "destructiveHint": destructive}
+
+
+# Titles + annotations required for Claude directory review.
+# Descriptions state capability only (no behavioral instructions to the model).
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "list_gifts",
-        "description": "List CloseAndKeep cookie pack ids and live prices.",
+        "title": "List cookie packs",
+        "description": "Returns CloseAndKeep cookie pack ids and live prices.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "annotations": _read_annotations(),
     },
     {
         "name": "list_prospects",
-        "description": (
-            "List the seller's prospects. Prefer matching by email before create_prospect."
-        ),
+        "title": "List prospects",
+        "description": "Returns the authenticated seller's prospects, optionally filtered by name or email.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -36,11 +47,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
             "additionalProperties": False,
         },
+        "annotations": _read_annotations(),
     },
     {
         "name": "create_prospect",
+        "title": "Create prospect",
         "description": (
-            "Create a prospect. Only call after list_prospects finds no email match."
+            "Creates a prospect for the authenticated seller. "
+            "If a prospect with the same email already exists, returns that prospect."
         ),
         "inputSchema": {
             "type": "object",
@@ -56,13 +70,15 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["name", "email"],
             "additionalProperties": False,
         },
+        "annotations": _write_annotations(destructive=True),
     },
     {
         "name": "draft_gift_order",
+        "title": "Draft gift order",
         "description": (
-            "Validate gift-order details and return a draft_id + summary. "
-            "Does NOT create an order or charge. Restate the summary to the seller "
-            "and wait for an explicit yes before confirm_gift_order."
+            "Validates gift-order fields and stores a short-lived draft. "
+            "Returns draft_id and a human-readable summary. "
+            "Does not create a gift order or charge a card."
         ),
         "inputSchema": {
             "type": "object",
@@ -92,12 +108,16 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["prospect_id", "gift_id", "recipient_name", "note"],
             "additionalProperties": False,
         },
+        # Draft mutates server state but does not place/charge an order.
+        "annotations": _write_annotations(destructive=False),
     },
     {
         "name": "confirm_gift_order",
+        "title": "Confirm gift order",
         "description": (
-            "Create the gift order for a previously issued draft_id after the seller "
-            "explicitly confirms. Returns checkout_url (Stripe) or null if monthly billing."
+            "Creates a gift order from a valid unused draft_id for the authenticated seller. "
+            "Returns checkout_url (Stripe Checkout) when per-order payment applies, "
+            "or null when monthly billing is enabled."
         ),
         "inputSchema": {
             "type": "object",
@@ -107,20 +127,27 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["draft_id"],
             "additionalProperties": False,
         },
+        "annotations": _write_annotations(destructive=True),
     },
     {
         "name": "get_gift_order",
-        "description": "Get status for one gift order owned by the seller.",
+        "title": "Get gift order",
+        "description": "Returns status for one gift order owned by the authenticated seller.",
         "inputSchema": {
             "type": "object",
             "properties": {"order_id": {"type": "integer"}},
             "required": ["order_id"],
             "additionalProperties": False,
         },
+        "annotations": _read_annotations(),
     },
     {
         "name": "list_gift_orders",
-        "description": "List recent gift orders; optionally filter by recipient email/name.",
+        "title": "List gift orders",
+        "description": (
+            "Returns recent gift orders for the authenticated seller, "
+            "optionally filtered by recipient name or email."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -129,8 +156,42 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
             "additionalProperties": False,
         },
+        "annotations": _read_annotations(),
     },
 ]
+
+# Phrases Anthropic flags as prompt-injection style in tool descriptions.
+_BANNED_DESCRIPTION_PHRASES = (
+    "wait for",
+    "restate",
+    "tell the seller",
+    "always ",
+    "never ask",
+    "you must",
+    "do not call",
+)
+
+
+def assert_directory_ready_tools(tools: list[dict[str, Any]] | None = None) -> None:
+    """Raise AssertionError if tools are missing directory-required fields."""
+    for tool in tools or TOOL_DEFINITIONS:
+        name = tool.get("name", "<unknown>")
+        title = tool.get("title")
+        if not isinstance(title, str) or not title.strip():
+            raise AssertionError(f"{name}: missing title")
+        if len(str(tool.get("name", ""))) > 64:
+            raise AssertionError(f"{name}: name longer than 64 characters")
+        annotations = tool.get("annotations") or {}
+        if not isinstance(annotations, dict):
+            raise AssertionError(f"{name}: annotations must be an object")
+        if "readOnlyHint" not in annotations and "destructiveHint" not in annotations:
+            raise AssertionError(f"{name}: need readOnlyHint or destructiveHint")
+        description = str(tool.get("description") or "").lower()
+        for phrase in _BANNED_DESCRIPTION_PHRASES:
+            if phrase in description:
+                raise AssertionError(
+                    f"{name}: description contains banned phrase {phrase!r}"
+                )
 
 
 def _require_scope(auth: McpAuthContext, scope: str) -> None:

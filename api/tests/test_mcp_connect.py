@@ -144,9 +144,18 @@ def test_pkce_consent_token_and_tools(auth_client, client, stripe_stub):
         headers=headers,
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
-    names = {t["name"] for t in tools.json()["result"]["tools"]}
+    tool_list = tools.json()["result"]["tools"]
+    names = {t["name"] for t in tool_list}
     assert "draft_gift_order" in names
     assert "confirm_gift_order" in names
+    from app.mcp_tools import assert_directory_ready_tools
+
+    assert_directory_ready_tools(tool_list)
+    draft_tool = next(t for t in tool_list if t["name"] == "draft_gift_order")
+    assert draft_tool["title"]
+    assert draft_tool["annotations"]["readOnlyHint"] is False
+    confirm_tool = next(t for t in tool_list if t["name"] == "confirm_gift_order")
+    assert confirm_tool["annotations"]["destructiveHint"] is True
 
     # Create prospect + draft + confirm via tools
     created = client.post(

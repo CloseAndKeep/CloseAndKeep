@@ -91,6 +91,11 @@ export default function DevelopersAiPage() {
               <li>Claude → Settings → Connectors → Add custom connector.</li>
               <li>Paste the URL → Connect → log in to CloseAndKeep → Allow.</li>
             </ol>
+            <p className="mt-2 text-sm text-stone-600">
+              Native directory listing (search for CloseAndKeep inside Claude, no URL paste) is in
+              progress. Custom Connect works today; directory requires Anthropic review after we
+              submit listing materials.
+            </p>
           </div>
           <div>
             <h3 className="font-display text-xl text-espresso">ChatGPT</h3>

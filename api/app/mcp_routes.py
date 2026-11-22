@@ -273,10 +273,11 @@ def _handle_mcp_message(message: dict, auth, db: Session) -> dict | None:
                     "version": "1.0.0",
                 },
                 "instructions": (
-                    "CloseAndKeep cookie gifts for sales teams. "
-                    "Always draft_gift_order, restate the summary, wait for an explicit "
-                    "seller yes, then confirm_gift_order. Never ask for card numbers. "
-                    "Only share checkout_url from tool results."
+                    "CloseAndKeep places post-pitch cookie gifts for sales teams. "
+                    "Creating a gift requires draft_gift_order then confirm_gift_order "
+                    "with a valid draft_id (server-enforced). "
+                    "Cards are paid by the seller on Stripe Checkout; never collect PAN/CVV. "
+                    "Only share checkout_url values returned by tools."
                 ),
             },
         )
