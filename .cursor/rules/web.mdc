@@ -34,6 +34,7 @@ alwaysApply: false
 - Catalog labels on the web, prices from the API, so Stripe is source of truth for money.
 
 ### Failures
+- MCP Connect seller URL must be the live Render host (`closeandkeep-api.onrender.com/mcp`) until `api.closeandkeep.com` has DNS; override with `NEXT_PUBLIC_MCP_URL` when the alias exists.
 - Seller AI path is **AI Helper: Order Cookies** (paste instructions → prefill `/orders/new`); do not lead with the API skill (keys + host allowlists). Pack with `scripts/pack-ai-helper-order-cookies.sh`; API skill stays Advanced (`scripts/pack-closeandkeep-orders-skill.sh`).
 - Admin must stay in the **primary** nav (sidebar + mobile top strip) for `role=admin` — burying it only in More hid it from the mobile bar.
 - Public skill zips served `Content-Disposition: inline` open as binary on mobile; set `attachment` via `next.config` headers and rebuild the zip with `closeandkeep-orders/` at the root (use `scripts/pack-closeandkeep-orders-skill.sh`).
