@@ -164,6 +164,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from .mcp_oauth import revoke_grant as mcp_revoke_grant  # noqa: E402
+from .mcp_routes import (  # noqa: E402
+    ConsentRequest,
+    ConsentResponse,
+    McpConnectionRow,
+    connections_list,
+    mint_consent_redirect,
+    router as mcp_router,
+)
+
+app.include_router(mcp_router)
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -3148,3 +3160,30 @@ def hubspot_check_setup(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"HubSpot setup check failed: {exc}") from exc
     return IntegrationCheckSetupResponse(**report)
+
+
+@app.post("/oauth/mcp/consent", response_model=ConsentResponse)
+def oauth_mcp_consent(
+    payload: ConsentRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ConsentResponse:
+    """Mint an auth code after the seller allows Connect on www (session cookie)."""
+    return mint_consent_redirect(payload, current_user, db)
+
+
+@app.get("/mcp/connections", response_model=list[McpConnectionRow])
+def list_mcp_connections(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[McpConnectionRow]:
+    return connections_list(current_user, db)
+
+
+@app.delete("/mcp/connections/{token_id}", status_code=204)
+def disconnect_mcp_connection(
+    token_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    mcp_revoke_grant(db=db, user=current_user, token_id=token_id)

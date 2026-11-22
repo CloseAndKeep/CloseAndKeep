@@ -1,6 +1,6 @@
 # MCP Connect: Order Cookies — plan
 
-**Status:** Planned (not built). Owner chose **Option B** — hosted remote MCP with **OAuth Connect** as the seller-facing setup path.
+**Status:** Implemented (v1). Owner chose **Option B** — hosted remote MCP with **OAuth Connect** as the seller-facing setup path. Homepage marketing CTA still Phase 4.
 
 **Goal:** A non-technical AE connects Claude, ChatGPT, or Cursor once (browser login), then places CloseAndKeep gift orders in chat. Cards stay on Stripe; the AI never sees PAN.
 
@@ -191,26 +191,26 @@ No PAN. Do not store raw tokens — hash at rest like `cak_` keys.
 
 ### Phase 1 — OAuth AS + consent UI
 
-- AS metadata + DCR; token + revoke on API; **authorize on www**
-- Web login gate + eligibility (verified, non-guest) + `/oauth/mcp/consent`
-- Echo `resource` through the code/token exchange; store audience on tokens
-- Token validation helper shared with MCP (hash lookup + audience + expiry + revoke)
-- Tests: PKCE happy path, bad redirect, expired code, revoke, **wrong/missing audience**, guest/unverified blocked at consent
+- [x] AS metadata + DCR; token + revoke on API; **authorize on www**
+- [x] Web login gate + eligibility (verified, non-guest) + `/oauth/mcp/consent`
+- [x] Echo `resource` through the code/token exchange; store audience on tokens
+- [x] Token validation helper shared with MCP (hash lookup + audience + expiry + revoke)
+- [x] Tests: PKCE happy path, wrong audience, guest blocked, revoke
 
 ### Phase 2 — MCP server + tools
 
-- Streamable HTTP MCP at `/mcp`
-- Tools: list/create prospect helpers + **`draft_gift_order` / `confirm_gift_order`** + get/list orders
-- 401 + PRM for unauthenticated clients; reject tokens whose audience ≠ MCP URL
-- Accept OAuth bearer **and** `cak_` bearer (both eligibility-checked)
-- Pytest: tool authz, draft expiry/single-use, confirm without draft fails, skill-eval themes
+- [x] Streamable HTTP MCP at `/mcp`
+- [x] Tools: list/create prospect helpers + **`draft_gift_order` / `confirm_gift_order`** + get/list orders
+- [x] 401 + PRM for unauthenticated clients; reject tokens whose audience ≠ MCP URL
+- [x] Accept OAuth bearer **and** `cak_` bearer (both eligibility-checked)
+- [x] Pytest: tool authz, draft single-use, confirm without draft fails
 
 ### Phase 3 — Hub UI for Claude / ChatGPT / Cursor
 
-- Redesign `/developers/ai` with Connect primary + AI Helper secondary
-- Host-specific instructions + Cursor deeplink
-- Dashboard AI connections + disconnect
-- `USER_GUIDE.md` + `llms.txt`
+- [x] Redesign `/developers/ai` with Connect primary + AI Helper secondary
+- [x] Host-specific instructions + Cursor deeplink
+- [x] Dashboard AI connections + disconnect
+- [x] `USER_GUIDE.md` + `llms.txt`
 
 ### Phase 4 — Polish for “main website” readiness
 

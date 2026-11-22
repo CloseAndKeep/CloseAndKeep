@@ -11,7 +11,7 @@ CloseAndKeep helps sales teams send cookie gifts after a pitch, track prospects,
 1. Go to **Get started** → create an account (name, company, email, password — at least 12 characters with a letter and a number).
 2. Verify your email from the link we send.
 3. You’ll land on the **Dashboard**.
-4. From the left nav you can use **Prospects**, **Orders**, **Integrations**, **Payments**, **API keys**, and **Profile**.
+4. From the left nav you can use **Prospects**, **Orders**, **Integrations**, **AI connections**, **Payments**, **API keys**, and **Profile**.
 
 The Dashboard shows open, won, and lost counts plus your overall win rate. It also compares **close rates** for prospects who received cookies versus those who did not. Close rate is won ÷ (won + lost) for each group; open deals are not included. If a group has no closed outcomes yet, you will see a dash and “Not enough outcomes.”
 
@@ -221,9 +221,18 @@ There is no OAuth “Connect” for a home-grown CRM. Use the API:
    - `POST /gift-orders` with `gift_id`, `recipient_name`, **`note`**, and either **`shipping_street` + `shipping_city` + `shipping_state` + `shipping_postal_code`** (optional **`shipping_company`**) or `request_recipient_address: true` (and `recipient_email` so we can ask for shipping)
 4. If the response has `checkout_url`, open it to pay. If `checkout_url` is null, monthly billing is on (Profile → **Pay monthly** after you create an API key).
 
-### AI Helper: Order Cookies (Claude / ChatGPT)
+### MCP Connect (Claude / ChatGPT / Cursor)
 
-For everyday sellers, prefer **AI Helper** — no API key.
+To place orders from chat without pasting an API key:
+
+1. Sign up (not guest) and verify your email.
+2. Open **Use with AI** (`/developers/ai`) and copy the MCP URL (`https://api.closeandkeep.com/mcp`).
+3. In Claude, ChatGPT, or Cursor, add that URL as a connector / MCP server, then **Connect** and **Allow** on CloseAndKeep.
+4. Ask the AI to send cookies. It drafts the gift, you confirm, then you get a Stripe pay link. Manage or disconnect under **AI connections**.
+
+### AI Helper: Order Cookies (no Connect)
+
+If your team will not Connect anything, use **AI Helper** instead:
 
 1. Open **Use with AI** (`/developers/ai`) and download **AI Helper: Order Cookies** instructions (`INSTRUCTIONS.txt`).
 2. Someone on your team pastes that file once into a shared Claude Project (or ChatGPT custom GPT).

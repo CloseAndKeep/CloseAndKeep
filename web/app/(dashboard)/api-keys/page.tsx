@@ -116,7 +116,13 @@ export default function ApiKeysPage() {
           href="/developers/ai"
           className="inline-flex items-center rounded-full bg-wood px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-wood-dark"
         >
-          AI Helper: Order Cookies
+          Use with AI / Connect
+        </Link>
+        <Link
+          href="/ai-connections"
+          className="inline-flex items-center rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-espresso transition hover:border-wood hover:text-wood-dark"
+        >
+          AI connections
         </Link>
         <a
           href="/skills/closeandkeep-orders.zip"
@@ -133,9 +139,9 @@ export default function ApiKeysPage() {
         </Link>
       </div>
       <p className="mb-8 text-sm text-stone-600">
-        Prefer <strong className="font-medium">AI Helper</strong> for Claude/ChatGPT (no key). Use
-        keys for agents or CRM scripts that call the API — one dedicated key per host (for example{" "}
-        <code className="text-xs">Cursor AI</code>), and revoke if it leaks.
+        Prefer <strong className="font-medium">MCP Connect</strong> or{" "}
+        <strong className="font-medium">AI Helper</strong> on Use with AI. Use keys for agents or CRM
+        scripts that call the API — one dedicated key per host, and revoke if it leaks.
       </p>
 
       {error ? (
