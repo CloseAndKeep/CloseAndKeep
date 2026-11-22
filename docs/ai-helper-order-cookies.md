@@ -65,9 +65,10 @@ When name + email + note are present and shipping mode is resolvable, open on **
 5. [x] `/send` alias + one-click **Copy instructions** on `/developers/ai`
 6. [ ] Optional later: copy analytics; company-branded share page
 
-## Out of scope
+## Out of scope (this helper)
 
-- OAuth / MCP Connect for ChatGPT or Claude
 - AI completing Stripe Checkout
 - Bakery vendor API or parked Crumbl autofill
 - Removing the API skill (demote only)
+
+**MCP Connect** (OAuth for Claude / ChatGPT / Cursor) is a separate product track — see [`mcp-orders.md`](mcp-orders.md). This helper stays the no-Connect / paste-instructions path.

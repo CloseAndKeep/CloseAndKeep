@@ -29,6 +29,8 @@ Pick from **Still in play** below (or Dashboard `TEST1C`). Seller status emails 
 
 **H — Headless AI orders** — Pivot: seller-facing **AI Helper: Order Cookies** (paste instructions → prefill `/orders/new` link; no API key). Plan + naming: [`docs/ai-helper-order-cookies.md`](ai-helper-order-cookies.md), instructions: [`ai-helper-order-cookies/`](../ai-helper-order-cookies/). API skill [`skills/closeandkeep-orders/`](../skills/closeandkeep-orders/) demoted to Advanced. Earlier design notes: [`docs/headless-ai-orders.md`](headless-ai-orders.md).
 
+**M — MCP Connect (planned)** — Hosted remote MCP + OAuth Connect so sellers place orders from Claude / ChatGPT / Cursor without API keys. Plan: [`docs/mcp-orders.md`](mcp-orders.md). AI Helper stays the no-Connect fallback. Parked bakery autofill unchanged.
+
 ## Liked, later (not this build)
 
 **D — Discount / 1¢ test code** — App/docs/tests done; Dashboard remaining (`TEST1C` amount-off = catalog − 1¢, test mode).
@@ -74,9 +76,9 @@ Also out of scope unless the owner reopens them: team/pod wallets, shared CRM or
 
 ## Owner calls
 
-- Next: pick from Still in play (or Dashboard `TEST1C`)
+- Next: MCP Connect plan [`docs/mcp-orders.md`](mcp-orders.md) (OAuth; Claude + ChatGPT + Cursor UI) when ready to build; else Still in play / Dashboard `TEST1C`
 - Done: #1 seller status emails; H → AI Helper: Order Cookies (`/developers/ai`); API skill demoted
-- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining)
+- Like: discount / 1¢ test code (app/docs done; Dashboard `TEST1C` remaining); MCP Connect as a future main Use with AI story
 - Parked: Crumbl-first / Levain-fallback Cursor fulfill (`docs/bakery-fulfill-later.md`)
 - Do not like: 2, 9, 13, 16, 17, 18, 20
 - Lockdown (you): make the GitHub repo private + protect `main` (stale price-id branch deleted)
