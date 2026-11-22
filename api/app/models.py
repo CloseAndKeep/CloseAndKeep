@@ -290,3 +290,102 @@ class NotifyDeadLetterModel(Base):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
+
+
+class McpOAuthClientModel(Base):
+    """OAuth clients for MCP Connect (DCR and static)."""
+
+    __tablename__ = "mcp_oauth_clients"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    client_secret_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False, default="MCP client")
+    redirect_uris: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    token_endpoint_auth_method: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="none"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+
+
+class McpOAuthAuthCodeModel(Base):
+    """Short-lived authorization codes for MCP OAuth."""
+
+    __tablename__ = "mcp_oauth_auth_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    redirect_uri: Mapped[str] = mapped_column(String(2000), nullable=False)
+    scopes: Mapped[str] = mapped_column(String(255), nullable=False)
+    resource: Mapped[str] = mapped_column(String(500), nullable=False)
+    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)
+    code_challenge_method: Mapped[str] = mapped_column(String(16), nullable=False, default="S256")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+
+
+class McpOAuthTokenModel(Base):
+    """Access + refresh tokens for MCP Connect (hashed at rest)."""
+
+    __tablename__ = "mcp_oauth_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    access_token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scopes: Mapped[str] = mapped_column(String(255), nullable=False)
+    resource: Mapped[str] = mapped_column(String(500), nullable=False)
+    access_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    refresh_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+
+
+class McpOrderDraftModel(Base):
+    """Short-lived gift-order drafts for MCP draft → confirm gate."""
+
+    __tablename__ = "mcp_order_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    summary: Mapped[str] = mapped_column(String(2000), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )

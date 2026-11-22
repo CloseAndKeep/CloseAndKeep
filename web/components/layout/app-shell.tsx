@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   KeyRound,
   Plug,
+  Sparkles,
   UserCircle,
   Menu,
   X,
@@ -29,6 +30,7 @@ const primaryNav = [
 const secondaryNav = [
   { href: "/follow-ups", label: "Follow-ups", badge: "Soon", icon: CalendarClock },
   { href: "/integrations", label: "Integrations", icon: Plug },
+  { href: "/ai-connections", label: "AI connections", icon: Sparkles },
   { href: "/billing", label: "Payments", icon: CreditCard },
   { href: "/api-keys", label: "API keys", icon: KeyRound },
   { href: "/profile", label: "Profile", icon: UserCircle },
@@ -105,7 +107,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       (item) =>
         !(isGuest && item.href === "/follow-ups") &&
         !(isGuest && item.href === "/api-keys") &&
-        !(isGuest && item.href === "/integrations"),
+        !(isGuest && item.href === "/integrations") &&
+        !(isGuest && item.href === "/ai-connections"),
     ),
   ];
 
