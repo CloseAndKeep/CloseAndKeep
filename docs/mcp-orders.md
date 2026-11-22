@@ -44,9 +44,10 @@ flowchart TD
 
 ### Hosted remote MCP (universal URL)
 
-- **URL:** `https://api.closeandkeep.com/mcp` (Streamable HTTP). Same Render FastAPI service as today — no second deploy for v1.
+- **URL (live):** `https://closeandkeep-api.onrender.com/mcp` (Streamable HTTP on the existing Render FastAPI service).
+- **Brand alias later:** `https://api.closeandkeep.com/mcp` once DNS CNAME points at Render (not configured yet — do not ship that hostname in seller copy until it resolves).
+- Override display URL with `NEXT_PUBLIC_MCP_URL` on Vercel when the alias exists.
 - **Why not localhost / `npx`:** Claude and ChatGPT connect from their cloud; sellers must not run Node.
-- **Why not a separate `mcp.` subdomain yet:** Extra DNS/TLS/ops. Revisit if we want a cleaner public brand URL later (`https://mcp.closeandkeep.com/mcp` → same app).
 
 ### Auth: OAuth 2.1 + PKCE (CloseAndKeep as AS + RS)
 
@@ -56,7 +57,7 @@ CloseAndKeep implements a small **authorization server** for MCP clients (not Sa
 
 | Piece | Location |
 |-------|----------|
-| Resource server | MCP at `https://api.closeandkeep.com/mcp`; validates access tokens (audience/`resource` bound) |
+| Resource server | MCP at `API_BASE_URL/mcp` (prod: `https://closeandkeep-api.onrender.com/mcp`); validates access tokens (audience/`resource` bound) |
 | AS metadata + register + token + revoke | FastAPI on the API host (no session cookie required) |
 | **Authorize + login + consent** | **Web origin only** — `authorization_endpoint` is `https://www.closeandkeep.com/oauth/mcp/authorize` (Next.js). That page reads the existing session cookie, redirects to `/login?next=…` if needed, then shows consent. After Allow, the web app calls an internal API to mint the auth code and redirects to the client with `?code=&state=`. Do **not** put the interactive authorize step on the API host. |
 | Token store | Neon tables (hashed refresh + access metadata → `user_id`, plus `resource`/audience) |
@@ -70,7 +71,7 @@ CloseAndKeep implements a small **authorization server** for MCP clients (not Sa
 **Token binding (locked):**
 
 - Echo the MCP `resource` (canonical MCP URL) through authorize → code → token.
-- Access tokens are audience-bound to that resource. Every MCP request must validate the bearer token’s audience/`resource` matches `https://api.closeandkeep.com/mcp` (reject otherwise). ChatGPT and the MCP authorization spec expect this.
+- Access tokens are audience-bound to that resource. Every MCP request must validate the bearer token’s audience/`resource` matches `mcp_resource_url()` from `API_BASE_URL` (reject otherwise). ChatGPT and the MCP authorization spec expect this.
 
 **Client registration (support both for host coverage):**
 
@@ -214,9 +215,10 @@ No PAN. Do not store raw tokens — hash at rest like `cak_` keys.
 
 ### Phase 4 — Polish for “main website” readiness
 
-- Homepage / marketing CTA only after manual smoke on all three hosts
+- [x] Homepage section CTA → Use with AI (infra smoke passed; seller still must Connect once in Claude/ChatGPT/Cursor)
+- [x] Seller-facing MCP URL = live Render host (`closeandkeep-api.onrender.com/mcp`) until `api.closeandkeep.com` DNS exists
 - Optional: Claude connector directory submission; Cursor Marketplace listing
-- Optional: `mcp.closeandkeep.com` brand URL
+- Optional: `api.closeandkeep.com` / `mcp.closeandkeep.com` brand DNS
 - Optional: `Idempotency-Key`; scoped `cak_` keys alignment
 
 ## Out of scope

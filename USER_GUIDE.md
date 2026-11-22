@@ -226,7 +226,7 @@ There is no OAuth “Connect” for a home-grown CRM. Use the API:
 To place orders from chat without pasting an API key:
 
 1. Sign up (not guest) and verify your email.
-2. Open **Use with AI** (`/developers/ai`) and copy the MCP URL (`https://api.closeandkeep.com/mcp`).
+2. Open **Use with AI** (`/developers/ai`) and copy the MCP URL (today: `https://closeandkeep-api.onrender.com/mcp`).
 3. In Claude, ChatGPT, or Cursor, add that URL as a connector / MCP server, then **Connect** and **Allow** on CloseAndKeep.
 4. Ask the AI to send cookies. It drafts the gift, you confirm, then you get a Stripe pay link. Manage or disconnect under **AI connections**.
 
