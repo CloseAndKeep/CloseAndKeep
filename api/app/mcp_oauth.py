@@ -87,9 +87,18 @@ def _is_loopback(host: str) -> bool:
     return host in {"localhost", "127.0.0.1", "[::1]", "::1"}
 
 
+# Claude hosted surfaces (directory + custom connectors).
+CLAUDE_CALLBACK_URIS = (
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+)
+
+
 def redirect_uri_allowed(client: McpOAuthClientModel, redirect_uri: str) -> bool:
     registered = list(client.redirect_uris or [])
     if redirect_uri in registered:
+        return True
+    if redirect_uri in CLAUDE_CALLBACK_URIS:
         return True
     # Claude Desktop / Code: port-agnostic localhost / 127.0.0.1 match.
     try:
