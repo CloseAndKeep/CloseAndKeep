@@ -29,7 +29,9 @@ Pick from **Still in play** below (or Dashboard `TEST1C`). Seller status emails 
 
 **H — Headless AI orders** — Pivot: seller-facing **AI Helper: Order Cookies** (paste instructions → prefill `/orders/new` link; no API key). Plan + naming: [`docs/ai-helper-order-cookies.md`](ai-helper-order-cookies.md), instructions: [`ai-helper-order-cookies/`](../ai-helper-order-cookies/). API skill [`skills/closeandkeep-orders/`](../skills/closeandkeep-orders/) demoted to Advanced. Earlier design notes: [`docs/headless-ai-orders.md`](headless-ai-orders.md).
 
-**M — MCP Connect (v1 shipped)** — Hosted remote MCP + OAuth Connect so sellers place orders from Claude / ChatGPT / Cursor without API keys. Plan + as-built: [`docs/mcp-orders.md`](mcp-orders.md). AI Helper stays the no-Connect fallback. Homepage CTA still later. Parked bakery autofill unchanged.
+**M — MCP Connect (v1 shipped)** — Hosted remote MCP + OAuth Connect so sellers place orders from Claude / ChatGPT / Cursor without API keys. Plan + as-built: [`docs/mcp-orders.md`](mcp-orders.md). AI Helper stays the no-Connect fallback. Homepage CTA shipped. Parked bakery autofill unchanged.
+
+**M2 — Claude native directory (planned)** — Get CloseAndKeep into Claude’s connector directory (one-click Connect, no URL paste). Requirements + code gaps: [`docs/claude-native-connector.md`](claude-native-connector.md). Custom Connect stays.
 
 ## Liked, later (not this build)
 
